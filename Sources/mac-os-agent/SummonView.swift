@@ -2,7 +2,7 @@ import AppKit
 import MacOSAgentCore
 import SwiftUI
 
-/// The panel's content on Liquid Glass: a strip to move it by, the incognito indicator while
+/// The panel's content on Liquid Glass: the bar along the top, the incognito indicator while
 /// one is on, the thread's history, the go-ahead card when one is pending, the command hint,
 /// and the text field at the bottom.
 struct SummonView: View {
@@ -15,9 +15,7 @@ struct SummonView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DragHandle()
-                .frame(height: 14)
-                .frame(maxWidth: .infinity)
+            PanelTopBar()
             if session.isIncognito {
                 IncognitoIndicator()
             }
@@ -545,21 +543,4 @@ private struct ConfirmationCard: View {
         .background(.orange.opacity(0.10), in: .rect(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.orange.opacity(0.35), lineWidth: 1))
     }
-}
-
-/// The strip along the top edge that moves the panel. AppKit's own window drag, so it works
-/// in a panel that never activates the app.
-private struct DragHandle: NSViewRepresentable {
-    final class HandleView: NSView {
-        override func mouseDown(with event: NSEvent) {
-            window?.performDrag(with: event)
-        }
-
-        override func resetCursorRects() {
-            addCursorRect(bounds, cursor: .openHand)
-        }
-    }
-
-    func makeNSView(context: Context) -> HandleView { HandleView() }
-    func updateNSView(_ nsView: HandleView, context: Context) {}
 }

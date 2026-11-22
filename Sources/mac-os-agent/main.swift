@@ -1,4 +1,5 @@
 import AppKit
+import MacOSAgentCore
 
 MainActor.assumeIsolated {
     let app = NSApplication.shared
@@ -37,6 +38,12 @@ MainActor.assumeIsolated {
         if let index = arguments.firstIndex(of: "--panel-size"), index + 1 < arguments.count {
             let parts = arguments[index + 1].split(separator: "x").compactMap { Double($0) }
             if parts.count == 2 { panel.setContentSize(NSSize(width: parts[0], height: parts[1])) }
+        }
+        // `--preview-dock left` shows the panel docked to that edge of the screen.
+        if let index = arguments.firstIndex(of: "--preview-dock"), index + 1 < arguments.count,
+           let dock = PanelDock(rawValue: arguments[index + 1])
+        {
+            panel.toggleDock(dock)
         }
         // The preview never takes keyboard focus from the app the owner is using, and it quits
         // on its own after a few seconds, so a failed capture script cannot leave it on screen.
