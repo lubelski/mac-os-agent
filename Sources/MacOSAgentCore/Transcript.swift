@@ -82,7 +82,8 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
 
     public static func outcome(ofOutput output: String?) -> ToolOutcome {
         guard let output else { return .unknown }
-        if output == ShellCommandTool.declinedOutput { return .declined }
+        // The native tools that ask, such as Reminders and quitting an app, start this way.
+        if output == ShellCommandTool.declinedOutput || output.hasPrefix("The owner declined.") { return .declined }
         if output == ShellCommandTool.stoppedBeforeRunningOutput || output.contains(ShellCommandTool.stoppedWhileRunningNote) {
             return .stopped
         }

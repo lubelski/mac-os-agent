@@ -12,7 +12,7 @@ enum PanelPreview {
         "empty", "running", "confirmation", "finished", "history", "draft", "multiline-draft",
         "fresh-start", "scrollback", "command-hint", "tool-states", "first-message", "streaming",
         "fresh-start-slot", "markdown", "markdown-streaming", "markdown-code-streaming", "controls",
-    ] + incognitoStates + inspectorStates + InstantActionPreview.names
+    ] + goAheadStates + incognitoStates + inspectorStates + InstantActionPreview.names
 
     /// The states shown in the incognito window rather than the main panel. `incognito-beside`
     /// shows the main panel too, with the incognito window beside it.
@@ -24,6 +24,11 @@ enum PanelPreview {
     static func role(named name: String) -> SummonPanel.Role {
         incognitoStates.contains(name) ? .incognito : .main
     }
+
+    /// The go-ahead card for each tool that asks, beside the shell tool's `confirmation`.
+    static let goAheadStates = [
+        "confirmation-reminders", "confirmation-events", "confirmation-quit", "confirmation-theme",
+    ]
 
     /// The states that show the tool call inspector beside the panel, each open on one call.
     static let inspectorStates = [
@@ -86,6 +91,8 @@ enum PanelPreview {
                 previewEntries: thread.entries,
                 pendingConfirmation: ConfirmationRequest(callID: waiting, command: command, reason: "scripts an app to delete or quit"),
                 isRunning: true)
+        case "confirmation-reminders", "confirmation-events", "confirmation-quit", "confirmation-theme":
+            return goAheadSession(named: name)
         case "draft", "multiline-draft":
             var thread = StandInThread(now: Date())
             thread.earlierExchanges()
@@ -293,6 +300,48 @@ enum PanelPreview {
         let session = AgentSession(previewEntries: thread.entries, isRunning: true, runningCallIDs: ["call_running"])
         session.toolSources = [ShellCommandTool.name: "Built In", "change_reminders": "Reminders"]
         return session
+    }
+
+    /// A tool that is not the shell waiting for its go-ahead, with the request it would make.
+    static func goAheadSession(named name: String) -> AgentSession {
+        var thread = StandInThread(now: Date())
+        thread.earlierExchanges()
+        let callID = "call_waiting"
+        let request: ConfirmationRequest
+        switch name {
+        case "confirmation-reminders":
+            thread.user("clear out the groceries list and remind me to call the dentist tomorrow", minutesAgo: 1)
+            thread.call(callID, name: ChangeRemindersTool.name, arguments: ["changes": [
+                ["id": "3f9a2c1b", "delete": true], ["id": "7c21d0e4", "delete": true],
+                ["id": nil, "title": "Call the dentist", "due": "2026-11-22T10:00"],
+            ]], output: nil, details: nil)
+            request = ConfirmationRequest(callID: callID, kind: .reminderChanges, body: .changes([
+                .init(.delete, "\"Buy eggs\" from Groceries"),
+                .init(.delete, "\"Oat milk\" from Groceries"),
+                .init(.create, "\"Call the dentist\" in Reminders, due Sun 2026-11-22 10:00"),
+            ]), reason: "changes 3 reminders at once, deleting 2")
+        case "confirmation-events":
+            thread.user("move standup to 9:45 from now on", minutesAgo: 1)
+            thread.call(callID, name: ChangeEventsTool.name, arguments: ["changes": [
+                ["id": "a4be19f0-20261123", "start": "2026-11-23T09:45", "include_future": true],
+            ]], output: nil, details: nil)
+            request = ConfirmationRequest(callID: callID, kind: .eventChanges, body: .changes([
+                .init(.change, "\"Standup\" (Mon 2026-11-23 09:30 to 09:45) and its later occurrences: start Mon 2026-11-23 09:45"),
+            ]), reason: "changes a repeating event from this occurrence on")
+        case "confirmation-quit":
+            thread.user("quit safari", minutesAgo: 1)
+            thread.call(callID, name: QuitOrHideApplicationTool.name, arguments: ["application": "Safari", "action": "quit"], output: nil, details: nil)
+            request = ConfirmationRequest(
+                callID: callID, kind: .quitApplication, body: .item(name: "Safari", detail: "com.apple.Safari"),
+                reason: "may ask you to save unsaved work first")
+        default:
+            thread.user("delete the night swim theme", minutesAgo: 1)
+            thread.call(callID, name: ChangeThemeTool.name, arguments: ["action": "delete", "theme_id": "night-swim", "file": nil], output: nil, details: nil)
+            request = ConfirmationRequest(
+                callID: callID, kind: .deleteTheme, body: .item(name: "Night Swim", detail: "themes/night-swim.json"),
+                reason: "removes its file from the themes folder")
+        }
+        return AgentSession(previewEntries: thread.entries, pendingConfirmation: request, isRunning: true)
     }
 
     /// Builds stand-in thread entries with send times relative to now.

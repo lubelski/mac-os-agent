@@ -145,7 +145,8 @@ public struct ChangeThemeTool: AgentTool {
             guard let entry = library.find(id) else { return missing(id) }
             if entry.isBuiltIn { return "Error: \(entry.name) is a built-in theme, which cannot be deleted." }
             let approved = await context.confirm(ConfirmationRequest(
-                callID: context.callID, command: "Delete the theme \(entry.name) (themes/\(entry.id).json)", reason: "deletes a theme"))
+                callID: context.callID, kind: .deleteTheme, body: .item(name: entry.name, detail: "themes/\(entry.id).json"),
+                reason: "removes its file from the themes folder"))
             guard approved else { return "The owner declined. \(entry.name) is still there." }
             if Task.isCancelled { return "The task was stopped before \(entry.name) was deleted." }
             do {

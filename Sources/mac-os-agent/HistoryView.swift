@@ -87,6 +87,7 @@ struct HistoryView: View {
             .padding(.bottom, Self.bottomPadding)
         }
         .environment(\.revealsAllControls, session.previewRevealsControls)
+        .environment(\.pendingGoAhead, session.pendingConfirmation)
         .scrollPosition($position)
         .defaultScrollAnchor(startsAtTop ? .top : .bottom, for: .initialOffset)
         // A short thread sits at the bottom, by the text field, not at the top of the view.

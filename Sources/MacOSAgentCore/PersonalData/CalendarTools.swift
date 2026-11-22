@@ -187,7 +187,16 @@ public struct ChangeEventsTool: AgentTool {
         var kind: Kind
         var event: CalendarEvent
         var includingFuture: Bool
-        var description: String
+        /// What the change is to, after its action's word.
+        var subject: String
+
+        /// The change for the go-ahead card.
+        var change: ConfirmationRequest.Change {
+            ConfirmationRequest.Change(kind == .create ? .create : kind == .delete ? .delete : .change, subject)
+        }
+
+        /// The change in one line, as the results name it.
+        var description: String { change.text }
     }
 
     public func run(arguments: JSONValue, context: ToolRunContext) async -> String {
@@ -228,7 +237,7 @@ public struct ChangeEventsTool: AgentTool {
         }
         if let reason {
             let approved = await context.confirm(ConfirmationRequest(
-                callID: context.callID, command: plans.map(\.description).joined(separator: "\n"), reason: reason))
+                callID: context.callID, kind: .eventChanges, body: .changes(plans.map(\.change)), reason: reason))
             if !approved { return "The owner declined. Nothing was changed." }
         }
         if Task.isCancelled { return "The task was stopped before anything was changed." }
@@ -273,7 +282,7 @@ public struct ChangeEventsTool: AgentTool {
             let future = includeFuture && found.isRecurring
             if delete {
                 return Plan(kind: .delete, event: found, includingFuture: future,
-                            description: "Delete \"\(found.title)\" (\(formatter.when(found)))\(future ? " and its later occurrences" : "") from \(formatter.calendarName(found.calendarID))")
+                            subject: "\"\(found.title)\" (\(formatter.when(found)))\(future ? " and its later occurrences" : "") from \(formatter.calendarName(found.calendarID))")
             }
             guard !given.isEmpty else { throw ToolInputError("the change for \(short) has nothing to change.") }
         } else if delete {
@@ -378,14 +387,14 @@ public struct ChangeEventsTool: AgentTool {
         }
 
         let future = includeFuture && (existing?.isRecurring ?? false)
-        let description: String
+        let subject: String
         if let existing {
-            description = "Change \"\(existing.title)\" (\(formatter.when(existing)))\(future ? " and its later occurrences" : ""): "
+            subject = "\"\(existing.title)\" (\(formatter.when(existing)))\(future ? " and its later occurrences" : ""): "
                 + (edits.isEmpty ? "no visible change" : edits.joined(separator: ", "))
         } else {
-            description = "Create \"\(event.title)\" in \(formatter.calendarName(event.calendarID)), \(formatter.when(event))"
+            subject = "\"\(event.title)\" in \(formatter.calendarName(event.calendarID)), \(formatter.when(event))"
         }
-        return Plan(kind: existing == nil ? .create : .update, event: event, includingFuture: future, description: description)
+        return Plan(kind: existing == nil ? .create : .update, event: event, includingFuture: future, subject: subject)
     }
 
     /// Finds the occurrence a short id names. The id is the hash of the event's identifier,

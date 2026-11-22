@@ -173,39 +173,74 @@ private struct CommandHint: View {
     }
 }
 
-private struct ConfirmationCard: View {
+struct ConfirmationCard: View {
     let request: ConfirmationRequest
     let session: AgentSession
     @Environment(\.panelPalette) private var palette
 
-    private var commandText: some View {
-        Text(verbatim: request.command)
+    private func selectable(_ text: String) -> some View {
+        Text(verbatim: text)
             .foregroundStyle(.secondary)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// A short body shows whole. A long one scrolls within a few lines.
+    private func scrollsWhenLong(_ content: some View) -> some View {
+        ViewThatFits(in: .vertical) {
+            content
+            ScrollView { content }
+                .scrollBounceBehavior(.basedOnSize)
+        }
+        .frame(maxHeight: 120)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// One change per line, its action first in a column of its own.
+    private func changeList(_ changes: [ConfirmationRequest.Change]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(changes.enumerated()), id: \.offset) { _, change in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(verbatim: change.action.rawValue)
+                        .foregroundStyle(.primary)
+                        .frame(minWidth: 50, alignment: .leading)
+                    selectable(change.subject)
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+    }
+
+    @ViewBuilder private var requestBody: some View {
+        switch request.body {
+        case .command(let command):
+            CodeBracket(font: .system(size: 12, design: .monospaced)) {
+                scrollsWhenLong(selectable(command))
+            }
+        case .changes(let changes):
+            scrollsWhenLong(changeList(changes))
+                .font(.callout)
+        case .item(let name, let detail):
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(verbatim: name).foregroundStyle(.primary)
+                if let detail { selectable(detail) }
+            }
+            .font(.callout)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Run this command? It \(request.reason).")
+            Text(verbatim: request.prompt)
                 .foregroundStyle(.primary)
-            CodeBracket(font: .system(size: 12, design: .monospaced)) {
-                // A short command shows whole. A long one scrolls within a few lines.
-                ViewThatFits(in: .vertical) {
-                    commandText
-                    ScrollView { commandText }
-                        .scrollBounceBehavior(.basedOnSize)
-                }
-                .frame(maxHeight: 120)
-                .fixedSize(horizontal: false, vertical: true)
-            }
+            requestBody
             HStack {
                 Spacer()
-                Button("Don’t Run") { session.resolveConfirmation(false) }
+                Button(request.declineTitle) { session.resolveConfirmation(false) }
                     .buttonStyle(.glass)
                     .keyboardShortcut(.cancelAction)
-                Button("Run") { session.resolveConfirmation(true) }
+                Button(request.approveTitle) { session.resolveConfirmation(true) }
                     .buttonStyle(.glassProminent)
                     .keyboardShortcut(.defaultAction)
             }

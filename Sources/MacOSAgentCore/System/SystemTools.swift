@@ -405,7 +405,9 @@ public struct QuitOrHideApplicationTool: AgentTool {
         if let own = ownBundleIdentifier, app.bundleIdentifier == own {
             return "Error: mac-os-agent does not quit itself. The owner can quit it from its menu bar menu."
         }
-        let approved = await context.confirm(ConfirmationRequest(callID: context.callID, command: "Quit \(label)", reason: "quits an app"))
+        let approved = await context.confirm(ConfirmationRequest(
+            callID: context.callID, kind: .quitApplication, body: .item(name: app.name, detail: app.bundleIdentifier),
+            reason: "may ask you to save unsaved work first"))
         guard approved else { return "The owner declined. \(app.name) is still running." }
         if Task.isCancelled { return "The task was stopped before \(app.name) was quit." }
         switch await system.quit(app) {
