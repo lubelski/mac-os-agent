@@ -76,7 +76,7 @@ public enum BuiltInThemes {
               "name": "Paper",
               "light": {
                 "surface": { "kind": "solid", "fill": "#F6F1E7" },
-                "text": { "primary": "#24201A", "secondary": "#5C5548", "tertiary": "#8C8577" },
+                "text": { "primary": "#24201A", "secondary": "#5C5548", "tertiary": "#7A7366" },
                 "accent": "#2F5D8A",
                 "ownerMessage": { "fill": "#DCE4EC", "edge": "#C5D2DF" },
                 "agentReply": { "fill": "#ECE5D6", "edge": "#DDD3BF" },
