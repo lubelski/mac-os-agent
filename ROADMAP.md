@@ -40,7 +40,7 @@ When a decision changes, move it between the lists here in the same pull request
   - The agent runs with a set of tools that it can modify itself.
   - The tool list sent to the model stays fixed within a conversation, because a list that changes breaks prompt caching.
   - Built-in tools are a fixed, ordered list. New built-in tools go at the end. Tools from other sources will go after the built-ins, sorted by name.
-  - The built-in tools are a shell command, three app tools (search the installed apps by a loose name, open an app or bring it to the front, and list the running apps), a tool that loads a skill, two tools for past episodes (search them, and read one), and two tools each for Reminders and Calendar (read, and change).
+  - The built-in tools are a shell command, three app tools (search the installed apps by a loose name, open an app or bring it to the front, and list the running apps), a tool that loads a skill, two tools for past episodes (search them, and read one), two tools each for Reminders and Calendar (read, and change), and six system tools (open an item, find files, read and write the clipboard, set the desktop picture, and quit or hide an app).
 - Settings
   - A Settings window with a sidebar of sections on the left and the selected section beside it, in the style of System Settings. The sections are General, Instructions, Skills, Tools, History, and Debugging.
   - The window keeps one size whichever section is showing. It opens at 900 by 620 points, the owner can resize it down to 760 by 480, and it comes back at the size and place it was left. A section scrolls inside the window when it does not fit. The last section shown opens again next time.
@@ -68,7 +68,7 @@ When a decision changes, move it between the lists here in the same pull request
 - Apps through native tools
   - The app tools use Launch Services, NSWorkspace, and Spotlight directly instead of the shell, because shell lookups with `mdfind` were slow and missed apps.
   - A search reads the standard app folders, caches each folder until it changes, and asks Spotlight only when nothing matches closely.
-  - Opening, searching, and listing apps need no go-ahead. Quitting an app still goes through the shell tool and its confirmation step.
+  - Opening, searching, listing, and hiding apps need no go-ahead. Quitting an app goes through `quit_or_hide_application`, which asks first and quits the way the app's Quit menu item does, so it can ask to save.
 - Reminders and Calendar through native tools
   - `read_reminders`, `change_reminders`, `read_events`, and `change_events` call EventKit from inside the app instead of `osascript`, which was slow, fragile, and needed Automation permission for each app.
   - Each area has one tool to read and one to change. A change tool takes a list of changes, so the model can do several in one call, and each change creates, edits, or deletes one item.
@@ -77,6 +77,10 @@ When a decision changes, move it between the lists here in the same pull request
   - Dates go in as ISO 8601. A date alone is a day: due that day, or an all-day event. A date-time without an offset is in the Mac's time zone. Results write dates as `Sat 2026-11-21 14:00` in the Mac's time zone and say which zone that is. A reminder with a due time also gets an alert at that time, as the Reminders app does.
   - Each item comes back with a short id, eight characters from a hash of EventKit's identifier, so it is the same every time it is read. A repeating event's id adds when that occurrence was scheduled.
   - The tools sit behind small protocols, so their logic is tested against stand-in data and never against the owner's real reminders and events.
+- System features through native tools
+  - `open_item` opens a web address, file, or folder with its default app or a named one, or shows it in Finder, through NSWorkspace. `find_files` searches with Spotlight by name, content, kind, and date, newest first, in the home folder unless told otherwise, and leaves out hidden files and `~/Library`. `read_clipboard` and `write_clipboard` use NSPasteboard. `set_desktop_picture` sets an image file on every screen. `quit_or_hide_application` quits or hides a running app.
+  - They use public frameworks only and need no new permission. Anything that would need a new permission class, private API, or the shell is left out of this set.
+  - Only quitting asks for a go-ahead. Writing the clipboard and setting the desktop picture do not, since the owner asked for them and they are easy to put back.
 - Ask before destructive actions
   - A shell command waits for a go-ahead in the panel when the model marks it destructive, or when it matches a broad local pattern list for deleting, overwriting, uninstalling, quitting, killing processes, `sudo`, and system settings.
   - Either one is enough. The model cannot talk its way past the pattern list.
@@ -139,3 +143,13 @@ Ideas the owner has raised that nobody has designed or built yet.
 - MCP servers, managed from a Settings section above Debugging, with each server's tools as a group in Tools.
 - Summoning by double-tapping Option. Shelved in favor of Option-Shift-Space for now.
 - Building the history index off the main thread on first launch, before the thread gets large.
+- More native system tools, each left out of the first set for the reason given:
+  - Volume, mute, and brightness. Volume needs CoreAudio device code and brightness has no public API for built-in displays.
+  - Dark mode, Focus, Night Shift, and other appearance settings. There is no public API to change them, only AppleScript through System Events, which needs Automation permission.
+  - Moving files to the Trash, renaming, and making folders with FileManager. Useful and easy, but they change the owner's files and want the go-ahead and undo design worked out first.
+  - Notifications and scheduled alerts from the agent with UserNotifications. A new permission prompt.
+  - Window layout, such as tiling the front windows. Needs Accessibility permission.
+  - Screenshots and reading the screen. Needs Screen Recording permission.
+  - Contacts, Mail, Messages, Music, Photos, and Notes. Each needs a permission of its own or Automation, and Notes and Mail have no public framework.
+  - Battery, disk, and network status. Readable without permission, but the shell already answers these quickly with `pmset`, `df`, and `networksetup`.
+  - Location and weather. A new permission class.

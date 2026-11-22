@@ -561,14 +561,14 @@ private let standupMonday = "\(short("E-STANDUP"))-202611231730"
 
     @Test func schemasAreStrictAllTheWayDown() {
         let store = FakePersonalDataStore()
-        for tool in BuiltInTools.make(applicationWorkspace: FakeApplicationWorkspace(installed: []), reminders: store, calendar: store) {
+        for tool in BuiltInTools.make(applicationWorkspace: FakeApplicationWorkspace(installed: []), reminders: store, calendar: store, system: FakeSystemControl()) {
             checkStrict(tool.definition.parameters, path: tool.definition.name)
         }
     }
 
     @Test func theNewToolsStayWithinTheirBudget() {
         let store = FakePersonalDataStore()
-        let tools = BuiltInTools.make(applicationWorkspace: FakeApplicationWorkspace(installed: []), reminders: store, calendar: store)
+        let tools = BuiltInTools.make(applicationWorkspace: FakeApplicationWorkspace(installed: []), reminders: store, calendar: store, system: FakeSystemControl())
             .filter { $0.source == .reminders || $0.source == .calendar }
         let characters = tools.map { tool in
             JSONValue.object([

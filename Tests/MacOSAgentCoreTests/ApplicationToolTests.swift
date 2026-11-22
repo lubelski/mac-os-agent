@@ -275,7 +275,7 @@ final class FakeApplicationWorkspace: ApplicationWorkspace, @unchecked Sendable 
             SearchApplicationsTool(workspace: workspace), OpenApplicationTool(workspace: workspace),
             ListRunningApplicationsTool(workspace: workspace),
             SearchHistoryTool(history: history), ReadEpisodeTool(history: history),
-        ] + BuiltInTools.make(applicationWorkspace: workspace, reminders: FakePersonalDataStore(), calendar: FakePersonalDataStore())
+        ] + BuiltInTools.make(applicationWorkspace: workspace, reminders: FakePersonalDataStore(), calendar: FakePersonalDataStore(), system: FakeSystemControl())
             .filter { $0.source != .builtIn }
         for tool in tools {
             let parameters = tool.definition.parameters
@@ -299,6 +299,7 @@ final class FakeApplicationWorkspace: ApplicationWorkspace, @unchecked Sendable 
         #expect(first.definitions.map(\.name) == [
             "run_shell_command", "search_applications", "open_application", "list_running_applications", "load_skill",
             "search_history", "read_episode", "read_reminders", "change_reminders", "read_events", "change_events",
+            "open_item", "find_files", "read_clipboard", "write_clipboard", "set_desktop_picture", "quit_or_hide_application",
         ])
         #expect(first.definitions == second.definitions)
     }
