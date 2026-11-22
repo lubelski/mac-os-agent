@@ -7,14 +7,18 @@ MainActor.assumeIsolated {
     MainMenu.install()
     let arguments = CommandLine.arguments
     if let index = arguments.firstIndex(of: "--preview-settings"), index + 1 < arguments.count,
-       let pane = SettingsPane(rawValue: arguments[index + 1])
+       let section = SettingsSection(rawValue: arguments[index + 1])
     {
         // Shows the Settings window with a stand-in session and nothing else, for pull request
         // screenshots. Pass --data-folder too, so its files are not the real ones.
         if let index = arguments.firstIndex(of: "--appearance"), index + 1 < arguments.count {
             app.appearance = NSAppearance(named: arguments[index + 1] == "light" ? .aqua : .darkAqua)
         }
-        SettingsPreview.show(pane)
+        var item: String?
+        if let index = arguments.firstIndex(of: "--preview-item"), index + 1 < arguments.count {
+            item = arguments[index + 1]
+        }
+        SettingsPreview.show(section, item: item)
         app.run()
         return
     }

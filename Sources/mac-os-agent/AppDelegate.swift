@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let authenticator = ChatGPTAuthenticator(installationID: installationID)
         var loop: AgentLoop?
         var startupError: Error?
+        // Built once, so the tool list stays the same for the whole run, and shared with Settings.
+        let tools = ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills))
         do {
             let thread = try ThreadStore(fileURL: AgentPaths.threadFile)
             let provider = OpenAIResponsesProvider(
@@ -29,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let prompt = prompt
             loop = AgentLoop(
                 provider: provider, thread: thread,
-                tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills)).tools,
+                tools: tools.tools,
                 instructions: { prompt.current() },
                 usageLog: usageLog)
         } catch {
@@ -48,8 +50,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         hotKey = SummonHotKey { [weak self] in self?.panel.toggle() }
         hotKeyRegistered = hotKey.register()
+        if let startupError {
+            session.problems.record("Startup", "Could not open the thread: \(startupError.localizedDescription)")
+        }
         settings = SettingsWindowController(
-            session: session, prompt: prompt, usageLog: usageLog, shortcutAvailable: hotKeyRegistered)
+            session: session, prompt: prompt, usageLog: usageLog, tools: tools, problems: session.problems,
+            signInStatus: { await authenticator.status() },
+            shortcutAvailable: hotKeyRegistered)
         log.notice("Hotkey \(SummonShortcut.displayName, privacy: .public) registered: \(self.hotKeyRegistered, privacy: .public). Status item button: \(self.statusItem.button != nil, privacy: .public)")
 
         Task { await session.start() }

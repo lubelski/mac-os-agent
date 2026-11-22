@@ -34,8 +34,16 @@ public struct UsageRecord: Sendable, Equatable, Codable {
     public var cached: Int
     public var output: Int
     public var reasoning: Int?
+    /// How long the request took, from sending it to the end of the reply. Missing from lines
+    /// written before it was recorded.
+    public var seconds: Double?
+    /// A fingerprint of the instructions and tool list sent with the request. When it changes
+    /// between requests, the prompt cache starts over. See `PromptFingerprint`.
+    public var prompt: String?
 
-    public init(date: Date, provider: String, model: String, usage: TokenUsage) {
+    public init(
+        date: Date, provider: String, model: String, usage: TokenUsage, seconds: Double? = nil, prompt: String? = nil
+    ) {
         self.date = date
         self.provider = provider
         self.model = model
@@ -43,6 +51,8 @@ public struct UsageRecord: Sendable, Equatable, Codable {
         cached = usage.cachedInputTokens
         output = usage.outputTokens
         reasoning = usage.reasoningTokens
+        self.seconds = seconds
+        self.prompt = prompt
     }
 
     public var usage: TokenUsage {
@@ -56,16 +66,18 @@ public struct UsageTotals: Sendable, Equatable {
     public var input = 0
     public var cached = 0
     public var output = 0
+    public var reasoning = 0
 
     public init() {}
 
     public var cachedShare: Double { input > 0 ? Double(cached) / Double(input) : 0 }
 
-    mutating func add(_ record: UsageRecord) {
+    public mutating func add(_ record: UsageRecord) {
         requests += 1
         input += record.input
         cached += record.cached
         output += record.output
+        reasoning += record.reasoning ?? 0
     }
 }
 
@@ -105,6 +117,11 @@ public final class UsageLog: Sendable {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return data.split(separator: UInt8(ascii: "\n")).compactMap { try? decoder.decode(UsageRecord.self, from: $0) }
+    }
+
+    /// The most recent requests, newest first.
+    public func recent(_ limit: Int) -> [UsageRecord] {
+        Array(records().suffix(limit).reversed())
     }
 
     /// The most recent request and the totals for the day that contains `now`.

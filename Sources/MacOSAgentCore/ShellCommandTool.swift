@@ -46,6 +46,14 @@ public struct ShellCommandTool: AgentTool {
         )
     }
 
+    public var goAhead: ToolGoAhead {
+        .sometimes("""
+            Asks when the model marks a command destructive, or when the command matches the app's \
+            own list of patterns for deleting, overwriting, uninstalling, quitting, killing processes, \
+            sudo, and system settings. Either one is enough.
+            """)
+    }
+
     public func summary(arguments: JSONValue) -> String {
         arguments["command"]?.stringValue ?? "(no command)"
     }

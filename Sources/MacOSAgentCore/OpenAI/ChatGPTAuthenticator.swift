@@ -33,6 +33,8 @@ public actor ChatGPTAuthenticator {
     private var credential: ChatGPTSignIn.Credential?
     private var refreshTask: Task<ChatGPTSignIn.Credential, Error>?
     private var pendingListener: OAuthCallbackListener?
+    private var lastTokenDate: Date?
+    private var lastError: (date: Date, message: String)?
 
     public init(
         secrets: any SecretStore = KeychainSecrets(),
@@ -54,6 +56,17 @@ public actor ChatGPTAuthenticator {
     /// Runs the browser sign-in. `openBrowser` is called with the authorize URL once the
     /// callback listener is ready. Returns when the tokens are stored.
     public func signIn(openBrowser: @Sendable (URL) async -> Void) async throws {
+        do {
+            try await runSignIn(openBrowser: openBrowser)
+        } catch ChatGPTSignIn.SignInError.cancelled {
+            throw ChatGPTSignIn.SignInError.cancelled
+        } catch {
+            record(error)
+            throw error
+        }
+    }
+
+    private func runSignIn(openBrowser: @Sendable (URL) async -> Void) async throws {
         cancelSignIn()
         let pkce = ChatGPTSignIn.PKCE.generate()
         let state = ChatGPTSignIn.randomValue()
@@ -110,9 +123,29 @@ public actor ChatGPTAuthenticator {
         }
         refreshTask = task
         defer { refreshTask = nil }
-        let fresh = try await task.value
-        try store(fresh)
-        return fresh.accessToken
+        do {
+            let fresh = try await task.value
+            try store(fresh)
+            return fresh.accessToken
+        } catch {
+            record(error)
+            throw error
+        }
+    }
+
+    /// The state of the sign-in for the Debugging section. It holds dates and an error message,
+    /// never a token or the client id.
+    public func status() -> SignInStatus {
+        SignInStatus(
+            isSignedIn: isSignedIn(),
+            accessTokenExpires: credential.map { $0.refreshAfter.addingTimeInterval(ChatGPTSignIn.expiryMargin) },
+            lastTokenDate: lastTokenDate,
+            lastErrorDate: lastError?.date,
+            lastError: lastError?.message)
+    }
+
+    private func record(_ error: Error) {
+        lastError = (now(), (error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
     }
 
     /// Forgets the access token so the next request refreshes it, for example after a 401.
@@ -122,6 +155,7 @@ public actor ChatGPTAuthenticator {
 
     private func store(_ credential: ChatGPTSignIn.Credential) throws {
         self.credential = credential
+        lastTokenDate = now()
         try secrets.write(credential.refreshToken, for: Self.refreshTokenKey)
         try secrets.write(credential.clientID, for: Self.clientIDKey)
     }

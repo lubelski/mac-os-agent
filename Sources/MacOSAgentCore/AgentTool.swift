@@ -45,6 +45,11 @@ public struct ToolRunContext: Sendable {
 /// list that changes partway through breaks prompt caching.
 public protocol AgentTool: Sendable {
     var definition: ToolDefinition { get }
+    /// Where the tool comes from. Built in unless the tool says otherwise.
+    var source: ToolSource { get }
+    /// When the tool waits for the owner's go-ahead, as shown in Settings. Never unless the
+    /// tool says otherwise.
+    var goAhead: ToolGoAhead { get }
     /// A one-line summary of a call for the panel, such as the command being run.
     func summary(arguments: JSONValue) -> String
     /// Runs the tool. The returned text is what the model reads as the result.

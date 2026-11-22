@@ -81,11 +81,13 @@ public final class AgentLoop: Sendable {
         await onEvent(.entryAdded(try await thread.append(.userMessage(text: userText))))
         let definitions = tools.map(\.definition)
         let instructions = await self.instructions()
+        let fingerprint = PromptFingerprint.make(instructions: instructions, tools: definitions)
 
         for _ in 0..<maximumModelReplies {
             try Task.checkCancellation()
             let request = ModelRequest(instructions: instructions, entries: await thread.entries, tools: definitions)
             var calls: [ThreadItem.ToolCall] = []
+            let started = ContinuousClock.now
             for try await event in provider.streamReply(to: request) {
                 switch event {
                 case .textDelta(let text):
@@ -93,7 +95,11 @@ public final class AgentLoop: Sendable {
                 case .toolCallStarted(let callID, let name):
                     await onEvent(.toolCallStarted(callID: callID, name: name))
                 case .usage(let usage, let providerName, let model):
-                    usageLog?.append(UsageRecord(date: Date(), provider: providerName, model: model, usage: usage))
+                    let elapsed = ContinuousClock.now - started
+                    let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+                    usageLog?.append(UsageRecord(
+                        date: Date(), provider: providerName, model: model, usage: usage,
+                        seconds: (seconds * 10).rounded() / 10, prompt: fingerprint))
                 case .item(let item):
                     if case .toolCall(let call) = item { calls.append(call) }
                     await onEvent(.entryAdded(try await thread.append(item)))
