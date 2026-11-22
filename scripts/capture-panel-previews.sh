@@ -29,7 +29,7 @@ if [[ "${1:-}" == "--dock" ]]; then
   shift 2
 fi
 
-STATES=(empty history running confirmation finished draft multiline-draft fresh-start scrollback incognito command-hint tool-states first-message streaming fresh-start-slot markdown markdown-streaming markdown-code-streaming)
+STATES=(empty history running confirmation finished draft multiline-draft fresh-start scrollback incognito command-hint tool-states first-message streaming fresh-start-slot markdown markdown-streaming markdown-code-streaming controls)
 if [[ "${1:-}" == "--states" ]]; then
   read -r -a STATES <<<"$2"
   shift 2

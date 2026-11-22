@@ -76,7 +76,11 @@ struct OwnerMessage: View {
                     .overlay(alignment: .topLeading) {
                         CopyControl(help: "Copy the message") { text }
                             .revealed(when: hovering)
-                            .alignmentGuide(.leading) { $0[.trailing] + MessageStyle.controlGap }
+                            .fixedSize()
+                            // A frame with no width at the box's edge, with the control hanging
+                            // out of it to the left.
+                            .frame(width: 0, alignment: .trailing)
+                            .offset(x: -MessageStyle.controlGap)
                             .padding(.top, MessageStyle.verticalPadding)
                     }
             }
@@ -112,7 +116,11 @@ struct AgentMessage: View {
                     if !streaming {
                         CopyControl(help: "Copy the reply as Markdown") { text }
                             .revealed(when: hovering)
-                            .alignmentGuide(.trailing) { $0[.leading] - MessageStyle.controlGap }
+                            .fixedSize()
+                            // A frame with no width at the box's edge, with the control hanging
+                            // out of it to the right.
+                            .frame(width: 0, alignment: .leading)
+                            .offset(x: MessageStyle.controlGap)
                             .padding(.top, MessageStyle.verticalPadding)
                     }
                 }

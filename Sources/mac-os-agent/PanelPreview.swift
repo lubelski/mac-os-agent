@@ -11,7 +11,7 @@ enum PanelPreview {
     static let names = [
         "empty", "running", "confirmation", "finished", "history", "draft", "multiline-draft",
         "fresh-start", "scrollback", "incognito", "command-hint", "tool-states", "first-message", "streaming",
-        "fresh-start-slot", "markdown", "markdown-streaming", "markdown-code-streaming",
+        "fresh-start-slot", "markdown", "markdown-streaming", "markdown-code-streaming", "controls",
     ]
 
     /// A reply that uses most of what the panel draws from Markdown.
@@ -143,6 +143,16 @@ enum PanelPreview {
             // how an unfinished reply renders while it streams.
             let cut = markdownReply.range(of: "| `~/Downloads` | 12")!.upperBound
             return AgentSession(previewEntries: thread.entries, streamingText: String(markdownReply[..<cut]), isRunning: true)
+        case "controls":
+            // The hover controls all shown at once, since a capture has no pointer.
+            var thread = StandInThread(now: Date())
+            thread.user("how do I see the biggest files", minutesAgo: 1)
+            let start = markdownReply.range(of: "To see the largest")!.lowerBound
+            let end = markdownReply.range(of: "1. Move")!.lowerBound
+            thread.reply(String(markdownReply[start..<end]).trimmingCharacters(in: .whitespacesAndNewlines))
+            let session = AgentSession(previewEntries: thread.entries)
+            session.previewRevealsControls = true
+            return session
         case "markdown-code-streaming":
             var thread = StandInThread(now: Date())
             thread.user("how do I see the biggest files", minutesAgo: 1)

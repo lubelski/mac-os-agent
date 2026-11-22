@@ -65,12 +65,18 @@ struct CopyControl: View {
 struct RevealOnHover: ViewModifier {
     let isHovering: Bool
     @FocusState private var focused: Bool
+    @Environment(\.revealsAllControls) private var revealsAll
 
     func body(content: Content) -> some View {
         content
             .focused($focused)
-            .opacity(isHovering || focused ? 1 : 0)
+            .opacity(isHovering || focused || revealsAll ? 1 : 0)
     }
+}
+
+extension EnvironmentValues {
+    /// Shows every hover control at once, for a preview capture, which has no pointer.
+    @Entry var revealsAllControls = false
 }
 
 extension View {
