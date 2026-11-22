@@ -41,7 +41,7 @@ import Testing
         #expect(transcript.rows.map(\.kind) == [
             .episodeStart(date: earlier),
             .user(text: "turn on dark mode", date: earlier, showsTime: false),
-            .tool(command: "osascript -e 'dark mode'", status: .finished, output: "[exit status 0]"),
+            .tool(command: "Bash osascript -e 'dark mode'", status: .finished, output: "[exit status 0]"),
             .assistant("Dark mode is on."),
             .user(text: "and back", date: Self.now, showsTime: true),
         ])
@@ -54,7 +54,7 @@ import Testing
             entry(.userMessage(text: "sleep")),
             entry(call("call_1", "sleep 100")),
         ], calendar: Self.calendar)
-        #expect(transcript.rows.last?.kind == .tool(command: "sleep 100", status: .finished, output: nil))
+        #expect(transcript.rows.last?.kind == .tool(command: "Bash sleep 100", status: .finished, output: nil))
     }
 
     @Test func liveEventsUpdateTheToolRow() {
@@ -66,7 +66,7 @@ import Testing
         #expect(transcript.rows[2].kind == .tool(command: "", status: .preparing, output: nil))
 
         transcript.apply(entry(call("call_1", "ls")))
-        #expect(transcript.rows[2].kind == .tool(command: "ls", status: .preparing, output: nil))
+        #expect(transcript.rows[2].kind == .tool(command: "Bash ls", status: .preparing, output: nil))
         transcript.toolRunning("call_1", command: "ls")
         #expect(transcript.rows[2].kind == .tool(command: "ls", status: .running, output: nil))
         transcript.setToolStatus("call_1", .waitingForConfirmation)
@@ -100,7 +100,7 @@ import Testing
         var transcript = Transcript(entries: entries, calendar: Self.calendar)
         transcript.apply(entry(.toolResult(.init(callID: "call_7", output: "7\n[exit status 0]"))))
         #expect(transcript.rows.count == 4_001)
-        #expect(transcript.rows[16].kind == .tool(command: "echo 7", status: .finished, output: "7\n[exit status 0]"))
+        #expect(transcript.rows[16].kind == .tool(command: "Bash echo 7", status: .finished, output: "7\n[exit status 0]"))
     }
 
     @Test func stretchesStartOnTheFirstMessageANewDayOrALongPause() {

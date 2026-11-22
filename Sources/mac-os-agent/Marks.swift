@@ -44,9 +44,10 @@ extension ToolSignal.Tone {
 }
 
 extension ToolSignal {
-    /// A command as text, with the program in the secondary level and the rest in the tertiary.
-    static func text(for command: String) -> Text {
-        ToolSignal.command(command).reduce(Text(verbatim: "")) { text, segment in
+    /// A tool call's summary as text, with its first word in the secondary level and the rest
+    /// in the tertiary.
+    static func text(for summary: String) -> Text {
+        ToolSignal.summary(summary).reduce(Text(verbatim: "")) { text, segment in
             Text("\(text)\(Text(verbatim: segment.text).foregroundStyle(segment.tone.style))")
         }
     }

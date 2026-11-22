@@ -200,6 +200,7 @@ import Testing
         let contents = await store.contents
         let lines = EpisodeLine.lines(of: try #require(contents.episode(numbered: 1)), in: contents)
         #expect(lines.map(\.kind) == [.owner, .command(.succeeded), .agent, .owner, .agent])
-        #expect(lines[1].text == "du -sh ~/Movies")
+        // History shows a command as the panel's row does.
+        #expect(lines[1].text == "Bash du -sh ~/Movies")
     }
 }

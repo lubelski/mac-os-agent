@@ -146,3 +146,70 @@ struct TopBarRenders {
         }
     }
 }
+
+/// Renders the shell tool's row in each of its states, beside another tool's row, offscreen,
+/// for a pull request when screen capture is not available. Run with
+/// MAC_OS_AGENT_RENDER_SHELL_ROWS set to a folder.
+@MainActor
+@Suite(.enabled(if: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_SHELL_ROWS"] != nil))
+struct ShellRowRenders {
+    /// The command, its output, and the live status to put the row in, when it is not finished.
+    static let calls: [(String, String?, TranscriptRow.ToolStatus?)] = [
+        ("du -sh ~/Movies", "38G\t/Users/owner/Movies\n[exit status 0]", nil),
+        ("brew list --cask | grep -i notion", "notion\n[exit status 0]", nil),
+        ("ls /Applications/Notion.app", "ls: /Applications/Notion.app: No such file or directory\n[exit status 1]", nil),
+        ("sleep 300 | cat", nil, .running),
+        ("rm -rf ~/Downloads/old-installers", nil, .waitingForConfirmation),
+        ("brew uninstall --cask zoom", ShellCommandTool.declinedOutput, nil),
+        ("find ~ -name '*.dmg'", "(no output)\n" + ShellCommandTool.stoppedWhileRunningNote + "\n[exit status 15]", nil),
+    ]
+
+    @Test func rendersTheShellRowInEachState() throws {
+        let folder = URL(filePath: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_SHELL_ROWS"]!, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var entries = [ThreadEntry(date: Date(), item: .userMessage(text: "clean up"))]
+        entries.append(ThreadEntry(date: Date(), item: .toolCall(.init(
+            callID: "open", name: OpenApplicationTool.name,
+            arguments: (["bundle_identifier_or_path": "/Applications/Safari.app"] as JSONValue).encodedString(),
+            provider: "openai", model: "gpt-6-luna"))))
+        entries.append(ThreadEntry(date: Date(), item: .toolResult(.init(callID: "open", output: "Opened Safari. It is now in front."))))
+        for (index, call) in Self.calls.enumerated() {
+            entries.append(ThreadEntry(date: Date(), item: .toolCall(.init(
+                callID: "shell_\(index)", name: ShellCommandTool.name,
+                arguments: (["command": .string(call.0), "destructive": false] as JSONValue).encodedString(),
+                provider: "openai", model: "gpt-6-luna"))))
+            if let output = call.1 {
+                entries.append(ThreadEntry(date: Date(), item: .toolResult(.init(callID: "shell_\(index)", output: output))))
+            }
+        }
+        var transcript = Transcript(entries: entries)
+        var request: ConfirmationRequest?
+        for (index, call) in Self.calls.enumerated() {
+            guard let status = call.2 else { continue }
+            transcript.setToolStatus("shell_\(index)", status)
+            if status == .waitingForConfirmation {
+                request = ConfirmationRequest(callID: "shell_\(index)", command: call.0, reason: "deletes files")
+            }
+        }
+        let rows = transcript.rows.filter(\.isTool)
+        let theme = try #require(BuiltInThemes.all.first { $0.id == "glass" }?.theme)
+        for scheme in [ColorScheme.dark, .light] {
+            let palette = PanelPalette(theme: theme, dark: scheme == .dark, allowsGlass: false)
+            let view = VStack(alignment: .leading, spacing: 4) {
+                ForEach(rows) { row in RowView(row: row, now: Date()) }
+            }
+            .padding(16)
+            .frame(width: 480, alignment: .leading)
+            .foregroundStyle(palette.primary)
+            .background(palette.fallbackFill)
+            .environment(\.panelPalette, palette)
+            .environment(\.pendingGoAhead, request)
+            .environment(\.colorScheme, scheme)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 2
+            let image = try #require(renderer.nsImage)
+            let data = try #require(NSBitmapImageRep(data: image.tiffRepresentation!)?.representation(using: .png, properties: [:]))
+            try data.write(to: folder.appending(path: "shell-rows-\(scheme == .dark ? "dark" : "light").png"))
+        }
+    }
+}

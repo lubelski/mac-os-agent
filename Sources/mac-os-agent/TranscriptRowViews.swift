@@ -5,6 +5,9 @@ import SwiftUI
 struct RowView: View {
     let row: TranscriptRow
     let now: Date
+    /// The command line a shell call ran, by call id, for Copy Command. Read only when the
+    /// owner copies, so drawing a row never parses a call's arguments.
+    var commandOfCall: (String) -> String? = { _ in nil }
 
     var body: some View {
         switch row.kind {
@@ -15,7 +18,9 @@ struct RowView: View {
         case .assistant(let text):
             AgentMessage(text: text)
         case .tool(let command, let status, let output):
-            ToolLine(callID: row.id, command: command, state: ToolCallState(status: status, output: output), output: output)
+            ToolLine(
+                callID: row.id, summary: command, state: ToolCallState(status: status, output: output), output: output,
+                commandOfCall: commandOfCall)
         case .notice(let text):
             StatusLine(text: text, isError: false)
         case .error(let text):
@@ -130,18 +135,21 @@ struct AgentMessage: View {
     }
 }
 
-/// A command the agent ran, in the scheme of Pi's tool rows: one quiet line that starts with
-/// `›`, or `✗` when it failed, with the program in the secondary level and the rest in the
-/// tertiary. A state that needs words, such as why it failed or that it is waiting for a
+/// A tool call the agent made, in the scheme of Pi's tool rows: one quiet line that starts with
+/// `›`, or `✗` when it failed, then the tool's summary, with its first word in the secondary
+/// level and the rest in the tertiary, such as `Open Safari` or `Bash du -sh ~/Movies`. Every
+/// tool's row is drawn the same way. A state that needs words, such as why it failed or that it is waiting for a
 /// go-ahead, adds one `└` line beneath the command. Opening the row, with a click or with
 /// Return or Space when it has keyboard focus, shows the call in the inspector beside the
 /// panel. The row never grows in place. The call the inspector shows has a faint fill.
 struct ToolLine: View {
     @Environment(\.panelPalette) private var palette
     let callID: String
-    let command: String
+    /// The tool's one-line summary of the call. Empty while the model is still writing it.
+    let summary: String
     let state: ToolCallState
     let output: String?
+    let commandOfCall: (String) -> String?
     @Environment(ToolInspector.self) private var inspector: ToolInspector?
     @Environment(\.pendingGoAhead) private var pendingGoAhead
 
@@ -181,7 +189,7 @@ struct ToolLine: View {
                 .foregroundStyle(isFailed ? HierarchicalShapeStyle.primary : .tertiary)
                 .frame(width: Mark.rowColumn, alignment: .leading)
                 .accessibilityHidden(true)
-            commandText
+            summaryText
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -205,27 +213,33 @@ struct ToolLine: View {
             }
         }
         .contextMenu {
-            if !command.isEmpty {
-                Button("Copy Command") { MessageActions.copy(command) }
+            if !summary.isEmpty {
+                Button("Copy Command") { MessageActions.copy(copiedCommand) }
             }
             if let output {
                 Button("Copy Output") { MessageActions.copy(output) }
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(command.isEmpty ? "Preparing a command" : "Command: \(command)")
+        .accessibilityLabel(summary.isEmpty ? "Preparing a command" : ToolSignal.cleanSummary(summary))
         .accessibilityValue(state.accessibilityText(pendingGoAhead: pendingGoAhead, callID: callID))
-        .accessibilityAction(named: "Copy command") { MessageActions.copy(command) }
+        .accessibilityAction(named: "Copy command") { MessageActions.copy(copiedCommand) }
     }
 
-    @ViewBuilder private var commandText: some View {
-        if command.isEmpty {
+    /// A shell call's command line as it ran, without the `Bash` its row starts with. Any
+    /// other call copies its summary.
+    private var copiedCommand: String {
+        commandOfCall(callID) ?? summary
+    }
+
+    @ViewBuilder private var summaryText: some View {
+        if summary.isEmpty {
             Text("Preparing a command…").foregroundStyle(.tertiary)
         } else if state == .declined || state == .stopped {
             // It never ran, so it reads as struck out.
-            Text(verbatim: command).strikethrough().foregroundStyle(.tertiary)
+            Text(verbatim: ToolSignal.cleanSummary(summary)).strikethrough().foregroundStyle(.tertiary)
         } else {
-            ToolSignal.text(for: command)
+            ToolSignal.text(for: summary)
         }
     }
 }
