@@ -12,7 +12,7 @@ enum HistorySearchText {
 
     static func of(_ item: ThreadItem) -> (kind: Kind, text: String)? {
         switch item {
-        case .userMessage(let text):
+        case .userMessage(let text, _):
             return (.owner, text)
         case .assistantMessage(let message):
             return message.text.isEmpty ? nil : (.agent, message.text)

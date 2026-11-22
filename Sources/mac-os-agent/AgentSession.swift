@@ -53,8 +53,22 @@ final class AgentSession {
     /// A close or clear asked for while a task runs, waiting for the owner to confirm it.
     private(set) var pendingDiscard: Discard?
     var draft = "" {
-        didSet { instantActions.draftChanged(draft) }
+        didSet {
+            instantActions.draftChanged(draft)
+            if draft != oldValue { draftChangedForHint() }
+        }
     }
+    /// The skills the main panel offers as slash commands, kept live. Nil in the incognito
+    /// window, which has no skills, and where nothing set one up.
+    var skillCommands: SkillCommandsModel?
+    /// Which of the listed commands Return or Tab completes.
+    private(set) var hintSelection = 0
+    /// The draft the owner dismissed the command list for with Escape. It stays dismissed while
+    /// they keep typing after it.
+    private(set) var dismissedHintDraft: String?
+    /// The skill commands as they were when the running task started, to tell afterwards which
+    /// ones it added or changed.
+    @ObservationIgnored private var menuAtTaskStart: SlashCommandMenu?
     /// What Return does for the draft without the model, such as opening an app.
     @ObservationIgnored var instantActions = InstantActions()
     /// Set by the window: hides it the normal way, and shows it again.
@@ -176,6 +190,7 @@ final class AgentSession {
     func panelDidAppear() {
         focusRequest += 1
         instantActions.refresh()
+        skillCommands?.reload()
         refreshEpisode()
     }
 
@@ -203,6 +218,68 @@ final class AgentSession {
         case (.incognito, .incognito):
             transcript.appendNotice("This window is already incognito. Nothing from it is kept.")
         }
+    }
+
+    // MARK: - The command list
+
+    /// The commands the owner can type here: the app's own, and in the main panel the skills
+    /// they can invoke. The incognito window has no skills, so it offers none.
+    var slashMenu: SlashCommandMenu {
+        guard !isIncognito, let skillCommands else { return .builtInOnly }
+        return skillCommands.menu
+    }
+
+    /// The commands listed above the text field for the draft, or none once Escape dismissed them.
+    var commandSuggestions: [SlashCommandItem] {
+        guard dismissedHintDraft == nil else { return [] }
+        return slashMenu.suggestions(for: draft)
+    }
+
+    private func draftChangedForHint() {
+        hintSelection = 0
+        if let dismissed = dismissedHintDraft, draft.isEmpty || !draft.hasPrefix(dismissed) {
+            dismissedHintDraft = nil
+        }
+    }
+
+    /// Up, Down, or Shift-Tab while commands are listed. False when there is nothing to choose
+    /// between, so the key does what it always does.
+    func moveHintSelection(by offset: Int) -> Bool {
+        let count = commandSuggestions.count
+        guard count > 1 else { return false }
+        hintSelection = (hintSelection + offset % count + count) % count
+        return true
+    }
+
+    /// Tab while commands are listed: puts the chosen one in the field. A skill gets a space
+    /// after it, for its text. False when no command is listed, so Tab does what it always does.
+    func completeHint() -> Bool {
+        let suggestions = commandSuggestions
+        guard !suggestions.isEmpty else { return false }
+        complete(suggestions[min(hintSelection, suggestions.count - 1)])
+        return true
+    }
+
+    /// A click on a listed command, or Tab or Return on the chosen one.
+    func complete(_ item: SlashCommandItem) {
+        // While a skill's text is typed, the line already has the command.
+        guard !(draft.hasPrefix(item.name) && draft.dropFirst(item.name.count).first?.isWhitespace == true) else { return }
+        draft = item.completion
+        focusRequest += 1
+    }
+
+    /// Escape while commands are listed: hides the list for this draft and returns true, or
+    /// returns false when none is listed, so Escape goes on to the inspector or the panel.
+    func dismissHint() -> Bool {
+        guard !commandSuggestions.isEmpty else { return false }
+        dismissedHintDraft = draft
+        return true
+    }
+
+    /// Escape's first step: an instant action suggestion or the command list, whichever is
+    /// showing. A slash rules out a suggestion, so at most one of them is.
+    func dismissSuggestionOrHint() -> Bool {
+        instantActions.dismiss() || dismissHint()
     }
 
     private func beginFreshEpisode() {
@@ -278,6 +355,13 @@ final class AgentSession {
             perform(candidate)
             return
         }
+        // A partly typed command, such as `/ren`, completes to the chosen one first. A command
+        // typed in full runs.
+        let suggestions = commandSuggestions
+        if !suggestions.isEmpty, slashMenu.parse(draft) == nil, !draft.contains(where: \.isWhitespace) {
+            complete(suggestions[min(hintSelection, suggestions.count - 1)])
+            return
+        }
         submitToAgent()
     }
 
@@ -310,10 +394,26 @@ final class AgentSession {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isRunning else { return }
         // A known command is the app's to handle. It is never sent or written down.
-        if let command = SlashCommand.parse(text) {
+        var skill: ThreadItem.SkillInvocation?
+        switch slashMenu.parse(text) {
+        case .builtIn(let command):
             draft = ""
             perform(command)
             return
+        case .skill(let command, _):
+            // Read as it is now, so the agent gets the instructions the owner sees in Settings.
+            switch skillCommands?.library.invocation(typed: text, command: command) {
+            case .success(let invocation):
+                skill = invocation
+            case .failure(let error):
+                skillCommands?.reload()
+                transcript.appendError("\(command.slashName) cannot be used. \(Self.describe(error))")
+                return
+            case nil:
+                return
+            }
+        case nil:
+            break
         }
         guard let loop else { return }
         guard signInState == .signedIn else {
@@ -327,6 +427,10 @@ final class AgentSession {
         streamingText = ""
         isRunning = true
         onStatusChange?()
+        if !isIncognito, let skillCommands {
+            skillCommands.reload()
+            menuAtTaskStart = skillCommands.menu
+        }
 
         // The task holds the session strongly until it ends. Discarding an incognito
         // conversation cancels it, and anything it reports after that is dropped.
@@ -334,6 +438,7 @@ final class AgentSession {
             do {
                 try await loop.run(
                     text,
+                    skill: skill,
                     startsNewEpisode: startsNew,
                     onEvent: { event in await self.handle(event, in: conversation) },
                     confirm: { request in await self.requestConfirmation(request, in: conversation) })
@@ -392,7 +497,27 @@ final class AgentSession {
         isRunning = false
         streamingText = ""
         resolveConfirmation(false)
+        announceSkillCommandChanges()
         onStatusChange?()
+    }
+
+    /// After a task in which a skill the owner can invoke was added or changed, such as one the
+    /// agent just wrote, the list already has it, and a quiet line by the text field says so.
+    private func announceSkillCommandChanges() {
+        guard let before = menuAtTaskStart, let skillCommands else { return }
+        menuAtTaskStart = nil
+        skillCommands.reload()
+        if let notice = SlashCommandMenu.changes(from: before, to: skillCommands.menu).notice {
+            transcript.appendNotice(notice)
+        }
+    }
+
+    private static func describe(_ error: SkillLibrary.LoadError) -> String {
+        switch error {
+        case .notFound: "The skill is no longer in the skills folder."
+        case .turnedOff: "The skill is turned off in Settings."
+        case .broken(let problem): problem
+        }
     }
 
     private func handle(_ event: AgentEvent, in conversation: Int) {
@@ -412,6 +537,8 @@ final class AgentSession {
             transcript.toolRunning(callID, command: summary)
         case .toolFinished(let callID):
             transcript.setToolStatus(callID, .finished)
+            // A command may have written a skill. The list follows at once.
+            skillCommands?.reload()
         }
     }
 

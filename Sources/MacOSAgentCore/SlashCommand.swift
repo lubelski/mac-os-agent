@@ -8,6 +8,8 @@ import Foundation
 /// `/usr/bin is slow`, goes to the model as a normal message.
 ///
 /// To add a command, add a case with its name and summary here, and handle it in the app.
+/// Skills the owner can invoke are listed beside these by `SlashCommandMenu`, and a command
+/// here wins over a skill with the same name.
 public enum SlashCommand: String, CaseIterable, Sendable, Equatable {
     case new
     case incognito

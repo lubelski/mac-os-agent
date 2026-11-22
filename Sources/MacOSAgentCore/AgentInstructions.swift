@@ -84,7 +84,9 @@ public enum AgentInstructions {
             other files beside it. SKILL.md starts with front matter between two lines of three \
             dashes, with a name line and a description line, followed by the instructions. The name \
             is lowercase letters, digits, and hyphens, the same as the folder's name. The description \
-            says what the skill does and when to use it, in one line.
+            says what the skill does and when to use it, in one line. The person can also invoke a \
+            skill themselves by typing a slash and its name in the panel. For a skill meant only for \
+            you, add a line user-invocable: false to its front matter.
             - You can write new skills and improve existing ones with the shell tool. That is how you \
             extend what you can do. Write one when the person asks, or when you have worked out a \
             task they are likely to ask for again. New and changed skills are listed from their next \

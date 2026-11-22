@@ -19,8 +19,10 @@ public struct ThreadEntry: Sendable, Equatable, Codable, Identifiable {
 /// What an entry holds. The cases are provider neutral, apart from `providerItem`, which a
 /// provider fills with whatever it needs to send the item back exactly as it received it.
 public enum ThreadItem: Sendable, Equatable, Codable {
-    /// What the person typed into the panel.
-    case userMessage(text: String)
+    /// What the person typed into the panel. When they invoked a skill with a slash, such as
+    /// `/rename-photos the trip folder`, `text` is the line as typed, which is what the panel and
+    /// search show, and `skill` holds the message the model was sent for it.
+    case userMessage(text: String, skill: SkillInvocation? = nil)
     /// Text the model wrote.
     case assistantMessage(AssistantMessage)
     /// Model output that only the provider understands, such as an encrypted reasoning item.
@@ -33,6 +35,28 @@ public enum ThreadItem: Sendable, Equatable, Codable {
     /// The thread from before these markers existed has none, and its episodes are derived
     /// from the pauses between entries instead. See `EpisodeTracker`.
     case episodeStart(EpisodeStart)
+
+    /// A skill the owner invoked with a slash, as it was sent. The model gets `message` in
+    /// place of the typed line: the line followed by the skill's instructions. It is stored
+    /// whole, so a later request for the same episode sends exactly the same text, whatever has
+    /// happened to the skill's files since.
+    public struct SkillInvocation: Sendable, Equatable, Codable {
+        /// The skill's name, without the slash.
+        public var name: String
+        /// What the model is sent for this message.
+        public var message: String
+
+        public init(name: String, message: String) {
+            self.name = name
+            self.message = message
+        }
+    }
+
+    /// The text the model is sent for an owner's message: the skill's expanded message when
+    /// they invoked one, and otherwise what they typed.
+    public static func modelText(text: String, skill: SkillInvocation?) -> String {
+        skill?.message ?? text
+    }
 
     public struct EpisodeStart: Sendable, Equatable, Codable {
         public enum Reason: String, Sendable, Equatable, Codable {
@@ -123,12 +147,19 @@ public enum ThreadItem: Sendable, Equatable, Codable {
         case episodeStart = "episode_start"
     }
 
-    private struct UserText: Codable { var text: String }
+    /// A user message's value. `skill` is left out when there is none, so a plain message's
+    /// line is the same as before invocations existed, and older lines load unchanged.
+    private struct UserText: Codable {
+        var text: String
+        var skill: SkillInvocation?
+    }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         switch try container.decode(Kind.self, forKey: .type) {
-        case .userMessage: self = .userMessage(text: try container.decode(UserText.self, forKey: .value).text)
+        case .userMessage:
+            let value = try container.decode(UserText.self, forKey: .value)
+            self = .userMessage(text: value.text, skill: value.skill)
         case .assistantMessage: self = .assistantMessage(try container.decode(AssistantMessage.self, forKey: .value))
         case .providerItem: self = .providerItem(try container.decode(ProviderItem.self, forKey: .value))
         case .toolCall: self = .toolCall(try container.decode(ToolCall.self, forKey: .value))
@@ -140,9 +171,9 @@ public enum ThreadItem: Sendable, Equatable, Codable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case .userMessage(let text):
+        case .userMessage(let text, let skill):
             try container.encode(Kind.userMessage, forKey: .type)
-            try container.encode(UserText(text: text), forKey: .value)
+            try container.encode(UserText(text: text, skill: skill), forKey: .value)
         case .assistantMessage(let value):
             try container.encode(Kind.assistantMessage, forKey: .type)
             try container.encode(value, forKey: .value)
