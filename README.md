@@ -43,6 +43,10 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
 - Settings
   - A standard Settings window with General, Instructions, and Skills panes. An MCP pane comes next, in its own pull request.
   - General holds the sign-in, the model, and the summon shortcut, which is shown but not editable yet.
+- Measuring prompt caching
+  - The app reads the token counts from each model response: input, cached input, output, and reasoning. They pass through the provider seam in a provider-neutral shape.
+  - Each model request adds one line to `usage.jsonl` in Application Support with the time, provider, model, and counts. It holds no message content and is kept apart from the thread.
+  - General in Settings shows the last request and today's total, with the cached share as a percentage.
 - Instructions the owner can edit
   - The system prompt has two parts. The editable part is a file, `instructions.md` in Application Support, and the default applies until the owner saves an edit.
   - A fixed part always follows it. It covers what the app needs to work correctly: how the destructive flag and the go-ahead work, the time at the start of each message, and how skills are found, loaded, and written.

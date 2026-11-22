@@ -32,6 +32,11 @@ public enum AgentPaths {
         applicationSupport.appending(path: "skills", directoryHint: .isDirectory)
     }
 
+    /// Token counts for each model request, one JSON line per request. No message content.
+    public static var usageLogFile: URL {
+        applicationSupport.appending(path: "usage.jsonl")
+    }
+
     /// Which skills are turned off.
     public static var skillSettingsFile: URL {
         applicationSupport.appending(path: "skill-settings.json")

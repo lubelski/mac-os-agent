@@ -35,9 +35,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let tabs = NSTabViewController()
     let instructions: InstructionsSettingsModel
     let skills: SkillsSettingsModel
+    let usage: UsageSummaryModel
     private var hasBeenShown = false
 
-    init(session: AgentSession, prompt: AgentPrompt, shortcutAvailable: Bool, defaults: UserDefaults = .standard) {
+    init(
+        session: AgentSession, prompt: AgentPrompt, usageLog: UsageLog, shortcutAvailable: Bool,
+        defaults: UserDefaults = .standard
+    ) {
+        usage = UsageSummaryModel(log: usageLog)
         instructions = InstructionsSettingsModel(prompt: prompt)
         skills = SkillsSettingsModel(library: prompt.skills)
 
@@ -70,7 +75,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private func view(for pane: SettingsPane, session: AgentSession, shortcutAvailable: Bool) -> AnyView {
         switch pane {
-        case .general: AnyView(GeneralSettingsView(session: session, shortcutAvailable: shortcutAvailable))
+        case .general: AnyView(GeneralSettingsView(session: session, shortcutAvailable: shortcutAvailable, usage: usage))
         case .instructions: AnyView(InstructionsSettingsView(model: instructions))
         case .skills: AnyView(SkillsSettingsView(model: skills))
         }
@@ -100,6 +105,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         // is closed, so read them again whenever it comes forward.
         skills.reload()
         instructions.reloadIfUnchanged()
+        usage.reload()
     }
 }
 
@@ -113,7 +119,7 @@ enum SettingsPreview {
         // Preferences of their own, so the model picker never reads or writes the real setting.
         let defaults = UserDefaults(suiteName: "dev.lubelski.mac-os-agent.preview") ?? .standard
         let controller = SettingsWindowController(
-            session: session, prompt: AgentPrompt(), shortcutAvailable: true, defaults: defaults)
+            session: session, prompt: AgentPrompt(), usageLog: UsageLog(), shortcutAvailable: true, defaults: defaults)
         self.controller = controller
         controller.show(pane, takeFocus: false)
         // Quits on its own, so a failed capture script cannot leave it on screen.

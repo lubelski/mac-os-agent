@@ -24,6 +24,10 @@ skill focus-mode $'---\nname: focus-mode\ndescription: Quit chat apps, hide the 
 skill wallpaper-of-the-day $'---\nname: wallpaper-of-the-day\ndescription: Set the desktop picture to the Bing image of the day.\n---\n\nSteps.'
 skill half-written $'Notes for a skill, with no front matter yet.'
 printf '{"disabled":["wallpaper-of-the-day"]}\n' > "$DATA/skill-settings.json"
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+for counts in '"input":4210,"cached":0,"output":96' '"input":4630,"cached":4096,"output":188' '"input":5120,"cached":4480,"output":74'; do
+  printf '{"date":"%s","provider":"openai","model":"gpt-6-luna",%s}\n' "$NOW" "$counts" >> "$DATA/usage.jsonl"
+done
 
 # A small helper that prints the first normal window's number for a process id.
 HELPER="$WORK/window-id"
