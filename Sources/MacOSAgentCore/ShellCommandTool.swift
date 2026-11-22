@@ -54,6 +54,13 @@ public struct ShellCommandTool: AgentTool {
             """)
     }
 
+    /// The output when the owner declines the go-ahead.
+    public static let declinedOutput = "The person declined to run this command. It did not run."
+    /// The output when the task was stopped before the command started.
+    public static let stoppedBeforeRunningOutput = "The task was stopped before the command ran."
+    /// The note added to the output when the task was stopped while the command ran.
+    public static let stoppedWhileRunningNote = "[The task was stopped while this command ran.]"
+
     public func summary(arguments: JSONValue) -> String {
         arguments["command"]?.stringValue ?? "(no command)"
     }
@@ -69,10 +76,10 @@ public struct ShellCommandTool: AgentTool {
             let approved = await context.confirm(
                 ConfirmationRequest(callID: context.callID, command: command, reason: reason))
             if !approved {
-                return "The person declined to run this command. It did not run."
+                return Self.declinedOutput
             }
         }
-        if Task.isCancelled { return "The task was stopped before the command ran." }
+        if Task.isCancelled { return Self.stoppedBeforeRunningOutput }
         return await execute(command)
     }
 
@@ -111,7 +118,7 @@ public struct ShellCommandTool: AgentTool {
         var result = Self.limit(output.text, to: outputLimit)
         if result.isEmpty { result = "(no output)" }
         if Task.isCancelled {
-            result += "\n[The task was stopped while this command ran.]"
+            result += "\n" + Self.stoppedWhileRunningNote
         } else if output.timedOut {
             result += "\n[Stopped after the \(Int(timeout.components.seconds)) second limit.]"
         }

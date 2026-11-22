@@ -125,7 +125,7 @@ import Testing
         #expect(TranscriptRow.gap(after: reply, before: user) == .exchange)
         let separator = TranscriptRow(id: "s", kind: .episodeStart(date: Self.now))
         #expect(TranscriptRow.gap(after: reply, before: separator) == .episode)
-        #expect(TranscriptRow.gap(after: separator, before: user) == .regular)
+        #expect(TranscriptRow.gap(after: separator, before: user) == .belowEpisode)
     }
 
     @Test(arguments: [
@@ -133,6 +133,10 @@ import Testing
         ("oops\n[exit status 1]", .failed),
         ("[exit status 0] and more\n[exit status 2]", .failed),
         ("Declined by the owner.", .unknown),
+        (ShellCommandTool.declinedOutput, .declined),
+        (ShellCommandTool.stoppedBeforeRunningOutput, .stopped),
+        ("partial\n[The task was stopped while this command ran.]\n[exit status 15]", .stopped),
+        ("Error: the call did not include a command.", .failed),
     ])
     func outcomeComesFromTheExitStatusLine(output: String, outcome: TranscriptRow.ToolOutcome) {
         #expect(TranscriptRow.outcome(ofOutput: output) == outcome)

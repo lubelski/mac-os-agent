@@ -10,7 +10,8 @@ import SwiftUI
 enum PanelPreview {
     static let names = [
         "empty", "running", "confirmation", "finished", "history", "draft", "multiline-draft",
-        "fresh-start", "scrollback", "incognito", "command-hint",
+        "fresh-start", "scrollback", "incognito", "command-hint", "tool-states", "first-message", "streaming",
+        "fresh-start-slot",
     ]
 
     static func session(named name: String) -> AgentSession? {
@@ -66,6 +67,43 @@ enum PanelPreview {
             incognito.user("what's a good farewell gift for a coworker who loves hiking", minutesAgo: 1)
             incognito.reply("A packable rain shell or a national parks pass are both easy to give and get used a lot.")
             return AgentSession(previewEntries: thread.entries, incognitoEntries: incognito.entries)
+        case "tool-states":
+            // Every state a tool call row can be in, one after another.
+            var thread = StandInThread(now: Date())
+            thread.user("tidy up my desktop", minutesAgo: 1)
+            thread.tool("ls -1 ~/Desktop | head -20", output: "Screenshot 2026-11-20.png\nReceipts\n[exit status 0]")
+            thread.tool("mkdir ~/Desktop/Receipts", output: "mkdir: /Users/owner/Desktop/Receipts: File exists\n[exit status 1]")
+            thread.tool("rm -rf ~/Desktop/Old\\ Screenshots", output: ShellCommandTool.declinedOutput)
+            thread.tool("sleep 30 && open ~/Desktop", output: ShellCommandTool.stoppedBeforeRunningOutput)
+            let running = thread.tool("mv ~/Desktop/*.png ~/Pictures/Screenshots/", output: nil)
+            let waiting = thread.tool("osascript -e 'tell application \"Finder\" to empty trash'", output: nil)
+            let preparing = thread.startedCall()
+            let session = AgentSession(previewEntries: thread.entries, isRunning: true, runningCallIDs: [running])
+            session.previewSetStatus(waiting, .waitingForConfirmation)
+            session.previewToolStarted(preparing)
+            return session
+        case "first-message":
+            // The first message of a new episode, with the reply on its way.
+            var thread = StandInThread(now: Date())
+            thread.earlierExchanges()
+            thread.newEpisode(minutesAgo: 0.5)
+            thread.user("what's my battery at", minutesAgo: 0.5)
+            return AgentSession(previewEntries: thread.entries, isRunning: true)
+        case "streaming":
+            // A reply streaming in after a command.
+            var thread = StandInThread(now: Date())
+            thread.earlierExchanges()
+            thread.newEpisode(minutesAgo: 0.5)
+            thread.user("what's my battery at", minutesAgo: 0.5)
+            thread.tool("pmset -g batt", output: "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=1234)\t64%; discharging; 3:10 remaining present: true\n[exit status 0]")
+            return AgentSession(previewEntries: thread.entries, streamingText: "It’s at 64% and discharging, with about 3 hours and 10 minutes", isRunning: true)
+        case "fresh-start-slot":
+            // A fresh page with stand-in blocks in the suggestion slot, to show how content lays out.
+            var thread = StandInThread(now: Date())
+            thread.earlierExchanges()
+            let session = AgentSession(previewEntries: thread.entries, freshStart: true)
+            session.previewFreshStartContent = ["Stand-in for slot content", "Stand-in for slot content, a second line"]
+            return session
         case "finished":
             var thread = StandInThread(now: Date())
             thread.user("change the wallpaper to a sunset", minutesAgo: 2)
@@ -122,6 +160,17 @@ enum PanelPreview {
                 entries.append(ThreadEntry(date: tick(), item: .toolResult(.init(callID: callID, output: output))))
             }
             return callID
+        }
+
+        /// A call the model has begun, whose arguments have not arrived.
+        mutating func startedCall() -> String {
+            let callID = "call_\(nextCall)"
+            nextCall += 1
+            return callID
+        }
+
+        mutating func newEpisode(minutesAgo: Double) {
+            entries.append(ThreadEntry(date: now.addingTimeInterval(-minutesAgo * 60), item: .episodeStart(.init(reason: .timeout))))
         }
 
         mutating func reply(_ text: String) {

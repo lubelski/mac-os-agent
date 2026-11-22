@@ -22,10 +22,15 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
         case finished
     }
 
-    /// How a finished command ended, read from the exit status line the shell tool appends.
+    /// How a finished command ended, read from the exit status line the shell tool appends and
+    /// from the outputs it gives when a command does not run.
     public enum ToolOutcome: Equatable, Sendable {
         case succeeded
         case failed
+        /// The owner declined the go-ahead, so it never ran.
+        case declined
+        /// The task was stopped before or while it ran.
+        case stopped
         case unknown
     }
 
@@ -59,14 +64,17 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
         case regular
         /// Above the owner's message that starts the next exchange.
         case exchange
-        /// Above an episode's separator.
+        /// Above an episode's separator, the widest gap, so an episode reads as set apart from
+        /// the one before it and not as a mark inside it.
         case episode
+        /// Below an episode's separator, above the episode's first row.
+        case belowEpisode
     }
 
     public static func gap(after previous: TranscriptRow?, before row: TranscriptRow) -> Gap {
         guard let previous else { return .none }
         if row.isEpisodeStart { return .episode }
-        if previous.isEpisodeStart { return .regular }
+        if previous.isEpisodeStart { return .belowEpisode }
         if row.isUser { return .exchange }
         if previous.isTool && row.isTool { return .tight }
         return .regular
@@ -74,8 +82,12 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
 
     public static func outcome(ofOutput output: String?) -> ToolOutcome {
         guard let output else { return .unknown }
+        if output == ShellCommandTool.declinedOutput { return .declined }
+        if output == ShellCommandTool.stoppedBeforeRunningOutput || output.contains(ShellCommandTool.stoppedWhileRunningNote) {
+            return .stopped
+        }
         if output.hasSuffix("[exit status 0]") { return .succeeded }
-        if output.contains("[exit status") { return .failed }
+        if output.contains("[exit status") || output.hasPrefix("Error:") { return .failed }
         return .unknown
     }
 }

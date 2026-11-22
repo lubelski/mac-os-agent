@@ -29,7 +29,7 @@ if [[ "${1:-}" == "--dock" ]]; then
   shift 2
 fi
 
-STATES=(empty history running confirmation finished draft multiline-draft fresh-start scrollback incognito command-hint)
+STATES=(empty history running confirmation finished draft multiline-draft fresh-start scrollback incognito command-hint tool-states first-message streaming fresh-start-slot)
 if [[ "${1:-}" == "--states" ]]; then
   read -r -a STATES <<<"$2"
   shift 2
@@ -61,7 +61,7 @@ for appearance in dark light; do
       "$BIN" --preview-panel "$state" --appearance "$appearance" ${DOCK[@]+"${DOCK[@]}"} >"$LOG" &
     fi
     PID=$!
-    sleep 1.5
+    sleep 2
     if [[ $BACKDROP == 1 ]]; then
       RECT="$(awk '/^capture-rect / { print $2 }' "$LOG")"
       FILE="$OUT/panel-$state$SUFFIX-$appearance-backdrop.png"
