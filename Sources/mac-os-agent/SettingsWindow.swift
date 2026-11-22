@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import MacOSAgentCore
 import Observation
 import SwiftUI
@@ -62,7 +63,7 @@ final class SettingsNavigation {
 @MainActor
 struct SettingsModels {
     let session: AgentSession
-    let shortcutAvailable: Bool
+    let shortcut: ShortcutRecorderModel
     let navigation: SettingsNavigation
     let instructions: InstructionsSettingsModel
     let skills: SkillsSettingsModel
@@ -109,7 +110,7 @@ struct SettingsRootView: View {
     @ViewBuilder private var detail: some View {
         switch navigation.section {
         case .general:
-            GeneralSettingsView(session: models.session, shortcutAvailable: models.shortcutAvailable)
+            GeneralSettingsView(session: models.session, shortcut: models.shortcut)
         case .instructions:
             InstructionsSettingsView(model: models.instructions)
         case .skills:
@@ -142,12 +143,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     init(
         session: AgentSession, prompt: AgentPrompt, usageLog: UsageLog, tools: ToolRegistry,
         history: ThreadStore?, problems: ProblemLog, signInStatus: @escaping @Sendable () async -> SignInStatus?,
-        shortcutAvailable: Bool, defaults: UserDefaults = .standard, remembersFrame: Bool = true,
+        summonTrigger: SummonTriggerController, defaults: UserDefaults = .standard, remembersFrame: Bool = true,
         privacyAccess: any PrivacyAccessGate = EventKitStore.shared
     ) {
         models = SettingsModels(
             session: session,
-            shortcutAvailable: shortcutAvailable,
+            shortcut: ShortcutRecorderModel(controller: summonTrigger),
             navigation: SettingsNavigation(defaults: defaults),
             instructions: InstructionsSettingsModel(prompt: prompt),
             skills: SkillsSettingsModel(library: prompt.skills),
@@ -205,6 +206,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.orderFrontRegardless()
     }
 
+    func windowWillClose(_ notification: Notification) {
+        models.shortcut.cancel()
+    }
+
     func windowDidBecomeKey(_ notification: Notification) {
         // The agent can write skills and the person can edit files in Finder while the window
         // is closed, so read them again whenever it comes forward.
@@ -232,6 +237,9 @@ enum SettingsPreview {
             "Request", "OpenAI API error (429): The usage limit for this plan was reached. Try again in 12 minutes.",
             date: Date().addingTimeInterval(-40 * 60))
         let history = standInHistory()
+        // A stand-in hotkey that never registers, so a preview cannot take the installed app's.
+        let hotKey = StandInHotKey()
+        let summonTrigger = SettingsPreview.summonTrigger(hotKey: hotKey, defaults: defaults, state: section == .general ? item : nil)
         let controller = SettingsWindowController(
             session: session, prompt: prompt, usageLog: UsageLog(),
             tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: history)),
@@ -242,10 +250,12 @@ enum SettingsPreview {
                     isSignedIn: true, accessTokenExpires: Date().addingTimeInterval(52 * 60),
                     lastTokenDate: Date().addingTimeInterval(-8 * 60))
             },
-            shortcutAvailable: true, defaults: defaults, remembersFrame: false,
+            summonTrigger: summonTrigger, defaults: defaults, remembersFrame: false,
             privacyAccess: StandInPrivacyAccess())
         self.controller = controller
-        if let item {
+        if section == .general, let item {
+            showShortcut(item, in: controller.models.shortcut)
+        } else if let item {
             controller.models.history.query = section == .history ? item : ""
             controller.models.skills.selection = item
             controller.models.tools.selection = item
@@ -255,6 +265,39 @@ enum SettingsPreview {
         controller.models.debugging.reload()
         // Quits on its own, so a failed capture script cannot leave it on screen.
         Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { _ in exit(0) }
+    }
+
+    /// The summon shortcut in a preview. `--preview-item` picks a state for General:
+    /// `recording`, `conflict` (Command-Space while Spotlight still has it), or `taken` (a chord
+    /// another app holds). The preview's own preferences start from the default each time.
+    private static func summonTrigger(hotKey: StandInHotKey, defaults: UserDefaults, state: String?) -> SummonTriggerController {
+        SummonTriggerSetting.restoreDefault(defaults)
+        let spotlight = SystemShortcut(keyCode: UInt16(kVK_Space), carbonModifiers: UInt32(cmdKey), isEnabled: true)
+        let controller = SummonTriggerController(
+            registrar: hotKey, defaults: defaults,
+            systemShortcuts: { state == "conflict" ? [spotlight] : [] })
+        controller.start()
+        if state == "taken" {
+            hotKey.taken = [KeyChord(keyCode: UInt16(kVK_ANSI_K), modifiers: [.control, .option])]
+        }
+        return controller
+    }
+
+    private static func showShortcut(_ state: String, in recorder: ShortcutRecorderModel) {
+        switch state {
+        case "recording":
+            // The preview window never has focus, so the recorder's monitor sees no keys.
+            recorder.startRecording()
+        case "conflict":
+            recorder.record(KeyChord(keyCode: UInt16(kVK_Space), modifiers: .command))
+        case "taken":
+            recorder.record(KeyChord(keyCode: UInt16(kVK_ANSI_K), modifiers: [.control, .option]))
+        case "rejected":
+            recorder.startRecording()
+            recorder.record(KeyChord(keyCode: UInt16(kVK_ANSI_W), modifiers: .command))
+        default:
+            break
+        }
     }
 
     /// Access as a preview shows it: Reminders allowed, Calendars not asked yet. It never asks

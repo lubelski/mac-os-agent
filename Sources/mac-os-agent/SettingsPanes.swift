@@ -7,7 +7,7 @@ import SwiftUI
 
 struct GeneralSettingsView: View {
     let session: AgentSession
-    let shortcutAvailable: Bool
+    @Bindable var shortcut: ShortcutRecorderModel
     @AppStorage(ModelSetting.key) private var model = OpenAIModel.defaultID
     @AppStorage(EpisodeTimeoutSetting.key) private var episodeTimeout = EpisodeTimeoutSetting.defaultMinutes
 
@@ -62,14 +62,24 @@ struct GeneralSettingsView: View {
             }
             Section {
                 LabeledContent("Show or hide the panel") {
-                    Text(SummonShortcut.displayName)
+                    HStack {
+                        ShortcutRecorderView(model: shortcut)
+                        Button("Restore Default") { shortcut.restoreDefault() }
+                            .disabled(shortcut.controller.isDefault && shortcut.controller.problem == nil)
+                    }
                 }
             } header: {
                 Text("Keyboard")
             } footer: {
-                if !shortcutAvailable {
-                    Text("Another app is using \(SummonShortcut.displayName), so it does nothing here.")
+                VStack(alignment: .leading, spacing: 6) {
+                    if let status = shortcut.status {
+                        Text(status.text)
+                            .foregroundStyle(status.kind == .problem ? AnyShapeStyle(.red) : AnyShapeStyle(.primary))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text("Click the shortcut and press a new one. Escape cancels and Delete removes it. Clicking the menu bar icon also shows or hides the panel.")
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

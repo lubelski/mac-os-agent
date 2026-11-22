@@ -10,8 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusMenu = NSMenu()
     private var session: AgentSession!
     private var panel: SummonPanel!
-    private var hotKey: SummonHotKey!
-    private var hotKeyRegistered = false
+    private var summonTrigger: SummonTriggerController!
     private var settings: SettingsWindowController!
     private let prompt = AgentPrompt()
     private let usageLog = UsageLog()
@@ -80,16 +79,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ])
         updateStatusIcon()
 
-        hotKey = SummonHotKey { [weak self] in self?.panel.toggle() }
-        hotKeyRegistered = hotKey.register()
+        summonTrigger = SummonTriggerController(registrar: CarbonHotKey { [weak self] in self?.panel.toggle() })
+        if let problem = summonTrigger.start() {
+            session.problems.record("Shortcut", problem)
+        }
         if let startupError {
             session.problems.record("Startup", "Could not open the thread: \(startupError.localizedDescription)")
         }
         settings = SettingsWindowController(
             session: session, prompt: prompt, usageLog: usageLog, tools: tools, history: thread, problems: session.problems,
             signInStatus: { await authenticator.status() },
-            shortcutAvailable: hotKeyRegistered)
-        log.notice("Hotkey \(SummonShortcut.displayName, privacy: .public) registered: \(self.hotKeyRegistered, privacy: .public). Status item button: \(self.statusItem.button != nil, privacy: .public)")
+            summonTrigger: summonTrigger)
+        log.notice("Hotkey \(self.summonTrigger.displayName ?? "none", privacy: .public) registered: \(self.summonTrigger.isRegistered, privacy: .public). Status item button: \(self.statusItem.button != nil, privacy: .public)")
 
         Task { await session.start() }
 
@@ -108,7 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        hotKey?.unregister()
+        summonTrigger?.stop()
     }
 
     private func updateStatusIcon() {
@@ -127,7 +128,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)
         image?.isTemplate = true
         statusItem.button?.image = image
-        statusItem.button?.toolTip = description
+        // The tooltip names the shortcut, read when the pointer rests on the icon.
+        statusItem.button?.toolTip = summonTrigger?.displayName.map { "\(description)\n\($0) shows or hides the panel" } ?? description
     }
 
     // MARK: - Menu
@@ -144,12 +146,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let open = NSMenuItem(
             title: panel.isVisible ? "Hide mac-os-agent" : "Show mac-os-agent",
-            action: #selector(togglePanel), keyEquivalent: SummonShortcut.keyEquivalent)
-        open.keyEquivalentModifierMask = SummonShortcut.modifierFlags
+            action: #selector(togglePanel), keyEquivalent: "")
+        if let chord = summonTrigger.trigger?.keyChord {
+            open.keyEquivalent = chord.menuKeyEquivalent(keys: summonTrigger.keys())
+            open.keyEquivalentModifierMask = chord.eventModifierFlags
+        }
         open.target = self
         menu.addItem(open)
-        if !hotKeyRegistered {
-            menu.addItem(disabledItem("\(SummonShortcut.displayName) is taken by another app"))
+        if let name = summonTrigger.displayName, !summonTrigger.isRegistered {
+            menu.addItem(disabledItem("\(name) is taken by another app"))
         }
         if session.isRunning {
             menu.addItem(item("Stop the Current Task", #selector(stopTask)))
