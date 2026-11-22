@@ -90,7 +90,7 @@ struct PanelShapeRenders {
             let palette = PanelPalette(theme: theme, dark: scheme == .dark, allowsGlass: false)
             let panel = VStack(alignment: .leading, spacing: 0) {
                 // The top bar's drag area is an AppKit view, which is not drawn offscreen.
-                Color.clear.frame(height: PanelTopBar.height)
+                Color.clear.frame(height: PanelTopBar.height).background(PanelBarFill())
                 PanelDivider()
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(rows) { row in RowView(row: row, now: Date()) }
@@ -107,9 +107,12 @@ struct PanelShapeRenders {
                     Spacer()
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(PanelBarFill())
             }
             .frame(width: 640)
             .foregroundStyle(palette.primary)
+            // The window clips its content to the surface's shape, as here.
+            .clipShape(PanelShape.surface)
             .panelSurface(palette, incognito: false)
             .environment(\.panelPalette, palette)
             .environment(\.pendingGoAhead, request)
@@ -150,7 +153,7 @@ struct DockedPanelRenders {
     private func content(_ session: AgentSession, palette: PanelPalette) -> some View {
         let rows = Array(session.transcript.rows.suffix(4))
         return VStack(alignment: .leading, spacing: 0) {
-            Color.clear.frame(height: PanelTopBar.height)
+            Color.clear.frame(height: PanelTopBar.height).background(PanelBarFill())
             PanelDivider()
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(rows) { row in RowView(row: row, now: Date()) }
@@ -165,6 +168,7 @@ struct DockedPanelRenders {
                 Spacer()
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(PanelBarFill())
         }
         .foregroundStyle(palette.primary)
         .environment(\.panelPalette, palette)
@@ -186,6 +190,7 @@ struct DockedPanelRenders {
                 .frame(height: menuBar)
             content(session, palette: palette)
                 .frame(width: frame.width, height: frame.height)
+                .clipShape(PanelShape.surface(squareEdges: squareEdges))
                 .panelSurface(palette, incognito: false, squareEdges: squareEdges)
                 .scaleEffect(scale, anchor: .topLeading)
                 .offset(x: frame.minX * scale, y: menuBar + frame.minY * scale)

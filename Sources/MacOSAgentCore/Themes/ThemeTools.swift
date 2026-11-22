@@ -42,6 +42,8 @@ public struct ReadThemesTool: AgentTool {
         - accent, divider, and code (the bracket around code and command output).
         - ownerMessage, agentReply, and goAhead: each a fill and an edge.
         - incognito: tint, laid over the surface, and badge, the fill of the incognito line.
+        An appearance may also set bar, the fill laid over the surface behind the top bar and the band \
+        with the text field. Without it the bars are the primary text at 3%.
         Colors are #RRGGBB or #RRGGBBAA, where the last pair is the alpha. Primary and secondary text \
         must reach a contrast of \(ThemeContrast.Check.ratioText(ThemeContrast.required)) everywhere they \
         sit. On glass and blur that is checked with the tint over a black and over a white backdrop, so \

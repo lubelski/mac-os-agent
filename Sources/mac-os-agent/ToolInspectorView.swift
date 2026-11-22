@@ -22,6 +22,7 @@ struct ToolInspectorView: View {
                                 InspectorInput(call: call)
                             }
                             .padding(.horizontal, 16)
+                            .padding(.top, 10)
                             .padding(.bottom, 12)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -51,13 +52,21 @@ struct ToolInspectorView: View {
 }
 
 /// The bar across the top: the tool's name on the left, and previous, next, and close on the
-/// right, in the scheme of the panel's top bar.
+/// right, in the scheme of the panel's top bar, on the same bars' fill with the same hairline
+/// under it, so the two windows match.
 private struct InspectorBar: View {
     let title: String
     let callID: String?
     @Environment(ToolInspector.self) private var inspector
 
     var body: some View {
+        VStack(spacing: 0) {
+            bar
+            PanelDivider()
+        }
+    }
+
+    private var bar: some View {
         HStack(spacing: 8) {
             Text(verbatim: title)
                 .font(Mark.rowFont)
@@ -80,6 +89,7 @@ private struct InspectorBar: View {
         .padding(.leading, 16)
         .padding(.trailing, 12)
         .frame(height: PanelTopBar.height)
+        .background(PanelBarFill())
     }
 }
 

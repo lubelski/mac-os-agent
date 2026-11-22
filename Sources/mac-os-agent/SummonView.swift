@@ -145,6 +145,9 @@ struct SummonView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        // The band with the field is on the bars' fill, as the top bar is. With the experiment
+        // on, the list and the footer below continue it.
+        .background(PanelBarFill())
     }
 
     // MARK: The suggestions experiment
@@ -153,13 +156,12 @@ struct SummonView: View {
         // The switches are read through the session, from its preferences. Reading them here
         // too keeps the footer in step when one changes in Settings.
         _ = (suggestionsSwitch, recallSwitch)
-        return VStack(spacing: 0) {
-            PanelDivider()
-            InputFooter(content: .make(
-                session.footerState, agentName: agentName, modelName: InputFooterContent.modelName(id: modelID),
-                recallsMessages: HarnessBehavior.recallEarlierMessages.isOn(session.preferences),
-                queuesWhileRunning: session.queuesWhileRunning))
-        }
+        // No hairline above it: the footer continues the band with the field on the same fill,
+        // so the two read as one bar at the bottom of the panel.
+        return InputFooter(content: .make(
+            session.footerState, agentName: agentName, modelName: InputFooterContent.modelName(id: modelID),
+            recallsMessages: HarnessBehavior.recallEarlierMessages.isOn(session.preferences),
+            queuesWhileRunning: session.queuesWhileRunning))
     }
 
     private var suggestionList: some View {
@@ -179,7 +181,7 @@ struct SummonView: View {
             .frame(height: growth, alignment: .top)
             .frame(maxWidth: .infinity)
             .clipped()
-            .background(FooterFill())
+            .background(PanelBarFill())
         }
     }
 
@@ -189,7 +191,7 @@ struct SummonView: View {
         if session.suggestionList.growth == 0, !session.suggestionRows.isEmpty {
             // Moved up by its own height, so its bottom meets the top of the field's divider.
             suggestionList
-                .background(FooterFill(opaque: true))
+                .background(PanelBarFill(opaque: true))
                 .offset(y: -session.suggestionListHeight)
         }
     }

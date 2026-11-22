@@ -2,9 +2,10 @@ import Foundation
 
 /// Checks that a theme's primary and secondary text can be read, by the WCAG 2 contrast ratio.
 ///
-/// Each appearance is checked where its text sits: on the surface, in the owner's message box,
-/// in the agent's reply box, in the go-ahead card, and on the incognito line over the incognito
-/// tint. A box's fill is drawn over the surface first.
+/// Each appearance is checked where its text sits: on the surface, on the bars (the top bar and
+/// the band with the text field), in the owner's message box, in the agent's reply box, in the
+/// go-ahead card, and on the incognito line over the incognito tint. A box's or a bar's fill is
+/// drawn over the surface first.
 ///
 /// The surface is the backdrop:
 /// - A solid surface is its fill.
@@ -90,6 +91,7 @@ public enum ThemeContrast {
 
         let places: [(label: String, fill: ThemeColor?, levels: [Level], incognito: Bool)] = [
             ("on the surface", nil, [.primary, .secondary], false),
+            ("on the bars", appearance.barFill, [.primary, .secondary], false),
             ("in the owner's message box", appearance.ownerMessage.fill, [.primary], false),
             ("in the agent's reply box", appearance.agentReply.fill, [.primary, .secondary], false),
             ("in the go-ahead card", appearance.goAhead.fill, [.primary, .secondary], false),

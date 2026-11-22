@@ -74,6 +74,29 @@ struct PanelDivider: View {
     }
 }
 
+/// The fill of the panel's bars, `PanelPalette.bar`: behind the top bar, the band with the
+/// text field, the footer and the list it grows into, and the inspector's bar. Every bar draws
+/// it through this one view, so they all read the same value. The window clips it to the
+/// surface's shape, so it never shows past a rounded corner.
+struct PanelBarFill: View {
+    /// Opaque, on the theme's solid fill, for the list where it covers the conversation.
+    var opaque = false
+    @Environment(\.panelPalette) private var palette
+
+    var body: some View {
+        ZStack {
+            if opaque {
+                // A theme's solid fill can be translucent, as Glass's is. Under it the window's
+                // own background makes sure the conversation does not show through.
+                Rectangle().fill(Color(nsColor: .windowBackgroundColor))
+                Rectangle().fill(palette.fallbackFill)
+            }
+            Rectangle().fill(palette.bar)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 extension PanelPlacement {
     /// The sides of the panel flush against its screen's edge, whose corners are square: the
     /// edge side in slide over, and none once the owner drags it off. See
