@@ -11,8 +11,34 @@ enum PanelPreview {
     static let names = [
         "empty", "running", "confirmation", "finished", "history", "draft", "multiline-draft",
         "fresh-start", "scrollback", "incognito", "command-hint", "tool-states", "first-message", "streaming",
-        "fresh-start-slot",
+        "fresh-start-slot", "markdown", "markdown-streaming", "markdown-code-streaming",
     ]
+
+    /// A reply that uses most of what the panel draws from Markdown.
+    static let markdownReply = """
+        ## Disk use
+
+        Movies is the **big one**. Caches are *safe* to clear, and ~~Downloads~~ is mostly installers. See [About Storage](https://support.apple.com/en-us/102624).
+
+        | Folder | Size | Note |
+        |:--|--:|:--|
+        | `~/Movies` | 38 GB | Screen recordings from last spring, most of them over 2 GB each |
+        | `~/Downloads` | 12 GB | Installers |
+        | `~/Library/Caches` | 4.1 GB | Cleared by macOS when space runs low |
+
+        To see the largest files yourself:
+
+        ```sh
+        du -sh ~/Movies/* | sort -hr | head -20
+        ```
+
+        1. Move recordings you want to keep to the external drive.
+        2. Empty the Trash.
+           - [x] Downloads checked
+           - [ ] Caches left alone
+
+        > Nothing was deleted.
+        """
 
     static func session(named name: String) -> AgentSession? {
         switch name {
@@ -104,6 +130,25 @@ enum PanelPreview {
             let session = AgentSession(previewEntries: thread.entries, freshStart: true)
             session.previewFreshStartContent = ["Stand-in for slot content", "Stand-in for slot content, a second line"]
             return session
+        case "markdown", "markdown-streaming":
+            var thread = StandInThread(now: Date())
+            thread.user("what's eating my disk space? give me a table", minutesAgo: 1)
+            thread.tool("du -sh ~/Library/Caches ~/Downloads ~/Movies 2>/dev/null | sort -hr",
+                        output: " 38G\t/Users/owner/Movies\n 12G\t/Users/owner/Downloads\n4.1G\t/Users/owner/Library/Caches\n[exit status 0]")
+            if name == "markdown" {
+                thread.reply(markdownReply)
+                return AgentSession(previewEntries: thread.entries)
+            }
+            // Cut inside the table's second row and again inside the code block's fence, to show
+            // how an unfinished reply renders while it streams.
+            let cut = markdownReply.range(of: "| `~/Downloads` | 12")!.upperBound
+            return AgentSession(previewEntries: thread.entries, streamingText: String(markdownReply[..<cut]), isRunning: true)
+        case "markdown-code-streaming":
+            var thread = StandInThread(now: Date())
+            thread.user("how do I see the biggest files", minutesAgo: 1)
+            let cut = markdownReply.range(of: "du -sh ~/Movies/* | sort")!.upperBound
+            let start = markdownReply.range(of: "To see the largest")!.lowerBound
+            return AgentSession(previewEntries: thread.entries, streamingText: String(markdownReply[start..<cut]), isRunning: true)
         case "finished":
             var thread = StandInThread(now: Date())
             thread.user("change the wallpaper to a sunset", minutesAgo: 2)
