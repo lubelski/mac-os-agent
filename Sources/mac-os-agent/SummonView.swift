@@ -34,6 +34,7 @@ struct SummonView: View {
                     .padding(.horizontal, 12)
                     .padding(.bottom, 10)
             }
+            MessageQueueRows(session: session)
             InstantActionRow(actions: session.instantActions)
             CommandHint(
                 suggestions: session.commandSuggestions, selection: session.hintSelection,
@@ -77,14 +78,17 @@ struct SummonView: View {
             InputField(
                 text: $session.draft,
                 placeholder: placeholder,
-                isEnabled: !session.isRunning,
+                // With the queue experiment on, the field stays open while a task runs.
+                isEnabled: !session.isRunning || session.queuesWhileRunning,
                 focusRequest: focusRequest,
                 onSubmit: session.submit,
                 onCancel: onDismiss,
                 onMove: { offset in inspector?.move(by: offset) ?? false },
                 onSubmitToAgent: session.submitToAgent,
                 onChoose: { offset in session.moveHintSelection(by: offset) || session.instantActions.move(by: offset) },
-                onComplete: session.completeHint)
+                onComplete: session.completeHint,
+                onRecall: session.recallMessage(by:),
+                onInterrupt: session.interrupt)
                 .overlay(alignment: .topLeading) {
                     if session.draft.isEmpty {
                         Text(placeholder)

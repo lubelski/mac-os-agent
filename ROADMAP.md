@@ -96,10 +96,10 @@ When a decision changes, move it between the lists here in the same pull request
   - Built-in tools are a fixed, ordered list. New built-in tools go at the end. Tools from other sources will go after the built-ins, sorted by name.
   - The built-in tools are a shell command, three app tools (search the installed apps by a loose name, open an app or bring it to the front, and list the running apps), a tool that loads a skill, two tools for past episodes (search them, and read one), two tools each for Reminders and Calendar (read, and change), six system tools (open an item, find files, read and write the clipboard, set the desktop picture, and quit or hide an app), two appearance tools (read the themes, and save, apply, or delete one), and two action tools (read the saved actions, and save or delete one).
 - Settings
-  - A Settings window with a sidebar of sections on the left and the selected section beside it, in the style of System Settings. The sections are General, Appearance, Instructions, Skills, Actions, Tools, History, and Debugging.
+  - A Settings window with a sidebar of sections on the left and the selected section beside it, in the style of System Settings. The sections are General, Appearance, Instructions, Skills, Actions, Tools, History, Behaviors, Experiments, and Debugging.
   - A title bar spans the whole window, above the sidebar and the section, with the section's name centered in it and a hairline under it. The sidebar is 200 points wide and cannot be dragged or collapsed.
   - The window keeps one size whichever section is showing. It opens at 900 by 620 points, the owner can resize it down to 760 by 480, and it comes back at the size and place it was left. A section scrolls inside the window when it does not fit. The last section shown opens again next time.
-  - Debugging is always the last section. New sections, such as MCP servers, go above it.
+  - Debugging is always the last section. New sections, such as MCP servers, go above it. Experiments sits just above Debugging, and Behaviors above Experiments.
   - General holds the sign-in, the model, the episode timeout, and the summon shortcut. The timeout is a choice from 5 minutes to 8 hours, 30 minutes by default.
   - History lists the kept episodes newest first, with each one's date, length, and first line, and a search over all of them that lists the episodes that match with the matching line. The selected episode is shown read-only, with the owner's messages, the commands that ran, and the replies as selectable text. Incognito conversations are never kept, so they never appear. Nothing can be edited or deleted there yet.
   - Skills is a list of every skill, with a filter, beside the selected skill's detail: its description, on or off, its problem if the file is broken, the files in its folder, and its `SKILL.md` for reading. Editing happens in the owner's editor.
@@ -241,10 +241,30 @@ When a decision changes, move it between the lists here in the same pull request
   - It uses Liquid Glass and the newest macOS APIs. Supporting older macOS versions is not a goal.
   - The summon interaction will change as we use it. The first version only has to exist.
 
+- Habits from terminal coding agents
+  - The owner uses Claude Code, pi, and Codex all day, so the panel's text field can follow their habits. Each is a switch in Settings, Behaviors, with a line saying exactly what the keys do. They are kept in the preferences by `HarnessBehavior`, and apply in both windows. The incognito window reads them and never writes them.
+  - Up Arrow recalls earlier messages. On by default. Up with the insertion point on the field's first line, as laid out, or in an empty field, puts the owner's previous message in the field, and each press goes further back. Down on the last line comes forward, and past the newest brings back the draft that was being typed when recall started. After Up the insertion point is at the start, so Up again goes further back, and after Down it is at the end. Anywhere else in a multi-line draft the arrows move the insertion point as usual.
+    - The history is the owner's messages in the window's history, across episodes, newest first, with consecutive repeats collapsed, up to 200. It includes a skill's slash command line and the typed text of a saved action's run, as they are kept. The app's own commands and instant app launches are not kept, so they are not recalled. The incognito window recalls only its own conversation, and clearing it forgets them.
+    - The command list, the instant action row with several matches, and the open inspector in an empty field keep Up and Down. Recall gets the key only when they pass on it.
+    - An edit to a recalled message is kept while moving through the others, as in readline. Sending it sends the edit as a new message. Sending, clearing, or Control-C ends recall.
+  - Control-C stops or clears. Off by default. With a task running it stops it, as Command-Period does. With none running it clears a non-empty field, and with an empty field it does nothing. Command-C still copies.
+- Experiments
+  - Settings, Experiments holds features being tried, each a switch, off by default, that may change or go. They are kept in the preferences by `Experiment`. A new experimental feature puts its switch there, and moves to Decided or out when the owner settles it. The pre-agents idea under Ideas to try later would go there.
+  - Queue messages while a task runs. Before it, the text field is closed while a task runs, so nothing can be typed and Return does nothing until the task ends. With the switch on the field stays open, and Return or Command-Return adds the message to a queue instead of sending it.
+    - The queue shows above the text field as quiet rows in order, each with Edit, which takes it back into an empty field, and Remove. Up Arrow in an empty field takes the newest queued message back into the field, ahead of recalling history. It is in memory only, one per window, and clearing the incognito window drops its queue.
+    - When a task finishes normally, the next queued message is sent as its own turn, and so on until the queue is empty. A queued message is an ordinary owner's message when it is sent, so the request and its prompt cache are as if it had been typed then.
+    - When the owner stops the task, or it ends with an error, the queue keeps its messages and sends none. A line above them says it is paused and why, with Send Next, which sends the next one and resumes, and Clear.
+    - What the app does itself is not queued: its own commands, such as `/new`, and an instant action, an app or a saved action, that Return would take. The text stays in the field with a line saying it can be used when the task ends. Command-Return queues the text as a message instead.
+    - The next thing to try under this experiment is steering: a message sent while a task runs reaches the model at the next tool boundary, inside the same turn, instead of waiting for the turn to end. Not built.
+
 ## Proposed, not yet agreed
 
 - Make the skills folder a local git repo with no remote, so every self-edit is a commit that can be reverted.
 - Self-modification comes after a week of real use of the first slice.
+- More habits from terminal coding agents, as switches in Settings, Behaviors:
+  - Control-R searches the owner's earlier messages backward as they type, as in a shell.
+  - Escape twice clears the field. Escape today dismisses a suggestion, then closes the inspector, then hides the panel, so the second press would need to change meaning only when the field has text.
+  - A leading `!` runs the rest of the line as a shell command with no model call, through the shell tool, so the go-ahead and the destructive check apply, and shows it as a `Bash` row. Not in the incognito window. Undecided: how the run is kept so the agent knows of it next time. A saved action's run is kept as the owner's message with an `action` record and a note for the model, but that record names a saved action and says the run was pre-approved, which a `!` command is not. Either it gets a record kind of its own, or the action record is widened to a typed command with a real go-ahead.
 - One typed parameter per saved action, such as the 40 in "volume 40": the rest of the typed text, checked against a declared type, filled into one argument. The file has room for it: a top-level `parameters` list, and an argument value of the form `{"$parameter": "level"}`, in a file marked `"format": 2`, which this version lists with a problem instead of running the placeholder as written. A stored call with a parameter is the same piece the agent-built controls idea needs (a slider or field that fills one argument of a fixed call), so the two should share it.
 
 ## Open
@@ -297,4 +317,4 @@ Subagents hand work down. A pre-agent hands it up. Every new message goes first 
   - Instant actions already answer the simplest requests with no model at all.
 - How to try it
   - Measure first: time the same set of real requests on the fast model and the strong one.
-  - Then build it behind an experimental switch, off by default, and compare cached share and seconds per request with it on and off.
+  - Then build it behind a switch in Settings, Experiments, off by default, and compare cached share and seconds per request with it on and off.

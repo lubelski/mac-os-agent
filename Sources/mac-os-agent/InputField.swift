@@ -33,6 +33,14 @@ struct InputField: NSViewRepresentable {
     /// Tab while the field has text, before `onChoose`. Returns true when it used the key, to
     /// complete the command chosen in the list of slash commands.
     var onComplete: () -> Bool = { false }
+    /// Up (-1) with the insertion point on the field's first line, or Down (1) on its last line,
+    /// after the command list, the instant action row, and the inspector have passed on the
+    /// key. Returns true when it put other text in the field, such as an earlier message.
+    /// Otherwise the insertion point moves as usual. See `AgentSession.recallMessage(by:)`.
+    var onRecall: (Int) -> Bool = { _ in false }
+    /// Control-C. Returns true when it used the key, to stop the task or clear the field.
+    /// Otherwise the key goes to the text view as before. Command-C is never this.
+    var onInterrupt: () -> Bool = { false }
 
     static let font = NSFont.systemFont(ofSize: 15)
     static let maximumLines = 8
@@ -75,6 +83,7 @@ struct InputField: NSViewRepresentable {
         textView.string = text
         context.coordinator.observe(textView)
         textView.onCommandReturn = { [weak coordinator = context.coordinator] in coordinator?.parent.onSubmitToAgent() }
+        textView.onControlC = { [weak coordinator = context.coordinator] in coordinator?.parent.onInterrupt() ?? false }
         return scrollView
     }
 
@@ -197,11 +206,46 @@ struct InputField: NSViewRepresentable {
                     return true
                 }
                 if textView.string.isEmpty {
-                    if selector == #selector(NSResponder.moveUp(_:)) { return parent.onMove(-1) }
-                    if selector == #selector(NSResponder.moveDown(_:)) { return parent.onMove(1) }
+                    if selector == #selector(NSResponder.moveUp(_:)), parent.onMove(-1) { return true }
+                    if selector == #selector(NSResponder.moveDown(_:)), parent.onMove(1) { return true }
+                }
+                if !textView.hasMarkedText(), let offset = Self.recallOffset(selector, in: textView), parent.onRecall(offset) {
+                    showRecalled(in: textView, movingUp: offset < 0)
+                    return true
                 }
                 return false
             }
+        }
+
+        /// Up with the insertion point on the first line, or Down on the last, with nothing
+        /// selected. Anywhere else the arrows move the insertion point as they always do.
+        static func recallOffset(_ selector: Selector, in textView: NSTextView) -> Int? {
+            let selection = textView.selectedRange()
+            guard selection.length == 0 else { return nil }
+            switch selector {
+            case #selector(NSResponder.moveUp(_:)):
+                return InsertionLine.isFirst(in: textView, at: selection.location) ? -1 : nil
+            case #selector(NSResponder.moveDown(_:)):
+                return InsertionLine.isLast(in: textView, at: selection.location) ? 1 : nil
+            default:
+                return nil
+            }
+        }
+
+        /// Puts the recalled text in the field at once, rather than on SwiftUI's next update, so
+        /// the insertion point can go where the next press continues: the start after Up, so
+        /// Up again goes further back, and the end after Down.
+        private func showRecalled(in textView: NSTextView, movingUp: Bool) {
+            let text = parent.text
+            if textView.string != text {
+                isSettingText = true
+                textView.string = text
+                isSettingText = false
+                textView.undoManager?.removeAllActions()
+            }
+            let location = movingUp ? 0 : (text as NSString).length
+            textView.setSelectedRange(NSRange(location: location, length: 0))
+            textView.scrollRangeToVisible(NSRange(location: location, length: 0))
         }
 
         /// How a key moves between instant action matches: Up and Shift-Tab back, Down and Tab on.
@@ -252,6 +296,36 @@ enum InputCommand: Equatable {
     }
 }
 
+/// Whether the insertion point is on the field's first or last line as laid out, so a long
+/// message that wraps counts its wrapped lines. Without a window to lay it out in, the line
+/// breaks in the text decide.
+@MainActor
+enum InsertionLine {
+    static func isFirst(in textView: NSTextView, at location: Int) -> Bool {
+        let text = textView.string as NSString
+        if let here = caretRect(textView, location), let start = caretRect(textView, 0) {
+            return abs(here.midY - start.midY) < InputField.lineHeight / 2
+        }
+        return text.range(of: "\n", range: NSRange(location: 0, length: min(location, text.length))).location == NSNotFound
+    }
+
+    static func isLast(in textView: NSTextView, at location: Int) -> Bool {
+        let text = textView.string as NSString
+        if let here = caretRect(textView, location), let end = caretRect(textView, text.length) {
+            return abs(here.midY - end.midY) < InputField.lineHeight / 2
+        }
+        let start = min(location, text.length)
+        return text.range(of: "\n", range: NSRange(location: start, length: text.length - start)).location == NSNotFound
+    }
+
+    /// Where the insertion point would be drawn at this location, in screen coordinates.
+    private static func caretRect(_ textView: NSTextView, _ location: Int) -> NSRect? {
+        guard textView.window != nil else { return nil }
+        let rect = textView.firstRect(forCharacterRange: NSRange(location: location, length: 0), actualRange: nil)
+        return rect == .zero ? nil : rect
+    }
+}
+
 /// A text view that remembers the modifier keys of the key press it is handling, so a command
 /// from the key bindings can tell Return from Shift-Return.
 final class InputTextView: NSTextView {
@@ -261,6 +335,8 @@ final class InputTextView: NSTextView {
     /// Command-Return. AppKit offers a Command key press to the views as a key equivalent and
     /// never turns it into a text command, so it is caught here.
     var onCommandReturn: (() -> Void)?
+    /// Control-C. Returns true when it used the key.
+    var onControlC: (() -> Bool)?
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if isCommandReturn(event), window?.firstResponder === self, let onCommandReturn {
@@ -275,6 +351,12 @@ final class InputTextView: NSTextView {
         return event.type == .keyDown && (event.keyCode == 36 || event.keyCode == 76) && flags == .command && !hasMarkedText()
     }
 
+    /// Control-C with no other modifier, by the character the key types, as a terminal reads it.
+    static func isControlC(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function, .capsLock])
+        return event.type == .keyDown && flags == .control && event.charactersIgnoringModifiers?.lowercased() == "c"
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if takesFocusInWindow, let window {
@@ -287,6 +369,9 @@ final class InputTextView: NSTextView {
         // A Command-Return that no key equivalent took, as when the event comes straight to the view.
         if isCommandReturn(event), let onCommandReturn {
             onCommandReturn()
+            return
+        }
+        if Self.isControlC(event), !hasMarkedText(), onControlC?() == true {
             return
         }
         currentKeyModifiers = event.modifierFlags

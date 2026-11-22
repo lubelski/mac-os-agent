@@ -220,6 +220,13 @@ final class InstantActions {
 
     /// Return. The chosen candidate for this exact draft, or nil when Return should send it to
     /// the agent. Its use is learned unless `learns` is false, as in the incognito window.
+    /// What Return would take for this draft, without taking it or learning anything.
+    func offered(for draft: String) -> InstantActionCandidate? {
+        if draft != self.draft { draftChanged(draft) }
+        guard let suggestion, suggestion.input == draft else { return nil }
+        return suggestion.choices[min(selection, suggestion.choices.count - 1)]
+    }
+
     func take(for draft: String) -> InstantActionCandidate? {
         if draft != self.draft { draftChanged(draft) }
         guard let suggestion, suggestion.input == draft else { return nil }
