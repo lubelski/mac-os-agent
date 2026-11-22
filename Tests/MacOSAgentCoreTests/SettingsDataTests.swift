@@ -283,3 +283,21 @@ private struct GoAheadTool: AgentTool {
         }
     }
 }
+
+@Suite struct FileSecretsTests {
+    @Test func aFileKeepsWritesReadsAndDeletesAndOnlyTheOwnerCanReadIt() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "file-secrets-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appending(path: "secrets.json")
+        let secrets = FileSecrets(fileURL: file)
+        #expect(secrets.read("token") == nil)
+        try secrets.write("one", for: "token")
+        try secrets.write("two", for: "other")
+        #expect(FileSecrets(fileURL: file).read("token") == "one")
+        let permissions = try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int
+        #expect(permissions == 0o600)
+        secrets.delete("token")
+        #expect(secrets.read("token") == nil)
+        #expect(secrets.read("other") == "two")
+    }
+}

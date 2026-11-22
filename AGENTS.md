@@ -30,7 +30,7 @@ Read `README.md` first for what the product is, then `ROADMAP.md`, which records
 - `scripts/capture-panel-previews.sh` shows the panel in a few stand-in states and captures each one, for pull request screenshots. `--backdrop` captures it over a busy page instead, which shows the glass and its edges.
 - `scripts/capture-settings-previews.sh` does the same for each Settings section, against a temporary data folder with sample skills, usage lines, and a thread file. `--preview-settings <section>` shows one section, and `--preview-item <name>` selects a skill or tool in it.
 - Each preview quits on its own after a few seconds and never takes keyboard focus. Check that none is left running when you finish.
-- `--data-folder <path>` points the app at another folder instead of `~/Library/Application Support/mac-os-agent/`. Use it for every manual check. The owner's real thread is private.
+- `--data-folder <path>` points the app at another folder instead of `~/Library/Application Support/mac-os-agent/`. Use it for every manual check. The owner's real thread is private. A run with `--data-folder` also keeps its sign-in in `secrets.json` in that folder and never reads the Keychain, so only the installed app makes macOS ask the owner for Keychain access.
 - The summon shortcut is a setting. Its default, rules, and storage are in `Sources/MacOSAgentCore/SummonTrigger.swift`. `--preview-settings general --preview-item recording` shows the recorder recording, and `conflict` and `rejected` show its messages. Previews and tests use a stand-in hotkey that never registers, so they cannot take the installed app's.
 
 ## Signing
