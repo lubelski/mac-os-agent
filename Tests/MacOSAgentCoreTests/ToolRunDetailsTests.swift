@@ -135,7 +135,7 @@ let threadBeforeRunDetails = """
             if case .toolResult(let result) = entry.item { return result.output }
             return nil
         }
-        #expect(sent == ["hi\n[exit status 4]"])
+        #expect(sent == ["hi\n\n[exit status 4]"])
     }
 
     @Test func theLoopNotesTheGoAheadAndHowLongItTook() async throws {

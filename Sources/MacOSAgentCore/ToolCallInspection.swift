@@ -244,9 +244,8 @@ public struct ToolOutputTrailer: Equatable, Sendable {
         var body = lines.joined(separator: "\n")
         if exitStatus != nil, body == "(no output)" { body = "" }
         self.body = body
-        if let range = body.range(of: #"\n\[… (\d+) characters omitted …\]\n"#, options: .regularExpression) {
-            let marker = body[range].dropFirst(3)
-            omittedCharacters = Int(marker.prefix { $0.isNumber })
+        if let match = body.firstMatch(of: /\n\[… (\d+) characters omitted …\]\n/) {
+            omittedCharacters = Int(match.1)
         }
     }
 
