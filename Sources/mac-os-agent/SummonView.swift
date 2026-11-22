@@ -73,6 +73,9 @@ struct SummonView: View {
             if !running { focusRequest += 1 }
         }
         .onExitCommand(perform: onDismiss)
+        // The experiment matches from the first character and the row only when confident, so
+        // a draft already in the field is judged again when the switch changes in Settings.
+        .onChange(of: suggestionsSwitch) { session.syncInstantActionMode() }
         // VoiceOver hears what Return will act on when it changes, since the gray text is drawn
         // only and the mark is beside the field.
         .onChange(of: session.returnTarget?.id) {
@@ -117,6 +120,7 @@ struct SummonView: View {
                 onRecall: session.recallMessage(by:),
                 onInterrupt: session.interrupt,
                 onDoubleDelete: session.startNewEpisodeFromKeys,
+                onComposingChange: session.composingChanged,
                 inlineCompletion: session.inlineCompletion)
                 .overlay(alignment: .topLeading) {
                     if session.draft.isEmpty {

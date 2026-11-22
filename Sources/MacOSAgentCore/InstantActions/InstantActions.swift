@@ -138,39 +138,62 @@ extension InstantActionProvider {
 /// - Learned use reorders candidates. A candidate the owner took before for this exact subject
 ///   also lifts the single character and everyday word limits, since the owner has shown what
 ///   the input means to them. It never lifts the shape rule or the function word rule.
+///
+/// That is `Mode.row`, for the row above the text field. `Mode.inField` is looser, for the
+/// suggestions-in-the-field experiment, where a suggestion is gray text and an icon that go
+/// away as soon as the text stops matching a name, and Command-Return always sends:
+/// - A single typed character is enough, with nothing around it ("s", not " s" or "s "). It
+///   matches names that start with it or have a word that starts with it, best first. The
+///   function and everyday word limits do not apply to it, so "a" and "i" suggest too, until
+///   the next character makes them a word or a sentence.
+/// - Close matches never hold a short input back: the best is offered whatever its lead.
+/// Everything else is the same: the shape rule, initials from three characters, and the
+/// function and everyday word limits from two characters.
 public enum InstantActionRule {
+    /// How eager the rule is. See the rule's description.
+    public enum Mode: Sendable, Equatable {
+        /// The row above the text field, which pushes the conversation up: only when confident.
+        case row
+        /// The suggestions-in-the-field experiment: from the first character.
+        case inField
+    }
+
     public static let clearLead = 10
     public static let choiceWindow = 5
     public static let maximumChoices = 3
     /// The most matches the list under the text field shows.
     public static let maximumMatches = 6
 
-    public static func choices(for phrase: InstantPhrase, candidates: [InstantActionCandidate]) -> [InstantActionCandidate] {
-        evaluate(phrase, candidates: candidates).choices
+    public static func choices(
+        for phrase: InstantPhrase, candidates: [InstantActionCandidate], mode: Mode = .row
+    ) -> [InstantActionCandidate] {
+        evaluate(phrase, candidates: candidates, mode: mode).choices
     }
 
     /// The choices, as `choices(for:candidates:)` gives them, and every candidate the rule
     /// kept, best first, up to `maximumMatches`. The matches are empty whenever the choices
     /// are, so nothing is listed for an input that offers nothing, and they start with the
     /// choices in the same order.
-    public static func evaluate(_ phrase: InstantPhrase, candidates: [InstantActionCandidate])
+    public static func evaluate(_ phrase: InstantPhrase, candidates: [InstantActionCandidate], mode: Mode = .row)
         -> (choices: [InstantActionCandidate], matches: [InstantActionCandidate])
     {
         let length = phrase.normalizedLength
         guard length > 0 else { return ([], []) }
         let learned = candidates.contains(where: \.wasPickedForSubject)
         let hasVerb = phrase.verb != nil
+        // The experiment's first keystroke: "s", "a", or "i" typed alone.
+        let firstCharacter = mode == .inField && phrase.isSingleCharacterInput
 
-        if phrase.hasFunctionWord, !candidates.contains(where: { $0.strength == .exact }) { return ([], []) }
+        if phrase.hasFunctionWord, !firstCharacter, !candidates.contains(where: { $0.strength == .exact }) { return ([], []) }
 
         var kept = candidates.filter { candidate in
             if candidate.wasPickedForSubject { return true }
             if hasVerb { return true }
-            if length < 2 { return false }
+            if length < 2 { return firstCharacter }
             if candidate.strength == .initials { return length >= 3 }
             return true
         }
-        if phrase.isEverydayWord, !learned {
+        if phrase.isEverydayWord, !learned, !firstCharacter {
             // A name that only starts with the word ("find" for Finder) is never enough.
             kept = kept.filter { $0.strength == .exact || (hasVerb && $0.strength == .wordExact) }
         }
@@ -187,7 +210,7 @@ public enum InstantActionRule {
         if top.rankingScore - second.rankingScore >= clearLead { return ([top], matches) }
         // An exact name is what was meant, ahead of names that only start the same way.
         if top.strength == .exact, second.strength != .exact, !second.wasPickedForSubject { return ([top], matches) }
-        guard hasVerb || length >= 3 || learned else { return ([], []) }
+        guard hasVerb || length >= 3 || learned || mode == .inField else { return ([], []) }
         // The close ones are the first few of the ranked list, so the matches start with them.
         let close = ranked.filter { top.rankingScore - $0.rankingScore < choiceWindow }
         return (Array(close.prefix(maximumChoices)), matches)
@@ -205,7 +228,12 @@ public struct InstantActionEngine: Sendable {
     public var verbs: Set<String> { providers.reduce(into: []) { $0.formUnion($1.verbs) } }
 
     /// The suggestion for the input, or nil when it should go to the agent.
-    public func suggestion(for input: String, history: InstantActionHistory = InstantActionHistory(), now: Date = Date()) -> InstantActionSuggestion? {
+    /// - Parameter mode: `.row` for the row above the text field, `.inField` for the
+    ///   suggestions-in-the-field experiment. See `InstantActionRule`.
+    public func suggestion(
+        for input: String, history: InstantActionHistory = InstantActionHistory(), now: Date = Date(),
+        mode: InstantActionRule.Mode = .row
+    ) -> InstantActionSuggestion? {
         guard let phrase = InstantPhrase.parse(input, verbs: verbs) else { return nil }
         var candidates: [InstantActionCandidate] = []
         for provider in providers {
@@ -218,7 +246,7 @@ public struct InstantActionEngine: Sendable {
             candidate.wasPickedForSubject = history.wasPicked(candidate.id, for: phrase.key)
             return candidate
         }
-        let (choices, matches) = InstantActionRule.evaluate(phrase, candidates: candidates)
+        let (choices, matches) = InstantActionRule.evaluate(phrase, candidates: candidates, mode: mode)
         guard !choices.isEmpty else { return nil }
         return InstantActionSuggestion(input: input, phrase: phrase, choices: choices, matches: matches)
     }

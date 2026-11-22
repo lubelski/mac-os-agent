@@ -418,6 +418,213 @@ struct InputFooterContentTests {
         #expect(recorder.opened == ["Google Chrome Canary"])
     }
 
+    // MARK: - From the first character
+
+    /// A session that sends to a stand-in model, with the stand-in apps and two whose names
+    /// start with a one-letter word.
+    private func sendingHarness(on: Bool) throws -> (PanelHarness, GateProvider, Recorder) {
+        let provider = GateProvider(open: true)
+        let session = AgentSession(
+            loop: AgentLoop(provider: provider, thread: InMemoryThreadStore(), tools: [], episodeTimeout: { 1800 }),
+            authenticator: nil, episodeTimeout: { 1800 }, signedIn: true)
+        FooterPreview.configure(session)
+        session.suggestionList.forcedOn = on
+        session.instantActions.setApplications(FooterPreview.applications + [
+            InstalledApplication(name: "iMovie", bundleIdentifier: "com.apple.iMovieApp",
+                                 url: URL(filePath: "/Applications/iMovie.app", directoryHint: .isDirectory)),
+            InstalledApplication(name: "App Store", bundleIdentifier: "com.apple.AppStore",
+                                 url: URL(filePath: "/System/Applications/App Store.app", directoryHint: .isDirectory)),
+        ])
+        let recorder = Recorder()
+        session.instantActions.openApplication = { recorder.opened.append($0.name) }
+        session.hidePanel = {}
+        return (try PanelHarness(session: session), provider, recorder)
+    }
+
+    /// True when a word of the name starts with the text, ignoring case.
+    private func startsAWord(_ name: String, _ text: String) -> Bool {
+        name.lowercased().split(whereSeparator: \.isWhitespace).contains { $0.hasPrefix(text) }
+    }
+
+    @Test func oneCharacterShowsTheBestMatchAndDownOpensTheList() async throws {
+        let (harness, _) = try harness()
+        let session = harness.session
+        harness.type("x")
+        await harness.settle()
+        #expect(session.returnTarget?.title == "Xcode")
+        #expect(session.inlineCompletion == InlineCompletion(rest: "code"))
+        #expect(harness.editor.isShowingInlineCompletion)
+        #expect(session.footerState == .suggestion(session.returnTarget!.target, others: 0))
+
+        session.draft = ""
+
+        await harness.settle()
+        harness.type("c")
+        await harness.settle()
+        let suggestion = try #require(session.instantActions.suggestion)
+        #expect(suggestion.matches.count > 1, "many names start with c")
+        let target = try #require(session.returnTarget)
+        #expect(target == suggestion.matches[0], "the best match")
+        #expect(startsAWord(target.title, "c"))
+        guard case .suggestion(_, let others) = session.footerState else {
+            Issue.record("expected a suggestion, got \(session.footerState)")
+            return
+        }
+        #expect(others == suggestion.matches.count - 1)
+        press(harness, down)
+        #expect(session.suggestionList.isOpen)
+        #expect(session.suggestionRows == suggestion.matches.map(SuggestionRow.candidate) + [.ask("c")])
+        press(harness, down)
+        #expect(session.returnTarget == suggestion.matches[1])
+        // Typing on filters the list, as it does for longer input.
+        harness.type("h")
+        await harness.settle()
+        #expect(session.suggestionList.isOpen)
+        #expect(session.suggestionRows.allSatisfy {
+            if case .candidate(let candidate) = $0 { startsAWord(candidate.title, "ch") } else { true }
+        })
+    }
+
+    @Test func returnOnOneCharacterRunsTheSuggestion() async throws {
+        let (harness, recorder) = try harness()
+        harness.type("x")
+        await harness.settle()
+        harness.press("\r", code: 36, [])
+        await harness.settle()
+        #expect(recorder.opened == ["Xcode"])
+        #expect(harness.session.draft == "")
+        #expect(harness.session.instantActions.history.wasPicked("application:/Applications/Xcode.app", for: "x"))
+    }
+
+    @Test func commandReturnSendsTheCharacterToTheAgent() async throws {
+        let (harness, provider, recorder) = try sendingHarness(on: true)
+        harness.type("x")
+        await harness.settle()
+        #expect(harness.session.returnTarget?.title == "Xcode")
+        harness.press("\r", code: 36, [.command])
+        #expect(await eventually { provider.messages == ["x"] })
+        await harness.session.waitUntilIdle()
+        #expect(recorder.opened.isEmpty)
+    }
+
+    @Test func aOneLetterWordSuggestsThenGoesAwayAndTheSentenceIsSent() async throws {
+        let (harness, provider, recorder) = try sendingHarness(on: true)
+        let session = harness.session
+        for (letter, name) in [("i", "iMovie"), ("a", "App Store")] {
+            session.draft = ""
+            await harness.settle()
+            harness.type(letter)
+            await harness.settle()
+            #expect(session.returnTarget?.title == name)
+            // A space makes it a word that starts a sentence: the mark, the gray text, and the
+            // footer go back at once.
+            harness.type(" ")
+            await harness.settle()
+            #expect(session.returnTarget == nil)
+            #expect(session.inlineCompletion == nil)
+            #expect(completionView(harness)?.completion == nil, "no gray text is drawn")
+            #expect(session.footerState == .typing)
+            press(harness, down)
+            #expect(!session.suggestionList.isOpen, "Down has nothing to open")
+        }
+        session.draft = ""
+        await harness.settle()
+        harness.type("i")
+        await harness.settle()
+        press(harness, down)
+        #expect(session.suggestionList.isOpen)
+        harness.type(" want to rename photos")
+        await harness.settle()
+        #expect(!session.suggestionList.isOpen, "the list closes once nothing matches")
+        #expect(session.returnTarget == nil)
+        harness.press("\r", code: 36, [])
+        #expect(await eventually { provider.messages == ["i want to rename photos"] })
+        await session.waitUntilIdle()
+        #expect(recorder.opened.isEmpty)
+    }
+
+    @Test func aSlashASpaceOrPunctuationFirstSuggestsNothing() async throws {
+        let (harness, _) = try harness()
+        let session = harness.session
+        harness.type("/")
+        await harness.settle()
+        #expect(!session.commandSuggestions.isEmpty, "the slash list")
+        #expect(session.suggestionRows.first == .command(.builtIn(.new)))
+        #expect(session.returnTarget == nil)
+        for text in [" ", " x", ".", ",", "?", "-"] {
+            session.draft = ""
+            await harness.settle()
+            harness.type(text)
+            await harness.settle()
+            #expect(session.instantActions.suggestion == nil, "\(text.debugDescription)")
+            #expect(session.returnTarget == nil)
+            #expect(session.suggestionRows.isEmpty)
+        }
+    }
+
+    @Test func nothingShowsWhileAnInputMethodComposes() async throws {
+        let (harness, _) = try harness()
+        let session = harness.session
+        // A romaji or pinyin input method shows the Latin letter typed while it composes.
+        harness.editor.setMarkedText("x", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        await harness.settle()
+        #expect(harness.editor.hasMarkedText())
+        #expect(session.returnTarget == nil)
+        #expect(session.inlineCompletion == nil || !harness.editor.isShowingInlineCompletion)
+        #expect(session.footerState == .typing || session.footerState == .idle)
+        press(harness, down)
+        #expect(!session.suggestionList.isOpen)
+        // What the input method puts in the field is judged as typed text.
+        harness.editor.insertText("か", replacementRange: NSRange(location: 0, length: 1))
+        await harness.settle()
+        #expect(!harness.editor.hasMarkedText())
+        #expect(session.draft == "か")
+        #expect(session.returnTarget == nil)
+        session.draft = ""
+        await harness.settle()
+        harness.editor.setMarkedText("x", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        harness.editor.unmarkText()
+        await harness.settle()
+        #expect(session.returnTarget?.title == "Xcode", "the letter, once it is in the field")
+    }
+
+    @Test func withTheSwitchOffOneCharacterStillSuggestsNothing() async throws {
+        let (harness, provider, recorder) = try sendingHarness(on: false)
+        let session = harness.session
+        for letter in ["x", "c", "s", "i", "a", "1"] {
+            session.draft = ""
+            await harness.settle()
+            harness.type(letter)
+            await harness.settle()
+            #expect(session.instantActions.mode == .row)
+            #expect(session.instantActions.suggestion == nil, "\(letter) offered \(session.instantActions.suggestion?.choices.map(\.title) ?? [])")
+            #expect(session.returnTarget == nil)
+        }
+        // Two letters with no clear leader offer nothing in the row either, as before.
+        session.draft = ""
+        await harness.settle()
+        harness.type("ca")
+        await harness.settle()
+        #expect(session.instantActions.suggestion == nil)
+        // Return sends the letter to the agent.
+        session.draft = ""
+        await harness.settle()
+        harness.type("x")
+        await harness.settle()
+        harness.press("\r", code: 36, [])
+        #expect(await eventually { provider.messages == ["x"] })
+        await session.waitUntilIdle()
+        #expect(recorder.opened.isEmpty)
+        await harness.settle()
+        // Turned on in Settings with the letter in the field, Return takes the suggestion.
+        harness.type("x")
+        await harness.settle()
+        session.suggestionList.forcedOn = true
+        harness.press("\r", code: 36, [])
+        await harness.settle()
+        #expect(recorder.opened == ["Xcode"])
+    }
+
     // MARK: - Slash commands
 
     @Test func slashOpensTheListByItself() async throws {
