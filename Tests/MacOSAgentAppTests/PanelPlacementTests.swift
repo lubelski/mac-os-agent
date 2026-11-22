@@ -682,7 +682,7 @@ final class WindowRecorder {
     // MARK: - The top bar
 
     @Test func theBarsSymbolsExist() {
-        for name in [PanelMenuButton.symbol, KeepOnTopMark.symbol] + PanelPreset.allCases.map(\.symbol) {
+        for name in [CloseButton.symbol, PanelMenuButton.symbol, KeepOnTopMark.symbol] + PanelPreset.allCases.map(\.symbol) {
             #expect(NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil, "\(name)")
         }
     }
@@ -742,8 +742,10 @@ final class WindowRecorder {
         #expect(harness.panel.firstResponder === editor)
     }
 
-    /// The bar moves the panel everywhere except over its one control in the main panel, the
-    /// menu at the right. The name in the middle passes the pointer through to it.
+    /// The bar moves the panel everywhere except over its two controls in the main panel, the
+    /// close button at the left and the menu at the right. The name in the middle passes the
+    /// pointer through to it. The close button takes the click while it is hidden too, so a
+    /// click on its spot as the pointer arrives closes rather than drags.
     @Test func theBarMovesThePanelExceptOverItsControls() async throws {
         let harness = try PanelHarness(draft: "")
         await harness.settle()
@@ -756,10 +758,15 @@ final class WindowRecorder {
             let point = content.convert(CGPoint(x: x, y: y), to: content.superview)
             return content.hitTest(point)
         }
-        // The middle of the bar, under the name, and the left end, where the close button was.
+        // The middle of the bar, under the name, and just past the close button.
         #expect(hit(x: content.bounds.midX) === drag)
-        #expect(hit(x: PanelTopBar.sidePadding + TopBarButton.size / 2) === drag)
         #expect(hit(x: PanelTopBar.sidePadding + TopBarButton.size + 30) === drag)
+        // The close button, hidden, since the pointer has not come onto the bar.
+        let panel = try #require(harness.panel as? SummonPanel)
+        #expect(!panel.placement.barIsHovered)
+        let close = hit(x: PanelTopBar.sidePadding + TopBarButton.size / 2)
+        #expect(close != nil)
+        #expect(close !== drag)
         // The menu.
         let view = hit(x: content.bounds.maxX - PanelTopBar.sidePadding - TopBarButton.size / 2)
         #expect(view != nil)

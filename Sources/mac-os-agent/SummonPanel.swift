@@ -470,8 +470,8 @@ final class SummonPanel: NSPanel {
     }
 
     /// Close in the Window menu is always enabled. AppKit's own check turns it down for a
-    /// window with no close button, which this borderless panel is, and a disabled item takes
-    /// Command-W and does nothing.
+    /// window without the standard close button, which this borderless panel is, and a disabled
+    /// item takes Command-W and does nothing.
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == MainMenu.stopTaskAction { return session.isRunning }
         if item.action == #selector(performClose(_:)) { return true }
@@ -522,6 +522,9 @@ final class SummonPanel: NSPanel {
     /// back with the panel.
     private func finishHiding() {
         hideInspectorWindow()
+        // The pointer leaves with the window, and no exit comes for it, so the close button
+        // is hidden again when the panel next shows.
+        placement.barIsHovered = false
         endSlide()
         isPresented = false
         orderAway(self)
