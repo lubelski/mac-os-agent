@@ -16,6 +16,11 @@ final class PanelPlacement {
     var close: () -> Void = {}
     /// False for the incognito window, which has no layouts.
     var offersLayouts = true
+    /// Keep on Top is on: the panel stays above other apps' windows without focus.
+    var keepsOnTop = false
+    /// Turns Keep on Top on or off. Nil in the incognito window, which shows the setting but
+    /// never writes it.
+    var setKeepsOnTop: ((Bool) -> Void)?
 
     /// The glass's frame when in place, in screen coordinates.
     var panelFrame: CGRect = .zero
@@ -45,8 +50,9 @@ final class PanelPlacement {
 /// - `leading` starts with the close button. In the incognito window the incognito label and
 ///   the Clear control follow it. Later this is room for an episode title. Plain text or a
 ///   small mark, so the bar stays quiet.
-/// - `trailing` holds the layout menu. A new control is one more `TopBarButton` in that row,
-///   before the layout menu.
+/// - `trailing` holds the layout menu, after a quiet pin mark while Keep on Top is on, so a
+///   panel that will not go behind other windows explains itself. A new control is one more
+///   `TopBarButton` in that row, before the layout menu.
 ///
 /// A label in either area takes `.allowsHitTesting(false)`, so dragging it still moves the
 /// panel. A control does not. Double-clicking the bar does nothing: the panel has no zoom and
@@ -60,6 +66,9 @@ struct PanelTopBar: View {
     }
 
     static let height: CGFloat = 30
+    /// False only for an offscreen render, which cannot draw the AppKit views behind the bar's
+    /// drag area and menu anchor.
+    nonisolated(unsafe) static var hostsAppKitViews = true
     /// The space from the panel's side to the control at each end.
     static let sidePadding: CGFloat = 12
     /// Set for the incognito window.
@@ -76,7 +85,7 @@ struct PanelTopBar: View {
         .padding(.horizontal, Self.sidePadding)
         .frame(height: Self.height)
         .frame(maxWidth: .infinity)
-        .background { WindowDragArea() }
+        .background { if Self.hostsAppKitViews { WindowDragArea() } }
     }
 
     /// The close button, then labels. Give a label here `.allowsHitTesting(false)`, so dragging
@@ -106,9 +115,14 @@ struct PanelTopBar: View {
 
     @ViewBuilder
     private var trailing: some View {
-        if let placement, placement.offersLayouts {
+        if let placement {
             HStack(spacing: 2) {
-                LayoutMenuButton(placement: placement)
+                if placement.keepsOnTop {
+                    KeepOnTopMark(turnOff: placement.setKeepsOnTop.map { set in { set(false) } })
+                }
+                if placement.offersLayouts {
+                    LayoutMenuButton(placement: placement)
+                }
             }
         }
     }
@@ -194,6 +208,35 @@ struct TopBarButton: View {
     }
 }
 
+/// The quiet mark that Keep on Top is on: a pin, as faint as an idle control. In the main
+/// panel clicking it turns Keep on Top off. In the incognito window it is only a mark, since
+/// that window writes nothing to the preferences, and dragging it moves the window.
+struct KeepOnTopMark: View {
+    static let symbol = "pin"
+    static let label = "Keep on Top is on"
+    /// Nil in the incognito window.
+    let turnOff: (() -> Void)?
+
+    var body: some View {
+        if let turnOff {
+            TopBarButton(
+                symbol: Self.symbol,
+                label: Self.label,
+                help: "Keep on Top is on, so the panel stays above other windows. Click to turn it off.",
+                action: turnOff)
+                .accessibilityHint("Turns Keep on Top off")
+        } else {
+            Image(systemName: Self.symbol)
+                .font(.system(size: 12))
+                .foregroundStyle(.primary)
+                .opacity(0.4)
+                .frame(width: TopBarButton.size, height: TopBarButton.size)
+                .allowsHitTesting(false)
+                .accessibilityLabel(Self.label)
+        }
+    }
+}
+
 /// The one control for the panel's layout. It shows the current preset's symbol and opens a
 /// standard menu of the presets under it.
 struct LayoutMenuButton: View {
@@ -205,15 +248,20 @@ struct LayoutMenuButton: View {
             symbol: placement.preset.symbol,
             label: "Layout",
             help: "Layout: \(placement.preset.title)",
-            action: { anchor.popUp(LayoutMenu(current: placement.preset, choose: placement.choose)) })
-            .background(MenuAnchorView(anchor: anchor))
+            action: {
+                anchor.popUp(LayoutMenu(
+                    current: placement.preset, choose: placement.choose,
+                    keepsOnTop: placement.keepsOnTop, setKeepsOnTop: placement.setKeepsOnTop))
+            })
+            .background { if PanelTopBar.hostsAppKitViews { MenuAnchorView(anchor: anchor) } }
             .accessibilityValue(placement.preset.title)
             .accessibilityHint("Opens a menu of layouts")
     }
 }
 
 /// The layout menu: one item per preset, in `PanelPreset.allCases` order, with a check on the
-/// current one. A new preset shows up here on its own.
+/// current one. A new preset shows up here on its own. Below a separator, Keep on Top, checked
+/// while it is on. It is one setting for every preset.
 ///
 /// No item has a keyboard shortcut. The standard ones for placing a window, Fn-Control with
 /// an arrow, belong to the system's window tiling and mean half the screen, not slide over.
@@ -221,9 +269,17 @@ struct LayoutMenuButton: View {
 final class LayoutMenu: NSObject {
     let menu = NSMenu(title: "Layout")
     private let choose: (PanelPreset) -> Void
+    private let keepsOnTop: Bool
+    private let setKeepsOnTop: ((Bool) -> Void)?
+    static let keepOnTopTitle = "Keep on Top"
 
-    init(current: PanelPreset, choose: @escaping (PanelPreset) -> Void) {
+    init(
+        current: PanelPreset, choose: @escaping (PanelPreset) -> Void,
+        keepsOnTop: Bool = false, setKeepsOnTop: ((Bool) -> Void)? = nil
+    ) {
         self.choose = choose
+        self.keepsOnTop = keepsOnTop
+        self.setKeepsOnTop = setKeepsOnTop
         super.init()
         menu.autoenablesItems = false
         for preset in PanelPreset.allCases {
@@ -234,6 +290,18 @@ final class LayoutMenu: NSObject {
             item.image = NSImage(systemSymbolName: preset.symbol, accessibilityDescription: nil)
             menu.addItem(item)
         }
+        if setKeepsOnTop != nil {
+            menu.addItem(.separator())
+            let item = NSMenuItem(title: Self.keepOnTopTitle, action: #selector(toggledKeepOnTop(_:)), keyEquivalent: "")
+            item.target = self
+            item.state = keepsOnTop ? .on : .off
+            item.toolTip = "Stay above other apps' windows without focus. Settings still comes in front."
+            menu.addItem(item)
+        }
+    }
+
+    @objc func toggledKeepOnTop(_ sender: NSMenuItem) {
+        setKeepsOnTop?(!keepsOnTop)
     }
 
     @objc func chosen(_ sender: NSMenuItem) {
