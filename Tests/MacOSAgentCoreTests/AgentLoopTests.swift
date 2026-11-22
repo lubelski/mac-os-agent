@@ -3,8 +3,14 @@ import Testing
 @testable import MacOSAgentCore
 
 @Suite struct AgentLoopTests {
+    /// The items without the inspector's run details, which hold timings that differ every run.
+    /// The tests in `ToolRunDetailsTests` check those.
     private func items(_ store: ThreadStore) async -> [ThreadItem] {
-        await store.entries.map(\.item)
+        await store.entries.map(\.item).map { item in
+            guard case .toolResult(var result) = item else { return item }
+            result.details = nil
+            return .toolResult(result)
+        }
     }
 
     @Test func plainReplyEndsTheLoop() async throws {

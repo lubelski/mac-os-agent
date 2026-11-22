@@ -12,7 +12,17 @@ enum PanelPreview {
         "empty", "running", "confirmation", "finished", "history", "draft", "multiline-draft",
         "fresh-start", "scrollback", "incognito", "command-hint", "tool-states", "first-message", "streaming",
         "fresh-start-slot", "markdown", "markdown-streaming", "markdown-code-streaming", "controls",
+    ] + inspectorStates
+
+    /// The states that show the tool call inspector beside the panel, each open on one call.
+    static let inspectorStates = [
+        "inspector-json", "inspector-table", "inspector-diff", "inspector-long", "inspector-running", "inspector-fields",
     ]
+
+    /// The call the inspector opens on for a state, or nil for a state without it.
+    static func inspectedCall(named name: String) -> String? {
+        inspectorStates.contains(name) ? "call_" + name.dropFirst("inspector-".count) : nil
+    }
 
     /// A reply that uses most of what the panel draws from Markdown.
     static let markdownReply = """
@@ -41,6 +51,7 @@ enum PanelPreview {
         """
 
     static func session(named name: String) -> AgentSession? {
+        if inspectorStates.contains(name) { return inspectorSession() }
         switch name {
         case "empty":
             return AgentSession(previewEntries: [])
@@ -186,6 +197,69 @@ enum PanelPreview {
         }
     }
 
+    /// One episode with a call of each kind the inspector lays out, the last one still running.
+    private static func inspectorSession() -> AgentSession {
+        var thread = StandInThread(now: Date())
+        thread.earlierExchanges()
+        thread.user("what's using the network, and is my reminders list in order", minutesAgo: 3)
+        let details = { (seconds: Double, status: Int32?) in
+            ToolRunDetails(started: Date().addingTimeInterval(-170), seconds: seconds, source: "Built In", exitStatus: status)
+        }
+        thread.call("call_json", name: ShellCommandTool.name,
+                    arguments: ["command": "curl -s https://api.github.com/repos/apple/swift | jq '{name, stars: .stargazers_count, topics, license: .license.spdx_id, owner: {login: .owner.login, type: .owner.type}}'", "destructive": false],
+                    output: """
+                        {"name":"swift","stars":69120,"topics":["swift","compiler","language"],"license":"Apache-2.0","owner":{"login":"apple","type":"Organization"},"archived":false,"default_branch":"main","size_kb":1048576}
+                        [exit status 0]
+                        """, details: details(0.62, 0))
+        thread.call("call_table", name: ShellCommandTool.name,
+                    arguments: ["command": "lsof -nP -iTCP -sTCP:ESTABLISHED | head -8", "destructive": false],
+                    output: """
+                        COMMAND     PID  USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+                        Safari      812 owner   23u  IPv4 0x8f2a1c3e9b0d4f11      0t0  TCP 192.168.1.20:51234->17.253.144.10:443 (ESTABLISHED)
+                        Mail        901 owner   41u  IPv6 0x8f2a1c3e9b0d5a22      0t0  TCP [2600::1]:51240->[2620:149::1]:993 (ESTABLISHED)
+                        Slack      1022 owner   88u  IPv4 0x8f2a1c3e9b0d6b33      0t0  TCP 192.168.1.20:51301->52.4.21.9:443 (ESTABLISHED)
+                        Dropbox    1188 owner   12u  IPv4 0x8f2a1c3e9b0d7c44      0t0  TCP 192.168.1.20:51320->162.125.6.18:443 (ESTABLISHED)
+                        [exit status 0]
+                        """, details: details(0.21, 0))
+        thread.call("call_diff", name: ShellCommandTool.name,
+                    arguments: ["command": "git -C ~/Documents/notes diff --stat --patch HEAD~1 -- groceries.md", "destructive": false],
+                    output: """
+                        diff --git a/groceries.md b/groceries.md
+                        index 3b18e51..a9c2f04 100644
+                        --- a/groceries.md
+                        +++ b/groceries.md
+                        @@ -1,6 +1,7 @@
+                         # Groceries
+
+                         - oat milk
+                        -- eggs
+                        +- eggs, a dozen, free range
+                        +- coffee beans
+                         - spinach
+                         - lemons
+                        [exit status 0]
+                        """, details: details(0.05, 0))
+        let long = (1...400).map { index in
+            "2026-11-21 09:\(String(format: "%02d", index % 60)):\(String(format: "%02d", (index * 7) % 60)).\(String(format: "%03d", index * 13 % 1000)) mDNSResponder[\(400 + index % 9)]: [R\(index)] DNSServiceQueryRecord(example\(index % 17).local, Addr) START, the reply cache has \(index * 3) entries and is \(index % 100) percent full"
+        }.joined(separator: "\n")
+        thread.call("call_long", name: ShellCommandTool.name,
+                    arguments: ["command": "log show --last 5m --predicate 'process == \"mDNSResponder\"' --style compact", "destructive": false],
+                    output: long + "\n[exit status 0]", details: details(3.4, 0))
+        thread.call("call_fields", name: "change_reminders",
+                    arguments: ["changes": [
+                        ["id": "3f9a2c1b", "title": nil, "completed": true, "due": nil, "list": nil, "notes": nil, "priority": nil, "delete": nil],
+                        ["id": nil, "title": "Water the plants", "completed": nil, "due": "2026-11-22T08:30", "list": "Reminders", "notes": "The fern by the window too", "priority": "high", "delete": nil],
+                    ]],
+                    output: "Completed \"Buy milk\" in Groceries.\nCreated 9b04e1aa | Water the plants | Reminders | due Sun 2026-11-22 08:30 | high priority",
+                    details: ToolRunDetails(started: Date().addingTimeInterval(-60), seconds: 4.1, waitedSeconds: 3.8, goAhead: .approved, source: "Reminders"))
+        thread.call("call_running", name: ShellCommandTool.name,
+                    arguments: ["command": "softwareupdate --list --all 2>&1 | tee ~/Desktop/updates.txt", "destructive": false],
+                    output: nil, details: nil)
+        let session = AgentSession(previewEntries: thread.entries, isRunning: true, runningCallIDs: ["call_running"])
+        session.toolSources = [ShellCommandTool.name: "Built In", "change_reminders": "Reminders"]
+        return session
+    }
+
     /// Builds stand-in thread entries with send times relative to now.
     private struct StandInThread {
         let now: Date
@@ -215,6 +289,15 @@ enum PanelPreview {
                 entries.append(ThreadEntry(date: tick(), item: .toolResult(.init(callID: callID, output: output))))
             }
             return callID
+        }
+
+        /// A call to any tool, with its result and run details when given.
+        mutating func call(_ callID: String, name: String, arguments: JSONValue, output: String?, details: ToolRunDetails?) {
+            entries.append(ThreadEntry(date: tick(), item: .toolCall(.init(
+                callID: callID, name: name, arguments: arguments.encodedString(), provider: "openai", model: "gpt-6-luna"))))
+            if let output {
+                entries.append(ThreadEntry(date: tick(), item: .toolResult(.init(callID: callID, output: output, details: details))))
+            }
         }
 
         /// A call the model has begun, whose arguments have not arrived.
@@ -257,7 +340,9 @@ enum PanelPreview {
     /// `capture-rect x,y,width,height`.
     static func showBackdrop(behind panel: NSPanel, dark: Bool) {
         let margin: CGFloat = 24
-        let frame = panel.frame.insetBy(dx: -margin, dy: -margin)
+        // The panel and any window attached to it, such as the inspector.
+        let covered = (panel.childWindows ?? []).filter(\.isVisible).reduce(panel.frame) { $0.union($1.frame) }
+        let frame = covered.insetBy(dx: -margin, dy: -margin)
         let backdrop = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         backdrop.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue - 1)
         backdrop.ignoresMouseEvents = true

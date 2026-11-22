@@ -21,6 +21,9 @@ struct InputField: NSViewRepresentable {
     var focusRequest: Int
     var onSubmit: () -> Void
     var onCancel: () -> Void
+    /// Up (-1) or Down (1) in an empty field. Returns true when it used the key, such as to move
+    /// between tool calls in the inspector. Otherwise the text view handles it as usual.
+    var onMove: (Int) -> Bool = { _ in false }
 
     static let font = NSFont.systemFont(ofSize: 15)
     static let maximumLines = 8
@@ -161,6 +164,10 @@ struct InputField: NSViewRepresentable {
                 parent.onCancel()
                 return true
             case .standard:
+                if textView.string.isEmpty {
+                    if selector == #selector(NSResponder.moveUp(_:)) { return parent.onMove(-1) }
+                    if selector == #selector(NSResponder.moveDown(_:)) { return parent.onMove(1) }
+                }
                 return false
             }
         }

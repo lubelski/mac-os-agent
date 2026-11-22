@@ -37,10 +37,17 @@ public struct ToolRunContext: Sendable {
     public var episodeID: UUID?
     /// Asks the person whether to go ahead. Waits as long as it takes.
     public var confirm: @Sendable (ConfirmationRequest) async -> Bool
+    /// Where the tool notes facts about its run for the inspector, such as an exit status.
+    /// What it notes is stored beside the result and never reaches the model.
+    public var report: ToolRunReport
 
-    public init(callID: String, episodeID: UUID? = nil, confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool) {
+    public init(
+        callID: String, episodeID: UUID? = nil, report: ToolRunReport = ToolRunReport(),
+        confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
+    ) {
         self.callID = callID
         self.episodeID = episodeID
+        self.report = report
         self.confirm = confirm
     }
 }

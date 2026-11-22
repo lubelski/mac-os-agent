@@ -36,6 +36,9 @@ final class AgentSession {
     var visibleTranscript: Transcript { incognitoTranscript ?? transcript }
 
     @ObservationIgnored var onStatusChange: (() -> Void)?
+    /// Each tool's source group by name, for the inspector to show for calls stored before the
+    /// group was kept with the result.
+    @ObservationIgnored var toolSources: [String: String] = [:]
     /// Errors since launch, for Settings > Debugging. Message content never goes here.
     @ObservationIgnored let problems = ProblemLog()
     @ObservationIgnored private let loop: AgentLoop?

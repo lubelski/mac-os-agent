@@ -48,6 +48,10 @@ MainActor.assumeIsolated {
         // The preview never takes keyboard focus from the app the owner is using, and it quits
         // on its own after a few seconds, so a failed capture script cannot leave it on screen.
         panel.showForPreview()
+        // An inspector state opens the inspector on its call, beside the panel.
+        if let callID = PanelPreview.inspectedCall(named: arguments[index + 1]) {
+            panel.inspector.open(callID)
+        }
         if arguments.contains("--backdrop") {
             PanelPreview.showBackdrop(behind: panel, dark: dark)
         }

@@ -101,10 +101,14 @@ public enum ThreadItem: Sendable, Equatable, Codable {
     public struct ToolResult: Sendable, Equatable, Codable {
         public var callID: String
         public var output: String
+        /// What the app noted about the run, for the tool call inspector. Never sent to the
+        /// model. Results written before it existed have none, and their lines stay as they are.
+        public var details: ToolRunDetails?
 
-        public init(callID: String, output: String) {
+        public init(callID: String, output: String, details: ToolRunDetails? = nil) {
             self.callID = callID
             self.output = output
+            self.details = details
         }
     }
 

@@ -106,6 +106,8 @@ public struct Transcript: Equatable, Sendable {
     /// The row of the current episode's separator. Nil before anything was added.
     public private(set) var currentEpisodeStartRow: Int?
     private var indexByID: [String: Int] = [:]
+    /// What the inspector shows about each tool call beyond its row, by call id.
+    private var toolFacts: [String: ToolCallFacts] = [:]
     private var lastUserDate: Date?
     private var tracker = EpisodeTracker()
     /// Activity in the current episode, for deciding whether it has timed out.
@@ -187,12 +189,18 @@ public struct Transcript: Equatable, Sendable {
             }
         case .toolCall(let call):
             let command = JSONValue.parse(call.arguments)?["command"]?.stringValue ?? call.name
+            toolFacts[call.callID, default: ToolCallFacts()].call = call
+            toolFacts[call.callID]?.calledAt = entry.date
             if indexByID[call.callID] != nil {
                 updateTool(call.callID) { existing, _, _ in existing = command }
             } else {
                 append(TranscriptRow(id: call.callID, kind: .tool(command: command, status: .preparing, output: nil)))
             }
         case .toolResult(let result):
+            if indexByID[result.callID] != nil {
+                toolFacts[result.callID, default: ToolCallFacts()].finishedAt = entry.date
+                toolFacts[result.callID]?.details = result.details
+            }
             updateTool(result.callID) { _, status, output in
                 status = .finished
                 output = result.output
@@ -209,15 +217,34 @@ public struct Transcript: Equatable, Sendable {
     }
 
     /// A tool began running with this summary of what it does.
-    public mutating func toolRunning(_ callID: String, command: String) {
+    public mutating func toolRunning(_ callID: String, command: String, at date: Date = Date()) {
+        if indexByID[callID] != nil, toolFacts[callID]?.runningSince == nil {
+            toolFacts[callID, default: ToolCallFacts()].runningSince = date
+        }
         updateTool(callID) { existing, status, _ in
             existing = command
             if status == .preparing { status = .running }
         }
     }
 
-    public mutating func setToolStatus(_ callID: String, _ newStatus: TranscriptRow.ToolStatus) {
+    public mutating func setToolStatus(_ callID: String, _ newStatus: TranscriptRow.ToolStatus, at date: Date = Date()) {
+        if newStatus == .waitingForConfirmation, indexByID[callID] != nil {
+            toolFacts[callID, default: ToolCallFacts()].waitingSince = date
+        }
         updateTool(callID) { _, status, _ in status = newStatus }
+    }
+
+    /// Everything known about a tool call, for the inspector. Nil when there is no such call.
+    public func toolCall(_ callID: String) -> InspectedToolCall? {
+        guard let index = indexByID[callID], case .tool(let command, let status, let output) = rows[index].kind else { return nil }
+        return InspectedToolCall(
+            callID: callID, summary: command, status: status, output: output,
+            facts: toolFacts[callID] ?? ToolCallFacts())
+    }
+
+    /// The ids of every tool call, oldest first, for moving between them in the inspector.
+    public var toolCallIDs: [String] {
+        rows.compactMap { $0.isTool ? $0.id : nil }
     }
 
     public mutating func appendNotice(_ text: String, id: String = UUID().uuidString) {

@@ -137,6 +137,11 @@ public struct ToolGroup: Sendable, Equatable, Identifiable {
 }
 
 extension ToolRegistry {
+    /// Each tool's source title by name, such as `run_shell_command` to `Built In`.
+    public var sourceTitles: [String: String] {
+        Dictionary(tools.map { ($0.definition.name, $0.source.title) }, uniquingKeysWith: { first, _ in first })
+    }
+
     /// The tools grouped by source. Groups come in the order their first tool appears, so the
     /// built-in tools are first, and each group keeps the registry's order.
     public var groups: [ToolGroup] {

@@ -93,3 +93,71 @@ public enum PanelGeometry {
         screenFrames.firstIndex { $0.contains(point) || ($0.minX...$0.maxX ~= point.x && point.y == $0.maxY) }
     }
 }
+
+/// Where the tool call inspector goes beside the panel.
+public struct InspectorPlacement: Equatable, Sendable {
+    public enum Side: String, Equatable, Sendable {
+        case left, right
+    }
+
+    public var frame: CGRect
+    public var side: Side
+    /// True on a screen too narrow for both side by side, where the inspector covers part of
+    /// the panel's far side, and leaves the rest of the conversation in view.
+    public var overlapsPanel: Bool
+
+    public init(frame: CGRect, side: Side, overlapsPanel: Bool) {
+        self.frame = frame
+        self.side = side
+        self.overlapsPanel = overlapsPanel
+    }
+}
+
+extension PanelGeometry {
+    /// The gap between the panel and the inspector beside it.
+    public static let inspectorGap: CGFloat = 8
+    /// The narrowest the inspector gets beside the panel.
+    public static let inspectorMinimumWidth: CGFloat = 320
+    /// The narrowest it gets when it has to cover part of the panel.
+    public static let inspectorNarrowestWidth: CGFloat = 260
+    /// How much of the conversation stays in view when the inspector covers part of the panel.
+    public static let conversationKeptInView: CGFloat = 280
+
+    /// The inspector's frame: the panel's height and top, against the side of the panel that has
+    /// room. That is the right, unless the panel is docked right or the right has no room for
+    /// the minimum width, and then the left. When neither side has room, it goes against the
+    /// screen's edge on the side with more room and covers the panel's far side, leaving at
+    /// least `conversationKeptInView` of the panel in view when the screen allows it.
+    public static func inspectorPlacement(
+        panel: CGRect, dock: PanelDock?, width: CGFloat, in visible: CGRect
+    ) -> InspectorPlacement {
+        let margin = dockMargin
+        let roomRight = visible.maxX - margin - (panel.maxX + inspectorGap)
+        let roomLeft = (panel.minX - inspectorGap) - (visible.minX + margin)
+        let preferred: InspectorPlacement.Side = dock == .right ? .left : .right
+        let other: InspectorPlacement.Side = preferred == .right ? .left : .right
+        func room(_ side: InspectorPlacement.Side) -> CGFloat { side == .right ? roomRight : roomLeft }
+        let wanted = max(width, inspectorMinimumWidth)
+
+        func beside(_ side: InspectorPlacement.Side) -> InspectorPlacement {
+            let fitted = min(wanted, room(side)).rounded(.down)
+            let x = side == .right ? panel.maxX + inspectorGap : panel.minX - inspectorGap - fitted
+            return InspectorPlacement(
+                frame: CGRect(x: x, y: panel.minY, width: fitted, height: panel.height), side: side, overlapsPanel: false)
+        }
+        if room(preferred) >= inspectorMinimumWidth { return beside(preferred) }
+        if room(other) >= inspectorMinimumWidth { return beside(other) }
+
+        // Neither side fits: cover the far side of the panel from the edge with more room.
+        let side: InspectorPlacement.Side = room(other) > room(preferred) ? other : preferred
+        let edge = side == .right ? visible.maxX - margin : visible.minX + margin
+        // Keep the conversation's near part in view: the inspector reaches at most this far in.
+        let reach = side == .right
+            ? edge - (panel.minX + conversationKeptInView)
+            : (panel.maxX - conversationKeptInView) - edge
+        let fitted = max(inspectorNarrowestWidth, min(wanted, reach, visible.width - 2 * margin)).rounded(.down)
+        let x = side == .right ? edge - fitted : edge
+        return InspectorPlacement(
+            frame: CGRect(x: x, y: panel.minY, width: fitted, height: panel.height), side: side, overlapsPanel: true)
+    }
+}

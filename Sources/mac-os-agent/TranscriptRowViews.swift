@@ -15,7 +15,7 @@ struct RowView: View {
         case .assistant(let text):
             AgentMessage(text: text)
         case .tool(let command, let status, let output):
-            ToolLine(command: command, state: ToolCallState(status: status, output: output), output: output)
+            ToolLine(callID: row.id, command: command, state: ToolCallState(status: status, output: output), output: output)
         case .notice(let text):
             StatusLine(text: text, isError: false)
         case .error(let text):
@@ -136,38 +136,36 @@ struct AgentMessage: View {
 /// A command the agent ran, in the scheme of Pi's tool rows: one quiet line that starts with
 /// `›`, or `✗` when it failed, with the program in the secondary level and the rest in the
 /// tertiary. A state that needs words, such as why it failed or that it is waiting for a
-/// go-ahead, adds one `└` line beneath the command. Clicking the row opens its output in an
-/// open bracket below it.
+/// go-ahead, adds one `└` line beneath the command. Opening the row, with a click or with
+/// Return or Space when it has keyboard focus, shows the call in the inspector beside the
+/// panel. The row never grows in place. The call the inspector shows has a faint fill.
 struct ToolLine: View {
+    let callID: String
     let command: String
     let state: ToolCallState
     let output: String?
-    @State private var expanded = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(ToolInspector.self) private var inspector: ToolInspector?
+
+    private var isSelected: Bool { inspector?.selectedCallID == callID }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             header
-            if let branch = state.branchText, !expanded {
+            if let branch = state.branchText {
                 BranchLine(text: branch, style: isFailed ? .secondary : .tertiary)
                     .accessibilityHidden(true)
             }
-            if expanded, let output {
-                CodeBracket(font: .system(size: 10.5, design: .monospaced)) {
-                    ScrollView(.horizontal) {
-                        Text(verbatim: output)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .fixedSize()
-                            .padding(.trailing, 8)
-                    }
-                    .scrollIndicators(.automatic)
-                }
-                .padding(.leading, Mark.rowColumn)
-                .padding(.top, 2)
-            }
         }
         .padding(.leading, MessageStyle.horizontalPadding)
+        .background(alignment: .leading) {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(.primary.opacity(0.07))
+                    .padding(.leading, MessageStyle.horizontalPadding - 5)
+                    .padding(.vertical, -2)
+                    .accessibilityHidden(true)
+            }
+        }
     }
 
     private var isFailed: Bool {
@@ -181,20 +179,24 @@ struct ToolLine: View {
                 .frame(width: Mark.rowColumn, alignment: .leading)
                 .accessibilityHidden(true)
             commandText
-                .lineLimit(expanded ? nil : 1)
+                .lineLimit(1)
                 .truncationMode(.tail)
-                .fixedSize(horizontal: false, vertical: expanded)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .font(Mark.rowFont)
         .contentShape(.rect)
 
         return Group {
-            if output != nil {
-                Button(action: toggle) { line }
+            if let inspector {
+                Button { inspector.open(callID) } label: { line }
                     .buttonStyle(.plain)
-                    .help(expanded ? "Hide output" : "Show output")
-                    .accessibilityHint(expanded ? "Hides the output" : "Shows the output")
+                    .help("Show this call in the inspector")
+                    .accessibilityHint("Shows the call in the inspector")
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    .onKeyPress(.return) {
+                        inspector.open(callID)
+                        return .handled
+                    }
             } else {
                 line
             }
@@ -222,10 +224,6 @@ struct ToolLine: View {
         } else {
             ToolSignal.text(for: command)
         }
-    }
-
-    private func toggle() {
-        if reduceMotion { expanded.toggle() } else { withAnimation(.snappy(duration: 0.18)) { expanded.toggle() } }
     }
 }
 

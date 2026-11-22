@@ -61,6 +61,11 @@ public struct ShellCommandTool: AgentTool {
     /// The note added to the output when the task was stopped while the command ran.
     public static let stoppedWhileRunningNote = "[The task was stopped while this command ran.]"
 
+    /// The note added to the output when a command is stopped at its time limit.
+    public static func timeLimitNote(seconds: Int) -> String {
+        "[Stopped after the \(seconds) second limit.]"
+    }
+
     public func summary(arguments: JSONValue) -> String {
         arguments["command"]?.stringValue ?? "(no command)"
     }
@@ -80,10 +85,10 @@ public struct ShellCommandTool: AgentTool {
             }
         }
         if Task.isCancelled { return Self.stoppedBeforeRunningOutput }
-        return await execute(command)
+        return await execute(command, report: context.report)
     }
 
-    func execute(_ command: String) async -> String {
+    func execute(_ command: String, report: ToolRunReport = ToolRunReport()) async -> String {
         let launched: LaunchedCommand
         do {
             launched = try LaunchedCommand.start(command)
@@ -115,14 +120,24 @@ public struct ShellCommandTool: AgentTool {
         try? await Task.sleep(for: .milliseconds(100))
         launched.output.readabilityHandler = nil
 
-        var result = Self.limit(output.text, to: outputLimit)
+        let text = output.text
+        var result = Self.limit(text, to: outputLimit)
         if result.isEmpty { result = "(no output)" }
-        if Task.isCancelled {
+        let stopped = Task.isCancelled
+        let timedOut = !stopped && output.timedOut
+        if stopped {
             result += "\n" + Self.stoppedWhileRunningNote
-        } else if output.timedOut {
-            result += "\n[Stopped after the \(Int(timeout.components.seconds)) second limit.]"
+        } else if timedOut {
+            result += "\n" + Self.timeLimitNote(seconds: Int(timeout.components.seconds))
         }
         result += "\n[exit status \(status)]"
+        let fullCharacters = text.count > outputLimit ? text.count : nil
+        report.note { details in
+            details.exitStatus = status
+            if timedOut { details.timedOut = true }
+            if stopped { details.stopped = true }
+            details.fullCharacters = fullCharacters
+        }
         return result
     }
 
