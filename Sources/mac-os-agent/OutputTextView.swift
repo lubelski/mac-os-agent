@@ -37,22 +37,28 @@ struct OutputTextView: NSViewRepresentable {
         scrollView.verticalRulerView = ruler
         scrollView.hasVerticalRuler = true
         context.coordinator.ruler = ruler
-        update(scrollView, textView: textView, coordinator: context.coordinator)
+        update(scrollView, textView: textView, coordinator: context.coordinator, palette: context.environment.panelPalette)
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
-        update(scrollView, textView: textView, coordinator: context.coordinator)
+        update(scrollView, textView: textView, coordinator: context.coordinator, palette: context.environment.panelPalette)
     }
 
-    private func update(_ scrollView: NSScrollView, textView: NSTextView, coordinator: Coordinator) {
-        if coordinator.text != text {
+    private func update(_ scrollView: NSScrollView, textView: NSTextView, coordinator: Coordinator, palette: PanelPalette) {
+        // The output in the theme's secondary text color, and the line numbers in its tertiary.
+        let color = palette.secondaryNSColor
+        coordinator.ruler?.labelColor = palette.tertiaryNSColor
+        if coordinator.text != text || coordinator.textColor != color {
+            let isNewText = coordinator.text != text
             coordinator.text = text
-            let attributes: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: NSColor.secondaryLabelColor]
+            coordinator.textColor = color
+            textView.textColor = color
+            let attributes: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: color]
             textView.textStorage?.setAttributedString(NSAttributedString(string: text, attributes: attributes))
             coordinator.ruler?.setLineStarts(for: text)
-            textView.scrollToBeginningOfDocument(nil)
+            if isNewText { textView.scrollToBeginningOfDocument(nil) }
         }
         if coordinator.wraps != wraps {
             coordinator.wraps = wraps
@@ -77,6 +83,7 @@ struct OutputTextView: NSViewRepresentable {
 
     final class Coordinator {
         var text: String?
+        var textColor: NSColor?
         var wraps: Bool?
         var ruler: LineNumberRuler?
     }
@@ -88,6 +95,10 @@ final class LineNumberRuler: NSRulerView {
     private weak var textView: NSTextView?
     /// The UTF-16 offset where each line starts.
     private var lineStarts: [Int] = [0]
+    /// The numbers' color, the theme's tertiary text.
+    var labelColor: NSColor = .tertiaryLabelColor {
+        didSet { if labelColor != oldValue { needsDisplay = true } }
+    }
 
     init(textView: NSTextView) {
         self.textView = textView
@@ -135,7 +146,7 @@ final class LineNumberRuler: NSRulerView {
         let inset = textView.textContainerInset.height
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular),
-            .foregroundColor: NSColor.tertiaryLabelColor,
+            .foregroundColor: labelColor,
         ]
         let start = layoutManager.textLayoutFragment(for: CGPoint(x: 0, y: max(0, visible.minY - inset)))?.rangeInElement.location
             ?? contentManager.documentRange.location

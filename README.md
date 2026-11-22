@@ -11,7 +11,7 @@ It is like Siri in shape, without being slow or locked down, and it keeps a visi
 - Press the summon shortcut, Option-Shift-Space unless you change it in Settings, General, or click the menu bar icon, to show or hide the panel, and type what you want done. Right-click or Control-click the icon for its menu.
 - Settings opens from the menu bar menu, or with Command-comma while the panel is in front.
 
-Everything the agent keeps (the thread, skills, instructions, usage log) is in `~/Library/Application Support/mac-os-agent/`.
+Settings > Appearance picks the panel's theme. Everything the agent keeps (the thread, skills, instructions, themes, usage log) is in `~/Library/Application Support/mac-os-agent/`.
 
 ## Working on it
 

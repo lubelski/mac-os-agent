@@ -47,6 +47,8 @@ public enum BuiltInTools {
         WriteClipboardTool.name,
         SetDesktopPictureTool.name,
         QuitOrHideApplicationTool.name,
+        ReadThemesTool.name,
+        ChangeThemeTool.name,
     ]
 
     /// - Parameter history: The kept thread, which the history tools search and read. Incognito
@@ -55,13 +57,17 @@ public enum BuiltInTools {
     ///   - reminders: Reminders, which the reminder tools read and change.
     ///   - calendar: Calendar, which the event tools read and change.
     ///   - system: Files, the clipboard, the desktop picture, and running apps, for the system tools.
+    ///   - themes: The panel's themes, which the appearance tools read and write.
+    ///   - themePreferences: Where the active theme is kept.
     public static func make(
         applicationWorkspace: any ApplicationWorkspace = SystemApplicationWorkspace(),
         skills: SkillLibrary = SkillLibrary(),
         history: ThreadStore? = nil,
         reminders: any ReminderStore = EventKitStore.shared,
         calendar: any CalendarStore = EventKitStore.shared,
-        system: any SystemControl = SystemControlOnMac()
+        system: any SystemControl = SystemControlOnMac(),
+        themes: ThemeLibrary = ThemeLibrary(),
+        themePreferences: ThemePreferences = ThemePreferences()
     ) -> [any AgentTool] {
         let reminderIDs = ShortIdentifierTable()
         let eventIDs = ShortIdentifierTable()
@@ -83,6 +89,8 @@ public enum BuiltInTools {
             WriteClipboardTool(system: system),
             SetDesktopPictureTool(system: system),
             QuitOrHideApplicationTool(system: system, applications: applicationWorkspace),
+            ReadThemesTool(library: themes, preferences: themePreferences),
+            ChangeThemeTool(library: themes, preferences: themePreferences),
         ]
         assert(tools.map(\.definition.name) == names)
         return tools

@@ -232,7 +232,7 @@ private struct FreshStartStandIn: View {
 struct EpisodeSeparator: View {
     let date: Date
     let now: Date
-    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.panelPalette) private var palette
 
     var body: some View {
         HStack(spacing: 12) {
@@ -251,7 +251,7 @@ struct EpisodeSeparator: View {
 
     private var hairline: some View {
         Rectangle()
-            .fill(.primary.opacity(contrast == .increased ? 0.35 : 0.14))
+            .fill(palette.divider)
             .frame(height: 1)
             .frame(maxWidth: .infinity)
     }

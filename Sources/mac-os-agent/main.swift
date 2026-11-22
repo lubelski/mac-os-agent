@@ -7,6 +7,25 @@ MainActor.assumeIsolated {
 
     MainMenu.install()
     let arguments = CommandLine.arguments
+    if arguments.contains("--preview-settings") || arguments.contains("--preview-panel") {
+        // Previews keep their theme choices in preferences of their own, never the owner's.
+        // `--preview-theme <id>` shows a theme without saving it, and `--preview-glass off`
+        // shows the panel as it draws with Use Glass off.
+        // Without --data-folder, a preview reads an empty temporary themes folder, never the real one.
+        let folder = arguments.contains(AgentPaths.dataFolderArgument)
+            ? AgentPaths.themesFolder
+            : FileManager.default.temporaryDirectory.appending(path: "mac-os-agent-preview-themes", directoryHint: .isDirectory)
+        let model = ThemeModel(
+            library: ThemeLibrary(folder: folder),
+            preferences: ThemePreferences(suiteName: "dev.lubelski.mac-os-agent.preview"))
+        if let index = arguments.firstIndex(of: "--preview-theme"), index + 1 < arguments.count {
+            model.previewOverride = model.entries.first { $0.id == arguments[index + 1] }?.theme
+        }
+        if let index = arguments.firstIndex(of: "--preview-glass"), index + 1 < arguments.count {
+            model.previewUsesGlass = arguments[index + 1] != "off"
+        }
+        ThemeModel.shared = model
+    }
     if let index = arguments.firstIndex(of: "--preview-settings"), index + 1 < arguments.count,
        let section = SettingsSection(rawValue: arguments[index + 1])
     {

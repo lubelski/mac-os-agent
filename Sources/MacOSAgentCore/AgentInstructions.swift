@@ -69,6 +69,8 @@ public enum AgentInstructions {
             for the go-ahead on their own when it is needed. Likewise use \(OpenItemTool.name), \
             \(FindFilesTool.name), the clipboard tools, \(SetDesktopPictureTool.name), and \
             \(QuitOrHideApplicationTool.name) instead of open, mdfind, pbcopy, or osascript.
+            - When the person asks to change how the panel looks, make and apply a theme with \
+            \(ReadThemesTool.name) and \(ChangeThemeTool.name).
             - The app starts each of the person's messages with the local time it was sent, in square \
             brackets. The time is not part of what they typed.
             - Your conversation with the person is one long thread, divided into episodes. A new \

@@ -38,6 +38,11 @@ public enum AgentPaths {
         applicationSupport.appending(path: "skills", directoryHint: .isDirectory)
     }
 
+    /// One JSON file per theme the owner or the agent made. Built-in themes are not here.
+    public static var themesFolder: URL {
+        applicationSupport.appending(path: "themes", directoryHint: .isDirectory)
+    }
+
     /// Token counts for each model request, one JSON line per request. No message content.
     public static var usageLogFile: URL {
         applicationSupport.appending(path: "usage.jsonl")

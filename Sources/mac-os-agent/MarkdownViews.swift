@@ -51,6 +51,7 @@ private struct MarkdownBlocks: View {
 }
 
 private struct MarkdownBlockView: View {
+    @Environment(\.panelPalette) private var palette
     let block: MarkdownBlock
     let depth: Int
 
@@ -71,7 +72,7 @@ private struct MarkdownBlockView: View {
                 .foregroundStyle(.secondary)
                 .padding(.leading, 12)
                 .overlay(alignment: .leading) {
-                    Rectangle().fill(.tertiary).frame(width: 1).padding(.leading, 3)
+                    Rectangle().fill(palette.code).frame(width: 1).padding(.leading, 3)
                 }
         case .list(let list):
             ListView(list: list, depth: depth)
@@ -79,7 +80,7 @@ private struct MarkdownBlockView: View {
             TableView(table: table)
         case .thematicBreak:
             Rectangle()
-                .fill(.tertiary)
+                .fill(palette.code)
                 .frame(height: 1)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)
@@ -178,6 +179,7 @@ private struct CodeBlockView: View {
 /// always has, and a rule under the header. Short columns keep each cell on one line, long
 /// ones wrap at a fixed width, and a table wider than the message scrolls sideways.
 private struct TableView: View {
+    @Environment(\.panelPalette) private var palette
     let table: MarkdownTable
     static let wrappingWidth: CGFloat = 240
 
@@ -199,7 +201,7 @@ private struct TableView: View {
                 }
             }
             Rectangle()
-                .fill(.tertiary)
+                .fill(palette.code)
                 .frame(height: 1)
                 .gridCellUnsizedAxes(.horizontal)
             ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in

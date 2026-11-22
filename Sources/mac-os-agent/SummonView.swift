@@ -32,11 +32,12 @@ struct SummonView: View {
             inputRow
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // A faint tint on the glass, with the indicator, keeps incognito in sight the whole time.
-        .glassEffect(session.isIncognito ? .regular.tint(IncognitoIndicator.tint) : .regular,
-                     in: .rect(cornerRadius: SummonPanel.cornerRadius))
+        // A faint tint on the surface, with the indicator, keeps incognito in sight the whole time.
+        .themedPanel(incognito: session.isIncognito)
         .onChange(of: session.focusRequest, initial: true) {
             now = Date()
+            // A theme file edited in place, which the folder watch misses, shows on the next summon.
+            ThemeModel.shared.reload()
             focusRequest += 1
         }
         .onChange(of: session.isRunning) { _, running in
@@ -68,7 +69,7 @@ struct SummonView: View {
                     if session.draft.isEmpty {
                         Text(placeholder)
                             .font(.system(size: 15))
-                            .foregroundStyle(Color(nsColor: .placeholderTextColor))
+                            .foregroundStyle(.tertiary)
                             .padding(.top, InputField.verticalInset)
                             .allowsHitTesting(false)
                             .accessibilityHidden(true)
@@ -96,7 +97,7 @@ struct SummonView: View {
 
 /// Shows for as long as an incognito episode is on, above the history.
 private struct IncognitoIndicator: View {
-    static let tint = Color.indigo.opacity(0.14)
+    @Environment(\.panelPalette) private var palette
 
     var body: some View {
         Text("Incognito. Nothing from this episode is kept.")
@@ -104,7 +105,7 @@ private struct IncognitoIndicator: View {
             .foregroundStyle(.secondary)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
-            .background(.primary.opacity(0.07), in: .capsule)
+            .background(palette.incognitoBadge, in: .capsule)
             .padding(.bottom, 6)
             .frame(maxWidth: .infinity)
             .accessibilityAddTraits(.isHeader)
@@ -143,7 +144,7 @@ private struct CommandHint: View {
 private struct ConfirmationCard: View {
     let request: ConfirmationRequest
     let session: AgentSession
-    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.panelPalette) private var palette
 
     private var commandText: some View {
         Text(verbatim: request.command)
@@ -178,7 +179,7 @@ private struct ConfirmationCard: View {
             }
         }
         .padding(14)
-        .background(.primary.opacity(0.08), in: .rect(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.primary.opacity(contrast == .increased ? 0.4 : 0.16), lineWidth: 1))
+        .background(palette.goAheadFill, in: .rect(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(palette.goAheadEdge, lineWidth: 1))
     }
 }

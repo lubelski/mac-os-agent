@@ -54,6 +54,7 @@ extension ToolSignal {
 /// blocks: the label, or `┌──` when there is none, then a `│` rule beside each line, then `└──`.
 /// The text scrolls sideways instead of wrapping, so lines keep their shape.
 struct CodeBracket<Content: View, Accessory: View>: View {
+    @Environment(\.panelPalette) private var palette
     var label: String?
     var font: Font = .system(size: 11, design: .monospaced)
     /// False lets the bracket hug its content instead of taking the width it is offered.
@@ -66,7 +67,7 @@ struct CodeBracket<Content: View, Accessory: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(verbatim: label?.isEmpty == false ? label! : Mark.bracketTop)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(palette.code)
                     .accessibilityHidden(label == nil)
                 accessory
             }
@@ -76,13 +77,13 @@ struct CodeBracket<Content: View, Accessory: View>: View {
                 .padding(.leading, 12)
                 .overlay(alignment: .leading) {
                     Rectangle()
-                        .fill(.tertiary)
+                        .fill(palette.code)
                         .frame(width: 1)
                         .padding(.leading, 3)
                         .accessibilityHidden(true)
                 }
             Text(verbatim: Mark.bracketBottom)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(palette.code)
                 .accessibilityHidden(true)
         }
         .font(font)

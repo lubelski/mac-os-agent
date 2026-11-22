@@ -13,7 +13,11 @@
 # An inspector state is always captured over the busy page, since it is two windows: the panel
 # and the inspector attached to it.
 #
-# The options go in the order shown: --backdrop, then --preset, then --states.
+#   scripts/capture-panel-previews.sh --theme tidewater [out-dir]  in a theme, without saving it
+#   scripts/capture-panel-previews.sh --glass off [out-dir]        as drawn with Use glass off
+#   scripts/capture-panel-previews.sh --appearances "dark" [out-dir]  only those appearances
+#
+# The options can come in any order, before the output folder.
 #
 # Preview runs never register the hotkey, open the thread, read the Keychain, or touch the
 # panel's saved frame.
@@ -21,28 +25,28 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 BACKDROP=0
-if [[ "${1:-}" == "--backdrop" ]]; then
-  BACKDROP=1
-  shift
-fi
-
 DOCK=()
+THEME=()
 SUFFIX=""
-if [[ "${1:-}" == "--preset" ]]; then
-  DOCK=(--preview-preset "$2")
-  SUFFIX="-$2"
-  shift 2
-fi
-
 STATES=(empty history running confirmation finished draft multiline-draft fresh-start scrollback incognito command-hint tool-states first-message streaming fresh-start-slot markdown markdown-streaming markdown-code-streaming controls)
-if [[ "${1:-}" == "--states" ]]; then
-  if [[ "$2" == "inspector" ]]; then
-    STATES=(inspector-json inspector-table inspector-diff inspector-long inspector-running inspector-fields)
-  else
-    read -r -a STATES <<<"$2"
-  fi
-  shift 2
-fi
+APPEARANCES=(dark light)
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --backdrop) BACKDROP=1; shift ;;
+    --preset) DOCK+=(--preview-preset "$2"); SUFFIX="$SUFFIX-$2"; shift 2 ;;
+    --states)
+      if [[ "$2" == "inspector" ]]; then
+        STATES=(inspector-json inspector-table inspector-diff inspector-long inspector-running inspector-fields)
+      else
+        read -r -a STATES <<<"$2"
+      fi
+      shift 2 ;;
+    --theme) THEME+=(--preview-theme "$2"); SUFFIX="$SUFFIX-$2"; shift 2 ;;
+    --glass) THEME+=(--preview-glass "$2"); SUFFIX="$SUFFIX-glass-$2"; shift 2 ;;
+    --appearances) read -r -a APPEARANCES <<<"$2"; shift 2 ;;
+    *) echo "unknown option $1" >&2; exit 2 ;;
+  esac
+done
 
 BIN="build/mac-os-agent.app/Contents/MacOS/mac-os-agent"
 OUT="${1:-docs/screenshots}"
@@ -61,13 +65,13 @@ for window in list where (window[kCGWindowOwnerPID as String] as? Int) == pid &&
 SWIFT
 swiftc -O -o "$HELPER" "$HELPER.swift"
 
-for appearance in dark light; do
+for appearance in "${APPEARANCES[@]}"; do
   for state in "${STATES[@]}"; do
     LOG="$(mktemp)"
     if [[ $BACKDROP == 1 || $state == inspector-* ]]; then
-      "$BIN" --preview-panel "$state" --appearance "$appearance" --backdrop ${DOCK[@]+"${DOCK[@]}"} >"$LOG" &
+      "$BIN" --preview-panel "$state" --appearance "$appearance" --backdrop ${DOCK[@]+"${DOCK[@]}"} ${THEME[@]+"${THEME[@]}"} >"$LOG" &
     else
-      "$BIN" --preview-panel "$state" --appearance "$appearance" ${DOCK[@]+"${DOCK[@]}"} >"$LOG" &
+      "$BIN" --preview-panel "$state" --appearance "$appearance" ${DOCK[@]+"${DOCK[@]}"} ${THEME[@]+"${THEME[@]}"} >"$LOG" &
     fi
     PID=$!
     sleep 2

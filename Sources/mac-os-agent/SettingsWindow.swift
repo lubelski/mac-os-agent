@@ -10,6 +10,7 @@ import SwiftUI
 /// in `SettingsRootView.detail`.
 enum SettingsSection: String, CaseIterable, Identifiable {
     case general
+    case appearance
     case instructions
     case skills
     case tools
@@ -21,6 +22,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: "General"
+        case .appearance: "Appearance"
         case .instructions: "Instructions"
         case .skills: "Skills"
         case .tools: "Tools"
@@ -32,6 +34,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var symbolName: String {
         switch self {
         case .general: "gearshape"
+        case .appearance: "paintpalette"
         case .instructions: "text.quote"
         case .skills: "puzzlepiece.extension"
         case .tools: "wrench.and.screwdriver"
@@ -111,6 +114,8 @@ struct SettingsRootView: View {
         switch navigation.section {
         case .general:
             GeneralSettingsView(session: models.session, shortcut: models.shortcut)
+        case .appearance:
+            AppearanceSettingsView(model: ThemeModel.shared)
         case .instructions:
             InstructionsSettingsView(model: models.instructions)
         case .skills:
