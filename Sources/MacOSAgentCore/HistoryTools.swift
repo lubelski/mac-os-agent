@@ -239,7 +239,7 @@ public struct EpisodeLine: Sendable, Equatable, Identifiable {
         }
         return contents.entries[episode.range].compactMap { entry in
             switch entry.item {
-            case .userMessage(let text, _):
+            case .userMessage(let text, _, _):
                 EpisodeLine(id: entry.id, date: entry.date, kind: .owner, text: text)
             case .assistantMessage(let message) where !message.text.isEmpty:
                 EpisodeLine(id: entry.id, date: entry.date, kind: .agent, text: message.text)

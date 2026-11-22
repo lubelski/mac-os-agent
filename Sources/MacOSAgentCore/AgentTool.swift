@@ -25,6 +25,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case eventChanges
         case quitApplication
         case deleteTheme
+        case deleteAction
     }
 
     /// One change in a list of them, such as deleting one reminder.
@@ -93,6 +94,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .eventChanges: changeCount == 1 ? "Make this change in Calendar?" : "Make these \(changeCount) changes in Calendar?"
         case .quitApplication: "Quit this app?"
         case .deleteTheme: "Delete this theme?"
+        case .deleteAction: "Delete this action?"
         }
     }
 
@@ -108,7 +110,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .shellCommand: "Run"
         case .reminderChanges, .eventChanges: changeCount == 1 ? "Make Change" : "Make Changes"
         case .quitApplication: "Quit"
-        case .deleteTheme: "Delete"
+        case .deleteTheme, .deleteAction: "Delete"
         }
     }
 
@@ -118,7 +120,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .shellCommand: "Don’t Run"
         case .reminderChanges, .eventChanges: "Don’t Change"
         case .quitApplication: "Don’t Quit"
-        case .deleteTheme: "Don’t Delete"
+        case .deleteTheme, .deleteAction: "Don’t Delete"
         }
     }
 
@@ -138,6 +140,8 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
             return itemName.map { "\(waiting) to quit \($0)" } ?? waiting
         case .deleteTheme:
             return itemName.map { "\(waiting) to delete the theme \($0)" } ?? waiting
+        case .deleteAction:
+            return itemName.map { "\(waiting) to delete the action \($0)" } ?? waiting
         }
     }
 

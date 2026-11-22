@@ -12,6 +12,10 @@ public enum AgentEvent: Sendable, Equatable {
     case toolRunning(callID: String, summary: String)
     /// A tool finished. Its result also arrives as an entry.
     case toolFinished(callID: String)
+    /// The owner ran a saved action. Its steps follow as `toolCallStarted`, `toolRunning`, and
+    /// `toolFinished` under the call ids given here, and the record of the run arrives as an
+    /// entry with the same id when it ends.
+    case actionStarted(ActionRunStart)
 }
 
 public enum AgentLoopError: Error, Equatable, LocalizedError {
@@ -95,20 +99,7 @@ public final class AgentLoop: Sendable {
         onEvent: @escaping @Sendable (AgentEvent) async -> Void,
         confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
     ) async throws {
-        // A fresh start is recorded as a marker just before the message, so the thread stays
-        // append-only. An episode with nothing in it yet needs none.
-        if let current = await thread.currentEpisode, current.hasActivity {
-            let timedOut = current.hasTimedOut(now: now, timeout: episodeTimeout())
-            if startsNewEpisode || timedOut {
-                let marker = ThreadItem.episodeStart(.init(reason: startsNewEpisode ? .requested : .timeout))
-                await onEvent(.entryAdded(try await thread.append(marker, date: now)))
-            }
-        }
-
-        // A call left without a result, because the app quit or a task was stopped, would make
-        // the next request invalid. Answer it at the end of the thread instead of editing history.
-        try await answerUnansweredCalls(with: Self.unfinishedOutput, onEvent: onEvent)
-
+        try await prepareForOwnerEntry(startsNewEpisode: startsNewEpisode, now: now, onEvent: onEvent)
         await onEvent(.entryAdded(try await thread.append(.userMessage(text: userText, skill: skill), date: now)))
         let definitions = tools.map(\.definition)
         let instructions = await self.instructions()
@@ -183,7 +174,27 @@ public final class AgentLoop: Sendable {
         throw AgentLoopError.tooManySteps(maximumModelReplies)
     }
 
-    private func runTool(
+    /// What goes before an entry from the owner, a message or an action they ran: the marker
+    /// of a new episode when one starts, and a result for any call left unanswered.
+    func prepareForOwnerEntry(
+        startsNewEpisode: Bool, now: Date, onEvent: @escaping @Sendable (AgentEvent) async -> Void
+    ) async throws {
+        // A fresh start is recorded as a marker just before the message, so the thread stays
+        // append-only. An episode with nothing in it yet needs none.
+        if let current = await thread.currentEpisode, current.hasActivity {
+            let timedOut = current.hasTimedOut(now: now, timeout: episodeTimeout())
+            if startsNewEpisode || timedOut {
+                let marker = ThreadItem.episodeStart(.init(reason: startsNewEpisode ? .requested : .timeout))
+                await onEvent(.entryAdded(try await thread.append(marker, date: now)))
+            }
+        }
+
+        // A call left without a result, because the app quit or a task was stopped, would make
+        // the next request invalid. Answer it at the end of the thread instead of editing history.
+        try await answerUnansweredCalls(with: Self.unfinishedOutput, onEvent: onEvent)
+    }
+
+    func runTool(
         _ call: ThreadItem.ToolCall,
         episodeID: UUID?,
         onEvent: @Sendable (AgentEvent) async -> Void,

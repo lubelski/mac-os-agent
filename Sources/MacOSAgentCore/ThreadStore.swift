@@ -8,9 +8,9 @@ import Synchronization
 ///   index, so nothing in it can reach the disk, and it is gone when the app lets go of it.
 public protocol ThreadStorage: Actor {
     var contents: ThreadContents { get }
-    /// Adds an entry at the end and returns it.
+    /// Adds an entry at the end, with the given id, and returns it.
     @discardableResult
-    func append(_ item: ThreadItem, date: Date) throws -> ThreadEntry
+    func append(_ item: ThreadItem, date: Date, id: UUID) throws -> ThreadEntry
 }
 
 extension ThreadStorage {
@@ -20,7 +20,13 @@ extension ThreadStorage {
 
     @discardableResult
     public func append(_ item: ThreadItem) throws -> ThreadEntry {
-        try append(item, date: Date())
+        try append(item, date: Date(), id: UUID())
+    }
+
+    /// Adds an entry at the end and returns it.
+    @discardableResult
+    public func append(_ item: ThreadItem, date: Date) throws -> ThreadEntry {
+        try append(item, date: date, id: UUID())
     }
 
     /// Calls in the current episode that have no result yet, oldest first. This happens when the
@@ -89,8 +95,8 @@ public actor ThreadStore: ThreadStorage {
 
     /// Appends an item and writes it to disk before returning.
     @discardableResult
-    public func append(_ item: ThreadItem, date: Date) throws -> ThreadEntry {
-        let entry = ThreadEntry(date: date, item: item)
+    public func append(_ item: ThreadItem, date: Date, id: UUID) throws -> ThreadEntry {
+        let entry = ThreadEntry(id: id, date: date, item: item)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601
@@ -187,8 +193,8 @@ public actor InMemoryThreadStore: ThreadStorage {
     public init() {}
 
     @discardableResult
-    public func append(_ item: ThreadItem, date: Date) -> ThreadEntry {
-        let entry = ThreadEntry(date: date, item: item)
+    public func append(_ item: ThreadItem, date: Date, id: UUID) -> ThreadEntry {
+        let entry = ThreadEntry(id: id, date: date, item: item)
         contents.add(entry)
         return entry
     }

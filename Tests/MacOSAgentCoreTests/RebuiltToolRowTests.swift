@@ -29,6 +29,9 @@ import Testing
         (ReadThemesTool.name, ["theme_id": "paper"], "Read the theme paper"),
         (ChangeThemeTool.name, ["action": "save_and_apply", "theme_id": nil, "file": #"{"format": 1, "name": "Night Swim"}"#],
          "Save and apply the theme Night Swim"),
+        (ReadActionsTool.name, ["action_id": nil], "List the actions"),
+        (ChangeActionTool.name, ["operation": "save", "action_id": nil, "file": #"{"format": 1, "name": "Start Screensaver"}"#],
+         "Save the action Start Screensaver"),
     ]
 
     private func thread() -> [ThreadEntry] {

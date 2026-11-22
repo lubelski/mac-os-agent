@@ -246,7 +246,7 @@ private func command(_ name: String, _ description: String = "Does a thing.") ->
         let entry = ThreadEntry(item: .userMessage(text: "/rename-photos x", skill: invocation))
         let decoded = try JSONDecoder().decode(ThreadEntry.self, from: JSONEncoder().encode(entry))
         #expect(decoded == entry)
-        guard case .userMessage(let text, let skill) = decoded.item else { Issue.record("not a message"); return }
+        guard case .userMessage(let text, let skill, _) = decoded.item else { Issue.record("not a message"); return }
         #expect(text == "/rename-photos x")
         #expect(skill == invocation)
     }

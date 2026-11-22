@@ -8,7 +8,8 @@ import Foundation
 ///
 /// The mechanism is general. A provider turns a subject into candidates, each with how strongly
 /// it matched. `InstantActionRule` decides from those, the phrase's shape, and the learned use
-/// whether to offer anything. Applications are the only provider so far.
+/// whether to offer anything. The providers are installed applications and the owner's saved
+/// actions, ranked together.
 
 /// How strongly a candidate's name matched the subject, strongest last.
 public enum InstantMatchStrength: Int, Sendable, Comparable, CaseIterable {
@@ -29,11 +30,15 @@ public enum InstantMatchStrength: Int, Sendable, Comparable, CaseIterable {
 /// What an instant action does when it is taken.
 public enum InstantActionTarget: Sendable, Equatable, Hashable {
     case application(InstalledApplication)
+    /// A saved action, by its id. It is read again from its file when it runs, so an action
+    /// turned off or changed since the row was shown runs as it is now, or not at all.
+    case action(id: String)
 
-    /// What Return does, in the row's words: "opens".
+    /// What Return does, in the row's words: "opens" or "runs".
     public var actionLabel: String {
         switch self {
         case .application: "opens"
+        case .action: "runs"
         }
     }
 }
@@ -45,6 +50,9 @@ public struct InstantActionCandidate: Sendable, Equatable, Identifiable {
     public var id: String
     /// The name shown in the row.
     public var title: String
+    /// What it will do, in a few words, shown beside the name for a saved action, such as
+    /// "Open ScreenSaverEngine". Nil for an app, whose name says it.
+    public var detail: String?
     public var strength: InstantMatchStrength
     /// The provider's own ranking score, higher is better.
     public var score: Int
@@ -54,9 +62,12 @@ public struct InstantActionCandidate: Sendable, Equatable, Identifiable {
     public var wasPickedForSubject = false
     public var target: InstantActionTarget
 
-    public init(id: String, title: String, strength: InstantMatchStrength, score: Int, target: InstantActionTarget) {
+    public init(
+        id: String, title: String, detail: String? = nil, strength: InstantMatchStrength, score: Int, target: InstantActionTarget
+    ) {
         self.id = id
         self.title = title
+        self.detail = detail
         self.strength = strength
         self.score = score
         self.target = target
@@ -84,6 +95,14 @@ public protocol InstantActionProvider: Sendable {
     /// Candidates for the subject, best first, with their strength and score. Only matches of
     /// at least `InstantMatchStrength.initials` belong here.
     func candidates(for phrase: InstantPhrase) -> [InstantActionCandidate]
+    /// True when the provider is asked whatever verb the phrase starts with, because its names
+    /// can start with one, such as a saved action named "Start Screensaver". It then matches
+    /// against the whole input as well as the subject.
+    var matchesAnyVerb: Bool { get }
+}
+
+extension InstantActionProvider {
+    public var matchesAnyVerb: Bool { false }
 }
 
 /// When an input is confidently an instant action, and which candidates the row offers.
@@ -164,7 +183,7 @@ public struct InstantActionEngine: Sendable {
         guard let phrase = InstantPhrase.parse(input, verbs: verbs) else { return nil }
         var candidates: [InstantActionCandidate] = []
         for provider in providers {
-            if let verb = phrase.verb, !provider.verbs.contains(verb) { continue }
+            if let verb = phrase.verb, !provider.verbs.contains(verb), !provider.matchesAnyVerb { continue }
             candidates += provider.candidates(for: phrase)
         }
         candidates = candidates.map { candidate in

@@ -296,12 +296,15 @@ final class FakeApplicationWorkspace: ApplicationWorkspace, @unchecked Sendable 
         let history = try ThreadStore(fileURL: temporaryThreadFile())
         let first = ToolRegistry(builtIn: BuiltInTools.make(applicationWorkspace: workspace, history: history))
         let second = ToolRegistry(builtIn: BuiltInTools.make(applicationWorkspace: workspace, history: history))
-        #expect(first.definitions.map(\.name) == [
+        // The list before the action tools is exactly as it was, so a cached prefix holds.
+        let before = [
             "run_shell_command", "search_applications", "open_application", "list_running_applications", "load_skill",
             "search_history", "read_episode", "read_reminders", "change_reminders", "read_events", "change_events",
             "open_item", "find_files", "read_clipboard", "write_clipboard", "set_desktop_picture", "quit_or_hide_application",
             "read_themes", "change_theme",
-        ])
+        ]
+        #expect(Array(first.definitions.map(\.name).prefix(before.count)) == before)
+        #expect(first.definitions.map(\.name) == before + ["read_actions", "change_action"])
         #expect(first.definitions == second.definitions)
     }
 

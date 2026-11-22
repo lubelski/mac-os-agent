@@ -44,8 +44,8 @@ public enum OpenAIResponses {
         var items: [JSONValue] = [["role": "developer", "content": .string(request.instructions)]]
         for (index, entry) in request.entries.enumerated() {
             switch entry.item {
-            case .userMessage(let text, let skill):
-                let sent = ThreadItem.modelText(text: text, skill: skill)
+            case .userMessage(let text, let skill, let action):
+                let sent = ThreadItem.modelText(text: text, skill: skill, action: action)
                 let stamped = "[\(timestamp(entry.date, timeZone: timeZone))] \(sent)"
                 items.append(["role": "user", "content": [["type": "input_text", "text": .string(stamped)]]])
             case .assistantMessage(let message):

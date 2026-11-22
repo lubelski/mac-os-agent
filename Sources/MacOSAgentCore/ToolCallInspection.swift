@@ -155,6 +155,7 @@ public struct InspectedToolCall: Equatable, Sendable {
             if let waited = facts.details?.waitedSeconds { return "Asked, approved after \(ToolCallText.duration(waited))" }
             return "Asked, approved"
         case .declined?: return "Asked, declined"
+        case .preapproved?: return "Not asked, given by running the action"
         case nil: return status == .declined ? "Asked, declined" : nil
         }
     }
