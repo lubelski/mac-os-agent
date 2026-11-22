@@ -18,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let installationID = AgentPaths.installationID()
-        let authenticator = ChatGPTAuthenticator(installationID: installationID)
+        let authenticator = ChatGPTAuthenticator(secrets: AgentPaths.secretStore(), installationID: installationID)
         var loop: AgentLoop?
         var startupError: Error?
         var thread: ThreadStore?
