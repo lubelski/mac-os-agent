@@ -137,8 +137,8 @@ private struct DiscardCard: View {
             }
         }
         .padding(14)
-        .background(palette.goAheadFill, in: .rect(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(palette.goAheadEdge, lineWidth: 1))
+        .background(palette.goAheadFill, in: PanelShape.card)
+        .overlay(PanelShape.card.strokeBorder(palette.goAheadEdge, lineWidth: 1))
     }
 }
 
@@ -246,7 +246,7 @@ struct ConfirmationCard: View {
             }
         }
         .padding(14)
-        .background(palette.goAheadFill, in: .rect(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(palette.goAheadEdge, lineWidth: 1))
+        .background(palette.goAheadFill, in: PanelShape.card)
+        .overlay(PanelShape.card.strokeBorder(palette.goAheadEdge, lineWidth: 1))
     }
 }
