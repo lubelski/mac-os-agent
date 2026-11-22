@@ -311,14 +311,3 @@ private struct ThemedPanelRoot: ViewModifier {
     }
 }
 
-/// The faint line above the text field, and between the inspector's input and output.
-struct PanelDivider: View {
-    @Environment(\.panelPalette) private var palette
-
-    var body: some View {
-        Rectangle()
-            .fill(palette.inputDivider)
-            .frame(height: 1)
-            .accessibilityHidden(true)
-    }
-}
