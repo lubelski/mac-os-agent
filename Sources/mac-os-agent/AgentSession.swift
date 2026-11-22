@@ -56,6 +56,7 @@ final class AgentSession {
         didSet {
             instantActions.draftChanged(draft)
             if draft != oldValue { draftChangedForHint() }
+            suggestionListFollowsDraft()
         }
     }
     /// The skills the main panel offers as slash commands, kept live. Nil in the incognito
@@ -117,6 +118,11 @@ final class AgentSession {
     /// Messages sent while a task ran, waiting for their turn. Held in memory only, one per
     /// window. An experiment, behind `Experiment.queueMessagesWhileRunning`.
     private(set) var queue = MessageQueue()
+    /// The list under the text field, with the suggestions-in-the-field experiment on. See
+    /// `SuggestionListState`.
+    @ObservationIgnored let suggestionList = SuggestionListState()
+    /// True while Up and Down Arrow are moving through the owner's earlier messages.
+    var isRecallingMessage: Bool { recall.isRecalling }
 
     /// The main panel's session, on the kept thread.
     /// - Parameter signedIn: For tests, which run without an authenticator.
@@ -288,10 +294,11 @@ final class AgentSession {
         return true
     }
 
-    /// Escape's first step: an instant action suggestion or the command list, whichever is
-    /// showing. A slash rules out a suggestion, so at most one of them is.
+    /// Escape's first step: the list under the text field when it is open, then an instant
+    /// action suggestion or the command list, whichever is showing. A slash rules out a
+    /// suggestion, so at most one of them is.
     func dismissSuggestionOrHint() -> Bool {
-        instantActions.dismiss() || dismissHint()
+        closeSuggestionList() || instantActions.dismiss() || dismissHint()
     }
 
     private func beginFreshEpisode() {
@@ -365,6 +372,8 @@ final class AgentSession {
     /// the text to the agent.
     func submit() {
         guard !isRunning || queuesWhileRunning else { return }
+        // With the list under the field open, Return acts on its highlighted row.
+        if submitFromSuggestionList() { return }
         // While a task runs, what the app does itself, an instant action or one of its own
         // commands, is not queued: it stays in the field until the task ends.
         if isRunning, let candidate = instantActions.offered(for: draft) {
@@ -390,7 +399,7 @@ final class AgentSession {
     /// The main panel hides the normal way. The incognito window stays, since hiding it is
     /// closing it. If the action fails, the window comes back with the text and a line saying
     /// why, which is shown only and never kept.
-    private func perform(_ candidate: InstantActionCandidate) {
+    func perform(_ candidate: InstantActionCandidate) {
         if case .action(let id) = candidate.target {
             runSavedAction(id: id, title: candidate.title)
             return

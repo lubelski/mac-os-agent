@@ -31,6 +31,11 @@ import SwiftUI
 /// is brought forward it layers like an ordinary window and stays open underneath. See
 /// `PanelLayering` and the layering section below.
 ///
+/// With the suggestions-in-the-field experiment on, the window grows downward for a moment to
+/// hold the list under the text field, and shrinks back when it closes. See the footer section
+/// below. The growth is never part of `panelFrame`, so nothing that remembers or reasons about
+/// the panel's place sees it.
+///
 /// The incognito window is the same panel with the `.incognito` role. It has no layouts and
 /// no slide, keeps nothing about its place, and opens beside the main panel. Closing it, with
 /// Close and Discard in its top bar's menu or Command-W, discards its conversation, so Escape
@@ -163,6 +168,13 @@ final class SummonPanel: NSPanel {
     private(set) var isOrderedIn = false
     /// True when the panel is showing or on its way in. False when hidden or on its way out.
     private(set) var isPresented = false
+    /// How far the window reaches below `panelFrame` to hold the list under the text field.
+    private(set) var footerGrowth: CGFloat = 0
+    /// The window's size while grown, to tell the owner's resize from the growth.
+    private var grownSize: CGSize?
+    /// The frame autosave name, set aside while the window is grown so the grown frame is
+    /// never saved.
+    private var suspendedAutosaveName: NSWindow.FrameAutosaveName?
 
     /// - Parameters:
     ///   - role: the main panel, or the incognito window. The incognito window never reads or
@@ -270,6 +282,8 @@ final class SummonPanel: NSPanel {
         center.addObserver(self, selector: #selector(windowWillClose(_:)), name: NSWindow.willCloseNotification, object: nil)
         center.addObserver(self, selector: #selector(keepOnTopDidChange), name: KeepOnTopSetting.didChange, object: self.keepOnTop)
         applyLayer(PanelLayering.layer(for: layeringState))
+        session.suggestionList.layoutNeedsUpdate = { [weak self] in self?.updateFooterGrowth() }
+        observeSuggestionList()
     }
 
     /// An owner who had docked the panel with PR #17 finds it in the matching slide over, and
@@ -305,10 +319,16 @@ final class SummonPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     /// The glass's frame on screen when it is in place: the window's frame less any strip on
-    /// the edge side.
+    /// the edge side, and less the room it grew downward for the list under the text field.
+    /// Everything that remembers or reasons about the panel's place reads this, so the growth
+    /// reaches none of it.
     var panelFrame: CGRect {
-        guard let inset else { return frame }
         var glass = frame
+        if footerGrowth > 0 {
+            glass.origin.y += footerGrowth
+            glass.size.height -= footerGrowth
+        }
+        guard let inset else { return glass }
         glass.size.width -= inset.width
         if inset.edge == .left { glass.origin.x += inset.width }
         return glass
@@ -390,12 +410,17 @@ final class SummonPanel: NSPanel {
         updateInspector()
         if slide == nil { reportMotion() }
         scheduleLayeringUpdate()
+        // A list of slash commands still showing for the draft comes back with the panel.
+        updateFooterGrowth()
     }
 
     /// Hides the panel. In slide over it slides out past its edge first. It never stops a task.
     func dismiss() {
         guard isPresented || isOrderedIn else { return }
+        // Hiding closes the list, and the window is its own size again before it goes.
+        session.closeSuggestionList()
         isPresented = false
+        setFooterGrowth(0)
         if var slide {
             slide.retarget(.hidden)
             self.slide = slide
@@ -597,6 +622,7 @@ final class SummonPanel: NSPanel {
     /// or, when it is already centered, goes to the default size in the middle of its screen.
     /// A slide over preset slides in from its edge when the panel is showing.
     func choose(_ preset: PanelPreset) {
+        collapseFooter()
         let previous = placement.preset
         if let slide {
             if slide.target == .hidden { finishHiding() } else { endSlide() }
@@ -641,6 +667,7 @@ final class SummonPanel: NSPanel {
     /// It moves at once, as choosing a preset does: the layouts have no animated move to share.
     func resetToDefaultPlace() {
         guard role == .main else {
+            collapseFooter()
             placeOnActiveScreen(size: Self.incognitoSize)
             updatePlacementFrames()
             placeInspector()
@@ -686,6 +713,8 @@ final class SummonPanel: NSPanel {
     }
 
     private func place(_ target: CGRect) {
+        // The target is a place for the panel itself. Any growth for the list is dropped.
+        if footerGrowth > 0 { forgetFooterGrowth() }
         hasBeenPlaced = true
         isPlacing = true
         setFrame(target, display: true)
@@ -741,6 +770,12 @@ final class SummonPanel: NSPanel {
             placeInspector()
         }
         guard !isPlacing, slide == nil else { return }
+        if let grownSize, frame.size != grownSize {
+            // The owner resized the grown window. It keeps the size they gave it, and the list
+            // closes, since the window is no longer grown for it.
+            forgetFooterGrowth()
+            session.closeSuggestionList()
+        }
         guard let edge = placement.preset.slideOverEdge, let visible = currentScreen()?.visible else { return }
         if PanelGeometry.isInSlideOver(panelFrame, at: edge, in: visible) {
             slideOverWidth = panelFrame.width
@@ -771,6 +806,7 @@ final class SummonPanel: NSPanel {
     /// over panel goes back in place on its screen. A centered one that ended up off every
     /// screen comes back.
     @objc func screensDidChange() {
+        collapseFooter()
         if let slide {
             if slide.target == .hidden { finishHiding() } else { endSlide() }
         }
@@ -781,6 +817,91 @@ final class SummonPanel: NSPanel {
         }
         updatePlacementFrames()
         placeInspector()
+    }
+
+    // MARK: - The footer's list
+
+    /// The least room left below the grown window, so it never ends flush with the bottom of
+    /// the screen, where its corners would read as square.
+    static let footerGrowthMargin: CGFloat = 8
+
+    /// Whether the window can grow downward by this much where it is: a centered panel,
+    /// showing, not sliding, with the room below it on its screen. In slide over it is full
+    /// height, so the list is drawn over the conversation instead.
+    func canGrowDownward(by height: CGFloat) -> Bool {
+        guard isPresented, slide == nil, placement.preset.slideOverEdge == nil,
+              let visible = currentScreen()?.visible else { return false }
+        return panelFrame.minY - visible.minY >= height + Self.footerGrowthMargin
+    }
+
+    /// Grows or shrinks the window for the list under the text field, or leaves it at its own
+    /// size and lets the list cover the bottom of the conversation when there is no room.
+    func updateFooterGrowth() {
+        let wanted = session.suggestionListHeight
+        setFooterGrowth(wanted > 0 && canGrowDownward(by: wanted) ? wanted : 0)
+    }
+
+    /// Moves the window's bottom edge down by `growth` below `panelFrame`. The top stays where
+    /// it is, so the conversation and the text field do not move. The frame is not saved while
+    /// grown, and is saved at the panel's own size again afterward.
+    private func setFooterGrowth(_ growth: CGFloat) {
+        guard growth != footerGrowth else { return }
+        let resting = panelFrame
+        if growth > 0, suspendedAutosaveName == nil, !frameAutosaveName.isEmpty {
+            suspendedAutosaveName = frameAutosaveName
+            setFrameAutosaveName("")
+        }
+        footerGrowth = growth
+        var target = resting
+        target.origin.y -= growth
+        target.size.height += growth
+        isPlacing = true
+        setFrame(target, display: true)
+        isPlacing = false
+        grownSize = growth > 0 ? frame.size : nil
+        layoutHost(offset: 0)
+        session.suggestionList.growth = growth
+        if growth == 0 { resumeFrameAutosave() }
+    }
+
+    /// Takes the growth as part of the window, without moving it: before the window is put
+    /// somewhere else, or after the owner resized it.
+    private func forgetFooterGrowth() {
+        footerGrowth = 0
+        grownSize = nil
+        session.suggestionList.growth = 0
+        resumeFrameAutosave()
+    }
+
+    private func resumeFrameAutosave() {
+        guard let name = suspendedAutosaveName else { return }
+        suspendedAutosaveName = nil
+        setFrameAutosaveName(name)
+        saveFrame(usingName: name)
+    }
+
+    /// Closes the list and puts the window back at its own size, before the panel is moved to
+    /// another place.
+    private func collapseFooter() {
+        session.closeSuggestionList()
+        setFooterGrowth(0)
+    }
+
+    /// Follows changes to the list that come from typing, a turn after they happen, since they
+    /// arrive while the text field is still processing the edit. The list keeps the room the
+    /// window has until then, so nothing above it moves in between.
+    private func observeSuggestionList() {
+        withObservationTracking {
+            _ = session.suggestionListHeight
+        } onChange: { [weak self] in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.updateFooterGrowth()
+                    self.observeSuggestionList()
+                }
+            }
+        }
     }
 
     // MARK: - The inspector

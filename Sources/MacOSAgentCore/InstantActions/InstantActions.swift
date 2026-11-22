@@ -83,6 +83,18 @@ public struct InstantActionSuggestion: Sendable, Equatable {
     public var input: String
     public var phrase: InstantPhrase
     public var choices: [InstantActionCandidate]
+    /// Every candidate the rule kept for the input, best first, up to
+    /// `InstantActionRule.maximumMatches`: the choices, then the others that matched but were
+    /// not close enough to be offered beside the best. The first is always `top`. The list
+    /// under the text field shows them.
+    public var matches: [InstantActionCandidate]
+
+    public init(input: String, phrase: InstantPhrase, choices: [InstantActionCandidate], matches: [InstantActionCandidate]? = nil) {
+        self.input = input
+        self.phrase = phrase
+        self.choices = choices
+        self.matches = matches ?? choices
+    }
 
     public var top: InstantActionCandidate { choices[0] }
 }
@@ -130,14 +142,26 @@ public enum InstantActionRule {
     public static let clearLead = 10
     public static let choiceWindow = 5
     public static let maximumChoices = 3
+    /// The most matches the list under the text field shows.
+    public static let maximumMatches = 6
 
     public static func choices(for phrase: InstantPhrase, candidates: [InstantActionCandidate]) -> [InstantActionCandidate] {
+        evaluate(phrase, candidates: candidates).choices
+    }
+
+    /// The choices, as `choices(for:candidates:)` gives them, and every candidate the rule
+    /// kept, best first, up to `maximumMatches`. The matches are empty whenever the choices
+    /// are, so nothing is listed for an input that offers nothing, and they start with the
+    /// choices in the same order.
+    public static func evaluate(_ phrase: InstantPhrase, candidates: [InstantActionCandidate])
+        -> (choices: [InstantActionCandidate], matches: [InstantActionCandidate])
+    {
         let length = phrase.normalizedLength
-        guard length > 0 else { return [] }
+        guard length > 0 else { return ([], []) }
         let learned = candidates.contains(where: \.wasPickedForSubject)
         let hasVerb = phrase.verb != nil
 
-        if phrase.hasFunctionWord, !candidates.contains(where: { $0.strength == .exact }) { return [] }
+        if phrase.hasFunctionWord, !candidates.contains(where: { $0.strength == .exact }) { return ([], []) }
 
         var kept = candidates.filter { candidate in
             if candidate.wasPickedForSubject { return true }
@@ -150,21 +174,23 @@ public enum InstantActionRule {
             // A name that only starts with the word ("find" for Finder) is never enough.
             kept = kept.filter { $0.strength == .exact || (hasVerb && $0.strength == .wordExact) }
         }
-        guard !kept.isEmpty else { return [] }
+        guard !kept.isEmpty else { return ([], []) }
 
         let ranked = kept.enumerated().sorted { a, b in
             if a.element.rankingScore != b.element.rankingScore { return a.element.rankingScore > b.element.rankingScore }
             return a.offset < b.offset
         }.map(\.element)
+        let matches = Array(ranked.prefix(maximumMatches))
         let top = ranked[0]
-        guard ranked.count > 1 else { return [top] }
+        guard ranked.count > 1 else { return ([top], matches) }
         let second = ranked[1]
-        if top.rankingScore - second.rankingScore >= clearLead { return [top] }
+        if top.rankingScore - second.rankingScore >= clearLead { return ([top], matches) }
         // An exact name is what was meant, ahead of names that only start the same way.
-        if top.strength == .exact, second.strength != .exact, !second.wasPickedForSubject { return [top] }
-        guard hasVerb || length >= 3 || learned else { return [] }
+        if top.strength == .exact, second.strength != .exact, !second.wasPickedForSubject { return ([top], matches) }
+        guard hasVerb || length >= 3 || learned else { return ([], []) }
+        // The close ones are the first few of the ranked list, so the matches start with them.
         let close = ranked.filter { top.rankingScore - $0.rankingScore < choiceWindow }
-        return Array(close.prefix(maximumChoices))
+        return (Array(close.prefix(maximumChoices)), matches)
     }
 }
 
@@ -192,8 +218,8 @@ public struct InstantActionEngine: Sendable {
             candidate.wasPickedForSubject = history.wasPicked(candidate.id, for: phrase.key)
             return candidate
         }
-        let choices = InstantActionRule.choices(for: phrase, candidates: candidates)
+        let (choices, matches) = InstantActionRule.evaluate(phrase, candidates: candidates)
         guard !choices.isEmpty else { return nil }
-        return InstantActionSuggestion(input: input, phrase: phrase, choices: choices)
+        return InstantActionSuggestion(input: input, phrase: phrase, choices: choices, matches: matches)
     }
 }

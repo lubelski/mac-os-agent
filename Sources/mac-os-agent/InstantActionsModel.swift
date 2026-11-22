@@ -231,14 +231,27 @@ final class InstantActions {
         if draft != self.draft { draftChanged(draft) }
         guard let suggestion, suggestion.input == draft else { return nil }
         let candidate = suggestion.choices[min(selection, suggestion.choices.count - 1)]
-        if learns {
-            if let store {
-                store.record(candidate.id, subject: suggestion.phrase.key, at: clock())
-            } else {
-                memoryHistory.record(candidate.id, subject: suggestion.phrase.key, at: clock())
-            }
-        }
+        learn(candidate, subject: suggestion.phrase.key)
         return candidate
+    }
+
+    /// Return on a row of the list under the text field: that match for this exact draft, or
+    /// nil when it is no longer one. Its use is learned as `take(for:)` learns it.
+    func take(_ candidate: InstantActionCandidate, for draft: String) -> InstantActionCandidate? {
+        if draft != self.draft { draftChanged(draft) }
+        guard let suggestion, suggestion.input == draft,
+              let match = suggestion.matches.first(where: { $0.id == candidate.id }) else { return nil }
+        learn(match, subject: suggestion.phrase.key)
+        return match
+    }
+
+    private func learn(_ candidate: InstantActionCandidate, subject: String) {
+        guard learns else { return }
+        if let store {
+            store.record(candidate.id, subject: subject, at: clock())
+        } else {
+            memoryHistory.record(candidate.id, subject: subject, at: clock())
+        }
     }
 
     /// Opens an app. A saved action is run by the session, which keeps its record in the thread.

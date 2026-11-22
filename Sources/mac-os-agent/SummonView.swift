@@ -17,6 +17,12 @@ struct SummonView: View {
     @State private var focusRequest = 0
     /// The reference time for the history's time labels, refreshed on every summon.
     @State private var now = Date()
+    /// Read here so the panel redraws when a switch changes in Settings. The session reads the
+    /// switches from its own preferences.
+    @AppStorage(Experiment.suggestionsInFieldAndFooter.key) private var suggestionsSwitch = false
+    @AppStorage(HarnessBehavior.recallEarlierMessages.key) private var recallSwitch = HarnessBehavior.recallEarlierMessages.defaultValue
+    @AppStorage(ModelSetting.key) private var modelID = OpenAIModel.defaultID
+    @AgentName private var agentName
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,12 +41,23 @@ struct SummonView: View {
                     .padding(.bottom, 10)
             }
             MessageQueueRows(session: session)
-            InstantActionRow(actions: session.instantActions)
-            CommandHint(
-                suggestions: session.commandSuggestions, selection: session.hintSelection,
-                incognito: session.isIncognito, choose: session.complete)
-            PanelDivider()
-            inputRow
+            if session.suggestionsInFooter {
+                // The suggestions are in the field and the footer, so nothing is added above it.
+                VStack(spacing: 0) {
+                    PanelDivider()
+                    inputRow
+                }
+                .overlay(alignment: .top) { overlaidList }
+                listBelow
+                footer
+            } else {
+                InstantActionRow(actions: session.instantActions)
+                CommandHint(
+                    suggestions: session.commandSuggestions, selection: session.hintSelection,
+                    incognito: session.isIncognito, choose: session.complete)
+                PanelDivider()
+                inputRow
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // A faint tint on the surface, with the label in the top bar, keeps the incognito window
@@ -56,6 +73,15 @@ struct SummonView: View {
             if !running { focusRequest += 1 }
         }
         .onExitCommand(perform: onDismiss)
+        // VoiceOver hears what Return will act on when it changes, since the gray text is drawn
+        // only and the mark is beside the field.
+        .onChange(of: session.returnTarget?.id) {
+            guard let target = session.returnTarget else { return }
+            NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [
+                .announcement: "Return \(target.target.actionLabel) \(target.title)",
+                .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+            ])
+        }
         // The inspector shows a call from the history in view. Clearing an incognito
         // conversation drops that history, so the inspector closes.
         .onChange(of: session.conversation) { inspector?.close() }
@@ -69,12 +95,9 @@ struct SummonView: View {
 
     private var inputRow: some View {
         HStack(alignment: .top, spacing: 10) {
-            // A prompt mark in the text color, in the scheme of the tool rows.
-            Text(verbatim: Mark.prompt)
-                .font(.system(size: 17, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(width: 18, height: InputField.rowHeight)
-                .accessibilityHidden(true)
+            // A prompt mark in the text color, in the scheme of the tool rows. With the
+            // suggestions experiment on, the icon of what Return will act on takes its place.
+            InputMark(target: session.returnTarget)
             InputField(
                 text: $session.draft,
                 placeholder: placeholder,
@@ -85,11 +108,16 @@ struct SummonView: View {
                 onCancel: onDismiss,
                 onMove: { offset in inspector?.move(by: offset) ?? false },
                 onSubmitToAgent: session.submitToAgent,
-                onChoose: { offset in session.moveHintSelection(by: offset) || session.instantActions.move(by: offset) },
+                onChoose: { offset in
+                    session.suggestionsInFooter
+                        ? session.chooseInFooter(by: offset)
+                        : session.moveHintSelection(by: offset) || session.instantActions.move(by: offset)
+                },
                 onComplete: session.completeHint,
                 onRecall: session.recallMessage(by:),
                 onInterrupt: session.interrupt,
-                onDoubleDelete: session.startNewEpisodeFromKeys)
+                onDoubleDelete: session.startNewEpisodeFromKeys,
+                inlineCompletion: session.inlineCompletion)
                 .overlay(alignment: .topLeading) {
                     if session.draft.isEmpty {
                         Text(placeholder)
@@ -113,6 +141,53 @@ struct SummonView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    // MARK: The suggestions experiment
+
+    private var footer: some View {
+        // The switches are read through the session, from its preferences. Reading them here
+        // too keeps the footer in step when one changes in Settings.
+        _ = (suggestionsSwitch, recallSwitch)
+        return VStack(spacing: 0) {
+            PanelDivider()
+            InputFooter(content: .make(
+                session.footerState, agentName: agentName, modelName: InputFooterContent.modelName(id: modelID),
+                recallsMessages: HarnessBehavior.recallEarlierMessages.isOn(session.preferences),
+                queuesWhileRunning: session.queuesWhileRunning))
+        }
+    }
+
+    private var suggestionList: some View {
+        SuggestionListView(
+            rows: session.suggestionRows, highlight: session.highlightedRowIndex, agentName: agentName,
+            incognito: session.isIncognito, activate: session.activateSuggestionRow)
+    }
+
+    /// The list between the field and the footer, in the room the window grew by. The room
+    /// stays until the window shrinks, so nothing above it moves in between.
+    @ViewBuilder private var listBelow: some View {
+        let growth = session.suggestionList.growth
+        if growth > 0 {
+            ZStack(alignment: .top) {
+                if !session.suggestionRows.isEmpty { suggestionList }
+            }
+            .frame(height: growth, alignment: .top)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .background(FooterFill())
+        }
+    }
+
+    /// The list drawn over the bottom of the conversation, just above the field, when the
+    /// window has no room to grow downward. The conversation does not move or reflow.
+    @ViewBuilder private var overlaidList: some View {
+        if session.suggestionList.growth == 0, !session.suggestionRows.isEmpty {
+            // Moved up by its own height, so its bottom meets the top of the field's divider.
+            suggestionList
+                .background(FooterFill(opaque: true))
+                .offset(y: -session.suggestionListHeight)
+        }
     }
 
     /// The incognito window says what it is for where the owner types, too.
@@ -218,10 +293,10 @@ struct CommandHint: View {
     }
 
     /// The indexes listed: the first few, moved along so the chosen one is always in view.
-    static func window(count: Int, selection: Int) -> [Int] {
-        guard count > visibleLimit else { return Array(0..<count) }
-        let start = max(0, min(selection - visibleLimit + 1, count - visibleLimit))
-        return Array(start..<(start + visibleLimit))
+    static func window(count: Int, selection: Int, limit: Int = visibleLimit) -> [Int] {
+        guard count > limit else { return Array(0..<count) }
+        let start = max(0, min(selection - limit + 1, count - limit))
+        return Array(start..<(start + limit))
     }
 
     private func accessibilityText(chosen: Int) -> String {

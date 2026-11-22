@@ -46,6 +46,9 @@ struct InputField: NSViewRepresentable {
     /// and neither a key repeat. Returns true when it used the key, to start a new episode as
     /// `/new` does. Otherwise the key goes to the text view as before. See `DoubleDelete`.
     var onDoubleDelete: () -> Bool = { false }
+    /// Gray text after the insertion point, from the suggestions-in-the-field experiment. It is
+    /// drawn only, never part of the text. See `InputTextView.inlineCompletion`.
+    var inlineCompletion: InlineCompletion? = nil
 
     static let font = NSFont.systemFont(ofSize: 15)
     static let maximumLines = 8
@@ -118,6 +121,10 @@ struct InputField: NSViewRepresentable {
         }
         if palette.accentOverride != nil {
             textView.insertionPointColor = palette.accentNSColor
+        }
+        textView.inlineCompletionColor = palette.tertiaryNSColor
+        if textView.inlineCompletion != inlineCompletion {
+            textView.inlineCompletion = inlineCompletion
         }
 
         if coordinator.focusRequest != focusRequest {
@@ -422,6 +429,91 @@ final class InputTextView: NSTextView {
         super.viewWillMove(toWindow: newWindow)
     }
 
+    /// Gray text drawn after the insertion point, such as "ome" and "Google Chrome" after
+    /// "chr". It is never in the text storage, so it cannot be selected, copied, sent,
+    /// recalled, or read back as the field's value. It shows only while the insertion point is
+    /// at the end of a single line and no input method is composing.
+    ///
+    /// A view of its own draws it, over the text view. Overriding the text view's own drawing
+    /// would put it back on TextKit 1, which changes how the field measures its lines.
+    var inlineCompletion: InlineCompletion? {
+        didSet { if inlineCompletion != oldValue { updateInlineCompletion() } }
+    }
+    var inlineCompletionColor: NSColor = .tertiaryLabelColor {
+        didSet { if inlineCompletionColor != oldValue { updateInlineCompletion() } }
+    }
+    private lazy var inlineCompletionView: InlineCompletionView = {
+        let view = InlineCompletionView(frame: bounds)
+        view.autoresizingMask = [.width, .height]
+        addSubview(view)
+        return view
+    }()
+
+    /// Whether the gray text can show for this text and selection.
+    static func showsInlineCompletion(text: String, selection: NSRange, composing: Bool) -> Bool {
+        !composing && !text.isEmpty && selection.length == 0 && selection.location == (text as NSString).length
+            && !text.contains(where: \.isNewline)
+    }
+
+    var isShowingInlineCompletion: Bool {
+        guard let inlineCompletion, !inlineCompletion.isEmpty else { return false }
+        return Self.showsInlineCompletion(text: string, selection: selectedRange(), composing: hasMarkedText())
+    }
+
+    /// Where the gray text starts, in this view, while it shows.
+    var inlineCompletionOrigin: CGPoint? {
+        guard isShowingInlineCompletion else { return nil }
+        return CGPoint(x: insertionPointX(), y: textContainerOrigin.y)
+    }
+
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        updateInlineCompletion()
+    }
+
+    override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+        updateInlineCompletion()
+    }
+
+    override func unmarkText() {
+        super.unmarkText()
+        updateInlineCompletion()
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        updateInlineCompletion()
+    }
+
+    private func updateInlineCompletion() {
+        guard inlineCompletion != nil || subviews.contains(where: { $0 is InlineCompletionView }) else { return }
+        let view = inlineCompletionView
+        view.frame = bounds
+        let origin = inlineCompletionOrigin
+        let content = origin == nil ? nil : inlineCompletion
+        guard view.completion != content || view.origin != origin || view.color != inlineCompletionColor else { return }
+        view.completion = content
+        view.origin = origin ?? .zero
+        view.font = font ?? InputField.font
+        view.color = inlineCompletionColor
+        view.needsDisplay = true
+    }
+
+    /// Where the insertion point is drawn at the end of the text, in this view. The text
+    /// system says, once the view is in a window. Before that, the text is measured.
+    func insertionPointX() -> CGFloat {
+        let end = NSRange(location: (string as NSString).length, length: 0)
+        if let window {
+            let onScreen = firstRect(forCharacterRange: end, actualRange: nil)
+            if onScreen != .zero {
+                return convert(window.convertFromScreen(onScreen), from: nil).minX
+            }
+        }
+        let width = (string as NSString).size(withAttributes: [.font: font ?? InputField.font]).width
+        return textContainerOrigin.x + (textContainer?.lineFragmentPadding ?? 0) + ceil(width)
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if isCommandReturn(event), window?.firstResponder === self, let onCommandReturn {
             onCommandReturn()
@@ -474,5 +566,41 @@ final class InputTextView: NSTextView {
         currentKeyModifiers = event.modifierFlags
         defer { currentKeyModifiers = [] }
         super.keyDown(with: event)
+    }
+}
+
+/// Draws the field's gray completion text: the rest of the word, a gap, then the whole name,
+/// cut off with an ellipsis at the field's edge. It takes no clicks.
+final class InlineCompletionView: NSView {
+    var completion: InlineCompletion?
+    var origin: CGPoint = .zero
+    var font: NSFont = InputField.font
+    var color: NSColor = .tertiaryLabelColor
+    /// The room between the rest of the word and the whole name.
+    static let gap: CGFloat = 12
+
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func isAccessibilityElement() -> Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let completion else { return }
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+        var x = origin.x
+        let lineHeight = InputField.lineHeight
+        if !completion.rest.isEmpty {
+            let rest = NSAttributedString(string: completion.rest, attributes: attributes)
+            rest.draw(with: NSRect(x: x, y: origin.y, width: max(0, bounds.maxX - x), height: lineHeight),
+                      options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+            x += ceil(rest.size().width)
+        }
+        if let name = completion.name {
+            x += Self.gap
+            let width = bounds.maxX - x
+            guard width > 20 else { return }
+            NSAttributedString(string: name, attributes: attributes).draw(
+                with: NSRect(x: x, y: origin.y, width: width, height: lineHeight),
+                options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        }
     }
 }
