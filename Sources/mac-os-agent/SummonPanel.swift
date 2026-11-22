@@ -105,6 +105,11 @@ final class SummonPanel: NSPanel {
         dismiss()
     }
 
+    /// Command-W, from the Window menu. The panel has no close button, so AppKit would beep.
+    override func performClose(_ sender: Any?) {
+        dismiss()
+    }
+
     /// The window server keeps the shadow it traced at the old size until told otherwise.
     override func setFrame(_ frameRect: NSRect, display flag: Bool) {
         let resized = frameRect.size != frame.size

@@ -8,7 +8,7 @@ import SwiftUI
 /// real thread, the Keychain, or the panel's saved frame.
 @MainActor
 enum PanelPreview {
-    static let names = ["empty", "running", "confirmation", "finished", "history"]
+    static let names = ["empty", "running", "confirmation", "finished", "history", "draft", "multiline-draft"]
 
     static func session(named name: String) -> AgentSession? {
         switch name {
@@ -33,6 +33,14 @@ enum PanelPreview {
                 previewEntries: thread.entries,
                 pendingConfirmation: ConfirmationRequest(callID: waiting, command: command, reason: "scripts an app to delete or quit"),
                 isRunning: true)
+        case "draft", "multiline-draft":
+            var thread = StandInThread(now: Date())
+            thread.earlierExchanges()
+            let session = AgentSession(previewEntries: thread.entries)
+            session.draft = name == "draft"
+                ? "find the screenshot I took this morning"
+                : "make a folder on the desktop called Receipts\nmove every PDF from Downloads with “receipt” in its name into it\nthen open the folder in Finder\nand tell me how many you moved"
+            return session
         case "finished":
             var thread = StandInThread(now: Date())
             thread.user("change the wallpaper to a sunset", minutesAgo: 2)
