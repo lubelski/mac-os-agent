@@ -6,6 +6,11 @@ When a decision changes, move it between the lists here in the same pull request
 
 ## Decided
 
+- The agent's code name is Iris
+  - The agent is called Iris where it has an identity: the default editable instructions tell it that it is Iris, the agent in the mac-os-agent app. A few Settings descriptions and tooltips say Iris where running text would otherwise say "the agent".
+  - Nothing else is renamed. The app, the repo, the bundle identifier, the menu bar item and its menu, file and folder names, the Application Support folder, the Keychain service, and the sign-in's client name stay `mac-os-agent`. The text field's placeholder is unchanged, and there is no logo, avatar, or greeting.
+  - The fixed parts of the instructions, in the main panel and the incognito window, did not name the agent and still do not.
+  - An owner who saved instructions of their own keeps their text. Restore Default, or an edit, picks up the name.
 - One thread
   - Every summon continues the same thread. There are no separate chats to pick from.
   - The thread is a single append-only chain that goes back in time, divided into episodes. An episode can be one exchange or many.
