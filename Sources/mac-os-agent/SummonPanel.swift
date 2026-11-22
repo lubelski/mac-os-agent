@@ -145,6 +145,8 @@ final class SummonPanel: NSPanel {
         isReleasedWhenClosed = false
         contentMinSize = Self.minimumSize
 
+        session.hidePanel = { [weak self] in self?.dismiss() }
+        session.showPanel = { [weak self] in self?.summon() }
         placement.choose = { [weak self] preset in self?.choose(preset) }
         placement.close = { [weak self] in self?.dismiss() }
         inspectorWindow = ToolInspectorWindow(inspector: inspector, session: session, defaults: defaults)
@@ -313,8 +315,10 @@ final class SummonPanel: NSPanel {
         }
     }
 
-    /// Escape closes the inspector first when it is open, and hides the panel on the next press.
+    /// Escape dismisses an instant action suggestion first when one is showing, then closes
+    /// the inspector when it is open, and hides the panel on the next press.
     func escape() {
+        if session.instantActions.dismiss() { return }
         if inspector.isOpen {
             inspector.close()
         } else {

@@ -28,7 +28,14 @@ final class AgentSession {
     private(set) var signInState: SignInState = .signedOut
     /// Changes every time the panel is shown, so the text field takes focus again.
     private(set) var focusRequest = 0
-    var draft = ""
+    var draft = "" {
+        didSet { instantActions.draftChanged(draft) }
+    }
+    /// What Return does for the draft without the model, such as opening an app.
+    @ObservationIgnored var instantActions = InstantActions()
+    /// Set by the panel: hides it the normal way, and shows it again.
+    @ObservationIgnored var hidePanel: (() -> Void)?
+    @ObservationIgnored var showPanel: (() -> Void)?
 
     /// True while an incognito episode is on. Nothing from it is written anywhere.
     var isIncognito: Bool { incognitoTranscript != nil }
@@ -125,6 +132,7 @@ final class AgentSession {
 
     func panelDidAppear() {
         focusRequest += 1
+        instantActions.refresh()
         refreshEpisode()
     }
 
@@ -221,7 +229,40 @@ final class AgentSession {
         case incognito
     }
 
+    /// Return. Takes the instant action the row offers when there is one, and otherwise sends
+    /// the text to the agent.
     func submit() {
+        guard !isRunning else { return }
+        if let candidate = instantActions.take(for: draft, learns: !isIncognito) {
+            perform(candidate)
+            return
+        }
+        submitToAgent()
+    }
+
+    /// An instant action, such as opening an app. It is never sent to the model and never
+    /// written to the thread, so the episode's request, and its prompt cache, stay as they were.
+    /// The panel hides the normal way. If the action fails, the panel comes back with the text
+    /// and a line saying why, which is shown only and never kept.
+    private func perform(_ candidate: InstantActionCandidate) {
+        let text = draft
+        draft = ""
+        hidePanel?()
+        Task {
+            do {
+                try await instantActions.perform(candidate)
+            } catch {
+                let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                problems.record("Instant action", "Could not open \(candidate.title): \(message)")
+                if draft.isEmpty { draft = text }
+                update(isIncognito ? .incognito : .kept) { $0.appendNotice("Could not open \(candidate.title). \(message)") }
+                showPanel?()
+            }
+        }
+    }
+
+    /// Command-Return, and Return when nothing is offered: sends the text to the agent.
+    func submitToAgent() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isRunning else { return }
         // A known command is the app's to handle. It is never sent or written down.

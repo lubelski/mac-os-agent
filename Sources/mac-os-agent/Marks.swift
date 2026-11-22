@@ -23,6 +23,8 @@ enum Mark {
     static let prompt = "›"
     static let up = "↑"
     static let down = "↓"
+    static let returnKey = "↵"
+    static let commandReturn = "⌘↵"
 
     /// The font of tool rows and their marks.
     static let rowFont = Font.system(size: 11, design: .monospaced)

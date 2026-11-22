@@ -7,6 +7,7 @@
 #                                                           shows the glass and its edges
 #   scripts/capture-panel-previews.sh --states "a b" [out-dir]  only the states named
 #   scripts/capture-panel-previews.sh --preset slideOverRight [out-dir]  in that layout preset
+#   scripts/capture-panel-previews.sh --states instant [out-dir]  the instant action row
 #   scripts/capture-panel-previews.sh --states inspector [out-dir]  the tool call inspector beside
 #                                                           the panel, one state per kind of output
 #
@@ -37,6 +38,8 @@ while [[ "${1:-}" == --* ]]; do
     --states)
       if [[ "$2" == "inspector" ]]; then
         STATES=(inspector-json inspector-table inspector-diff inspector-long inspector-running inspector-fields)
+      elif [[ "$2" == "instant" ]]; then
+        STATES=(instant-one instant-several)
       else
         read -r -a STATES <<<"$2"
       fi

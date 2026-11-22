@@ -3,8 +3,8 @@ import MacOSAgentCore
 import SwiftUI
 
 /// The panel's content on Liquid Glass: the bar along the top and its divider, the incognito
-/// indicator while one is on, the thread's history, the go-ahead card when one is pending, the command hint,
-/// and the text field at the bottom.
+/// indicator while one is on, the thread's history, the go-ahead card when one is pending, the
+/// instant action row or the command hint, and the text field at the bottom.
 struct SummonView: View {
     @Bindable var session: AgentSession
     var onDismiss: () -> Void = {}
@@ -27,6 +27,7 @@ struct SummonView: View {
                     .padding(.horizontal, 12)
                     .padding(.bottom, 10)
             }
+            InstantActionRow(actions: session.instantActions)
             CommandHint(suggestions: SlashCommand.suggestions(for: session.draft))
             PanelDivider()
             inputRow
@@ -64,7 +65,9 @@ struct SummonView: View {
                 focusRequest: focusRequest,
                 onSubmit: session.submit,
                 onCancel: onDismiss,
-                onMove: { offset in inspector?.move(by: offset) ?? false })
+                onMove: { offset in inspector?.move(by: offset) ?? false },
+                onSubmitToAgent: session.submitToAgent,
+                onChoose: { offset in session.instantActions.move(by: offset) })
                 .overlay(alignment: .topLeading) {
                     if session.draft.isEmpty {
                         Text(placeholder)
