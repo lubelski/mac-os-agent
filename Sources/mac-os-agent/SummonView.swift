@@ -166,30 +166,34 @@ struct CommandHint: View {
             let window = Self.window(count: suggestions.count, selection: chosen)
             let several = suggestions.count > 1
             VStack(alignment: .leading, spacing: 2) {
-                ForEach(window, id: \.self) { index in
-                    let item = suggestions[index]
-                    let isChosen = several && index == chosen
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(verbatim: item.name)
-                            .font(.system(size: 12, design: .monospaced))
-                            // The weight stays the same whether chosen or not. Only the level and
-                            // the capsule change.
-                            .foregroundStyle(isChosen ? .primary : .secondary)
-                            .lineLimit(1)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 1)
-                            .background {
-                                if isChosen { Capsule().fill(palette.textTint(0.08)) }
-                            }
-                            .frame(minWidth: 94, alignment: .leading)
-                        Text(verbatim: item.summary(incognito: incognito))
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+                // A grid keeps the descriptions in one column, however long the names are.
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 2) {
+                    ForEach(window, id: \.self) { index in
+                        let item = suggestions[index]
+                        let isChosen = several && index == chosen
+                        GridRow {
+                            Text(verbatim: item.name)
+                                .font(.system(size: 12, design: .monospaced))
+                                // The weight stays the same whether chosen or not. Only the level
+                                // and the capsule change.
+                                .foregroundStyle(isChosen ? .primary : .secondary)
+                                .lineLimit(1)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 1)
+                                .background {
+                                    if isChosen { Capsule().fill(palette.textTint(0.08)) }
+                                }
+                                .frame(minWidth: 94, alignment: .leading)
+                            Text(verbatim: item.summary(incognito: incognito))
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .contentShape(.rect)
+                        .onTapGesture { choose(item) }
                     }
-                    .contentShape(.rect)
-                    .onTapGesture { choose(item) }
                 }
                 if suggestions.count > window.count {
                     Text(verbatim: "\(suggestions.count - window.count) more   \(Mark.up)\(Mark.down) chooses   tab completes")
