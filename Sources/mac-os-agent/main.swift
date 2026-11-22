@@ -10,11 +10,16 @@ MainActor.assumeIsolated {
     {
         // Shows the panel with stand-in data and nothing else: no menu bar item, no hotkey,
         // no thread, no sign-in. Used for pull request screenshots.
+        var dark = true
         if let index = arguments.firstIndex(of: "--appearance"), index + 1 < arguments.count {
-            app.appearance = NSAppearance(named: arguments[index + 1] == "light" ? .aqua : .darkAqua)
+            dark = arguments[index + 1] != "light"
+            app.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         }
-        let panel = SummonPanel(session: session)
+        let panel = SummonPanel(session: session, remembersFrame: false)
         panel.summon()
+        if arguments.contains("--backdrop") {
+            PanelPreview.showBackdrop(behind: panel, dark: dark)
+        }
         app.run()
         return
     }

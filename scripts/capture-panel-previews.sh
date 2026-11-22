@@ -1,11 +1,25 @@
 #!/usr/bin/env bash
-# Shows the panel in each stand-in state and captures the window into docs/screenshots.
+# Shows the panel in each stand-in state and captures it into docs/screenshots.
 # Needs the bundle from scripts/bundle.sh, and Screen Recording permission for the terminal.
+#
+#   scripts/capture-panel-previews.sh [out-dir]             window captures, no backdrop
+#   scripts/capture-panel-previews.sh --backdrop [out-dir]  the panel over a busy page, which
+#                                                           shows the glass and its edges
+#
+# Preview runs never register the hotkey, open the thread, read the Keychain, or touch the
+# panel's saved frame.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+BACKDROP=0
+if [[ "${1:-}" == "--backdrop" ]]; then
+  BACKDROP=1
+  shift
+fi
+
 BIN="build/mac-os-agent.app/Contents/MacOS/mac-os-agent"
 OUT="${1:-docs/screenshots}"
+STATES=(empty history running confirmation finished)
 mkdir -p "$OUT"
 
 # A small helper that prints the panel's window number for a process id.
@@ -22,18 +36,36 @@ SWIFT
 swiftc -O -o "$HELPER" "$HELPER.swift"
 
 for appearance in dark light; do
-  for state in empty running confirmation finished; do
-    "$BIN" --preview-panel "$state" --appearance "$appearance" &
+  for state in "${STATES[@]}"; do
+    LOG="$(mktemp)"
+    if [[ $BACKDROP == 1 ]]; then
+      "$BIN" --preview-panel "$state" --appearance "$appearance" --backdrop >"$LOG" &
+    else
+      "$BIN" --preview-panel "$state" --appearance "$appearance" >"$LOG" &
+    fi
     PID=$!
     sleep 1.5
-    ID="$("$HELPER" "$PID")"
-    if [[ -n "$ID" ]]; then
-      screencapture -x -o -l "$ID" "$OUT/panel-$state-$appearance.png"
-      echo "Captured $OUT/panel-$state-$appearance.png"
+    if [[ $BACKDROP == 1 ]]; then
+      RECT="$(awk '/^capture-rect / { print $2 }' "$LOG")"
+      FILE="$OUT/panel-$state-$appearance-backdrop.png"
+      if [[ -n "$RECT" ]]; then
+        screencapture -x -R "$RECT" "$FILE"
+        echo "Captured $FILE"
+      else
+        echo "warning: no capture rect for $state ($appearance)" >&2
+      fi
     else
-      echo "warning: no panel window for $state ($appearance)" >&2
+      ID="$("$HELPER" "$PID")"
+      FILE="$OUT/panel-$state-$appearance.png"
+      if [[ -n "$ID" ]]; then
+        screencapture -x -o -l "$ID" "$FILE"
+        echo "Captured $FILE"
+      else
+        echo "warning: no panel window for $state ($appearance)" >&2
+      fi
     fi
     kill "$PID"
     wait "$PID" 2>/dev/null || true
+    rm -f "$LOG"
   done
 done
