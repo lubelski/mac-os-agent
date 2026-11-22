@@ -25,3 +25,7 @@ Settings > Appearance picks the panel's theme. Everything the agent keeps (the t
 - Run only the bundle, not `swift run`. The bundle has the `Info.plist` that keeps the app out of the Dock.
 - [ROADMAP.md](ROADMAP.md) records what has been decided, what is proposed, and what is open.
 - [AGENTS.md](AGENTS.md) has the rules for changing this repo, including how to preview and capture the interface.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
