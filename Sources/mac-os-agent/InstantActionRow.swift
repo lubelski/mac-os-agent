@@ -40,13 +40,14 @@ struct InstantActionRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
-                        .layoutPriority(1)
                 }
+                // The keys keep their room. The reading of the steps gives way first.
                 Text(verbatim: hint(several: several, label: chosen.target.actionLabel))
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .layoutPriority(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, several ? 37 : 44)
