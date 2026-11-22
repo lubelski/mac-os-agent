@@ -112,7 +112,7 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         let problems = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0.problem) })
         #expect(problems["broken"] == "The file is not valid JSON.")
         #expect(problems["later"] == "The file is format 2, and this version of the app reads format 1.")
-        #expect(problems["no-steps"] == "The action has no steps.")
+        #expect(problems["no-steps"] == "The quick action has no steps.")
         #expect(problems["Bad Name"]??.contains("lowercase") == true)
         #expect(problems["start-screensaver"] == .some(nil))
         #expect(library.availableActions() == [screensaver])
@@ -127,9 +127,9 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         changed.phrases = ["saver"]
         let lock = SavedAction(id: "lock", name: "Lock", description: "Locks.", steps: [step("a", "x")])
         #expect(SavedActionLibrary.changeNotice(from: [], to: [entry(screensaver)])
-            == "The action Start Screensaver is ready to use. Type its name and press Return.")
+            == "The quick action Start Screensaver is ready to use. Type its name and press Return.")
         #expect(SavedActionLibrary.changeNotice(from: [entry(screensaver)], to: [entry(changed), entry(lock)])
-            == "The action Lock is ready to use. Type its name and press Return. The action Start Screensaver is updated.")
+            == "The quick action Lock is ready to use. Type its name and press Return. The quick action Start Screensaver is updated.")
         #expect(SavedActionLibrary.changeNotice(from: [entry(screensaver)], to: [entry(screensaver)]) == nil)
         var off = lock
         off.isEnabled = false
@@ -268,7 +268,7 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         #expect(users.count == 3)
         let note = try #require(users[1]["content"]?.arrayValue?.first?["text"]?.stringValue)
         #expect(note.contains("<action_run>"))
-        #expect(note.contains(#"ran their saved action "One" (one) from the instant row"#))
+        #expect(note.contains(#"ran their quick action "One" (one) from the instant row"#))
         #expect(note.contains(#"Step 1 of 1: first {"count":null,"value":"a"}"#))
         #expect(note.contains("Result: Opened it."))
     }
@@ -305,6 +305,47 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         #expect(older.item.value.text == "two")
     }
 
+    /// Lines written before saved actions became quick actions: a run whose note says "saved
+    /// action", and the agent saving one with the tool's old name. They read as they did, and the
+    /// model is sent exactly what it was sent then.
+    @Test func linesFromBeforeTheRenameStillRead() async throws {
+        let file = temporaryThreadFile()
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let note = #"<action_run>\nThe person typed \"screensaver\" and ran their saved action \"Start Screensaver\" (start-screensaver) from the instant row. The app ran its steps itself, without you. Choosing it from the list was their go-ahead, so nothing asked.\nStep 1 of 1: open_application {\"bundle_identifier_or_path\":\"\/System\/Library\/CoreServices\/ScreenSaverEngine.app\"}\nResult: Opened ScreenSaverEngine.\nIt finished.\nNo reply was asked for. This is a record, so you know it happened if they refer to it.\n<\/action_run>"#
+        let lines = [
+            #"{"date":"2026-11-21T10:00:00Z","id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","item":{"type":"tool_call","value":{"arguments":"{\"operation\":\"save\",\"action_id\":null,\"file\":\"{\\\"format\\\": 1, \\\"name\\\": \\\"Start Screensaver\\\"}\"}","callID":"call-1","model":"gpt-test","name":"change_action","provider":"openai"}}}"#,
+            #"{"date":"2026-11-21T10:00:01Z","id":"6F9619FF-8B86-D011-B42D-00C04FC96500","item":{"type":"tool_result","value":{"callID":"call-1","output":"Saved Start Screensaver as start-screensaver."}}}"#,
+            #"{"date":"2026-11-21T10:01:00Z","id":"6F9619FF-8B86-D011-B42D-00C04FC96501","item":{"type":"user_message","value":{"action":{"id":"start-screensaver","message":""# + note + #"","name":"Start Screensaver","stepCount":1,"steps":[{"arguments":"{\"bundle_identifier_or_path\":\"\/System\/Library\/CoreServices\/ScreenSaverEngine.app\"}","callID":"6F9619FF-8B86-D011-B42D-00C04FC96501-step-1","output":"Opened ScreenSaverEngine.","tool":"open_application"}]},"text":"screensaver"}}}"#,
+        ]
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data((lines.joined(separator: "\n") + "\n").utf8).write(to: file)
+
+        let thread = try ThreadStore(fileURL: file)
+        #expect(await thread.unreadableLineCount == 0)
+        let entries = await thread.entries
+        #expect(entries.count == 3)
+        guard case .toolCall(let call) = entries[0].item else { Issue.record("no call"); return }
+        #expect(call.name == "change_action")
+        #expect(ToolCallSummaries.builtIn.summary(of: call) == "Save the quick action Start Screensaver",
+                "a call under the old name reads as the renamed tool's summary")
+        guard case .userMessage("screensaver", nil, let record?) = entries[2].item else { Issue.record("no record"); return }
+        #expect(record.failedStep == nil)
+        let sent = ThreadItem.modelText(text: "screensaver", skill: nil, action: record)
+        #expect(sent.hasPrefix("<action_run>\nThe person typed \"screensaver\" and ran their saved action"), "the model is sent the note as it was stored")
+        #expect(sent.hasSuffix("</action_run>"))
+
+        let transcript = Transcript(entries: entries)
+        let kinds = transcript.rows.map(\.kind)
+        #expect(kinds.contains { if case .tool("Save the quick action Start Screensaver", .finished, _) = $0 { true } else { false } })
+        #expect(kinds.contains { if case .user("screensaver", _, _) = $0 { true } else { false } })
+        #expect(kinds.contains { if case .tool("Open ScreenSaverEngine", .finished, "Opened ScreenSaverEngine.") = $0 { true } else { false } })
+
+        // The request carries the old call and the old note unchanged, so the cached prefix holds.
+        let input = OpenAIResponses.input(for: ModelRequest(instructions: "", entries: entries, tools: []), model: "gpt-test")
+        #expect(input.contains { $0["type"]?.stringValue == "function_call" && $0["name"]?.stringValue == "change_action" })
+        #expect(input.contains { $0["content"]?.arrayValue?.first?["text"]?.stringValue?.hasSuffix(sent) == true })
+    }
+
     @Test func aRunAfterTheTimeoutStartsANewEpisodeFirst() async throws {
         let thread = InMemoryThreadStore()
         let provider = FakeProvider(replies: [[.item(assistant("Hi."))]])
@@ -339,7 +380,7 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
             == ["Step 1 (first): arguments.count should be integer or null, not a number."])
         #expect(problems([.init(tool: "first", arguments: ["value": "a", "count": nil, "extra": true])])
             == ["Step 1 (first): arguments has extra, which the tool does not take."])
-        #expect(problems([.init(tool: "change_action", arguments: [:])]) == ["Step 1 (change_action): an action cannot call change_action."])
+        #expect(problems([.init(tool: "change_quick_action", arguments: [:])]) == ["Step 1 (change_quick_action): a quick action cannot call change_quick_action."])
     }
 
     @Test func aShellStepThatWouldAskIsNotedNotRefused() {
@@ -362,11 +403,11 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
 
         let bad = #"{"format": 1, "name": "Bad", "description": "Bad.", "steps": [{"tool": "nope", "arguments": {}}]}"#
         let refused = await tool.run(arguments: ["operation": "save", "action_id": nil, "file": .string(bad)], context: context)
-        #expect(refused == "Error: the action was not saved.\n- Step 1 (nope): there is no tool named nope.\nFix those and save again.")
+        #expect(refused == "Error: the quick action was not saved.\n- Step 1 (nope): there is no tool named nope.\nFix those and save again.")
         #expect(library.entries().isEmpty, "nothing malformed reaches the folder")
 
         let malformed = await tool.run(arguments: ["operation": "save", "action_id": nil, "file": "{"], context: context)
-        #expect(malformed == "Error: the action was not saved. The file is not valid JSON.")
+        #expect(malformed == "Error: the quick action was not saved. The file is not valid JSON.")
 
         let good = #"""
             {"format": 1, "name": "Clean Desktop", "description": "Removes old.txt.", "phrases": ["tidy"],
@@ -375,11 +416,11 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         let saved = await tool.run(arguments: ["operation": "save", "action_id": nil, "file": .string(good)], context: context)
         #expect(saved == """
             Saved Clean Desktop as clean-desktop. Typing "Clean Desktop" in the panel offers it, and Return runs it.
-            Step 1 deletes files. It runs without asking when the owner runs the action, since choosing it is the go-ahead.
+            Step 1 deletes files. It runs without asking when the owner runs the quick action, since choosing it is the go-ahead.
             """)
         #expect(library.entry(id: "clean-desktop")?.action?.phrases == ["tidy"])
         let again = await tool.run(arguments: ["operation": "save", "action_id": nil, "file": .string(good)], context: context)
-        #expect(again.hasPrefix("Error: an action with the id clean-desktop already exists."))
+        #expect(again.hasPrefix("Error: a quick action with the id clean-desktop already exists."))
 
         let declined = await tool.run(arguments: ["operation": "delete", "action_id": "clean-desktop", "file": nil], context: context)
         #expect(declined == "The owner declined. Clean Desktop is still there.")
@@ -398,7 +439,7 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         let context = ToolRunContext(callID: "c", confirm: { _ in false })
         let list = await read.run(arguments: ["action_id": nil], context: context)
         #expect(list.contains("- start-screensaver: Start Screensaver, on, Starts the screen saver. Also typed as: screensaver, screen saver."))
-        #expect(list.contains("An action file is JSON with \"format\": 1"))
+        #expect(list.contains("A quick action file is JSON with \"format\": 1"))
         let one = await read.run(arguments: ["action_id": "start-screensaver"], context: context)
         #expect(one.hasSuffix(screensaver.fileText))
     }
@@ -416,9 +457,72 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         print("action tools add \(characters) characters to each request")
         #expect(characters < 1200)
         let text = AgentInstructions.fixed(skills: [], skillsFolder: URL(filePath: "/tmp/skills"))
-        #expect(text.contains("A saved action is a fixed tool call"))
+        #expect(text.contains("A quick action is a fixed tool call"))
         #expect(text.contains("\"make that instant\""))
         #expect(text.contains("Use a skill instead when the task needs judgment each time."))
         #expect(!AgentInstructions.incognitoFixed.contains("action"), "the incognito window has no actions")
+    }
+}
+
+/// The quick actions folder was `actions/` before. It is renamed once at launch, and only when
+/// `quick-actions/` is not there yet. Each test uses a temporary data folder.
+@Suite struct QuickActionsFolderMoveTests {
+    private func dataFolder() throws -> URL {
+        let folder = temporaryFolder()
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
+    }
+
+    private func write(_ text: String, to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(text.utf8).write(to: url)
+    }
+
+    private func read(_ url: URL) -> String? { try? String(contentsOf: url, encoding: .utf8) }
+
+    @Test func theFolderIsCalledQuickActions() {
+        #expect(AgentPaths.actionsFolder.lastPathComponent == "quick-actions")
+    }
+
+    @Test func theOldFolderIsRenamedOnce() throws {
+        let data = try dataFolder()
+        defer { try? FileManager.default.removeItem(at: data) }
+        try write("{}", to: data.appending(path: "actions/start-screensaver.json"))
+
+        #expect(SavedActionLibrary.moveFolderFromOldName(in: data) == .moved)
+        #expect(!FileManager.default.fileExists(atPath: data.appending(path: "actions").path(percentEncoded: false)))
+        #expect(read(data.appending(path: "quick-actions/start-screensaver.json")) == "{}")
+        #expect(SavedActionLibrary.moveFolderFromOldName(in: data) == .nothingToMove, "the next launch has nothing to do")
+        #expect(SavedActionLibrary.moveFolderFromOldName(in: data).problem == nil)
+    }
+
+    @Test func withNeitherFolderNothingHappens() throws {
+        let data = try dataFolder()
+        defer { try? FileManager.default.removeItem(at: data) }
+        #expect(SavedActionLibrary.moveFolderFromOldName(in: data) == .nothingToMove)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: data.path(percentEncoded: false)).isEmpty)
+    }
+
+    @Test func withBothFoldersNeitherIsTouchedAndTheNewOneIsUsed() throws {
+        let data = try dataFolder()
+        defer { try? FileManager.default.removeItem(at: data) }
+        try write("old", to: data.appending(path: "actions/lock.json"))
+        try write("new", to: data.appending(path: "quick-actions/lock.json"))
+
+        let move = SavedActionLibrary.moveFolderFromOldName(in: data)
+        #expect(move == .bothExist)
+        #expect(read(data.appending(path: "actions/lock.json")) == "old")
+        #expect(read(data.appending(path: "quick-actions/lock.json")) == "new")
+        let problem = try #require(move.problem)
+        #expect(problem == "The data folder has both actions/ and quick-actions/. The app uses quick-actions/ and leaves actions/ as it is.")
+        #expect(!problem.contains("lock"), "it names the folders, never what is in them")
+    }
+
+    @Test func aFileNamedActionsIsNotMoved() throws {
+        let data = try dataFolder()
+        defer { try? FileManager.default.removeItem(at: data) }
+        try write("not a folder", to: data.appending(path: "actions"))
+        #expect(SavedActionLibrary.moveFolderFromOldName(in: data) == .nothingToMove)
+        #expect(read(data.appending(path: "actions")) == "not a folder")
     }
 }

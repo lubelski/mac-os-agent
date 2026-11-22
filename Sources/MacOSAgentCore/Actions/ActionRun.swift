@@ -77,7 +77,7 @@ extension ThreadItem {
         ) -> String {
             var lines = [
                 "<action_run>",
-                "The person typed \"\(typed)\" and ran their saved action \"\(action.name)\" (\(action.id)) from the instant row. "
+                "The person typed \"\(typed)\" and ran their quick action \"\(action.name)\" (\(action.id)) from the instant row. "
                     + "The app ran its steps itself, without you. Choosing it from the list was their go-ahead, so nothing asked.",
             ]
             for (index, step) in steps.enumerated() {

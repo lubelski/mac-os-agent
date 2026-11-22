@@ -44,6 +44,13 @@ public struct ToolCallSummaries: Sendable {
     /// arguments, so nothing here touches the thread, Reminders, Calendar, or the system.
     public static let builtIn = ToolRegistry(builtIn: BuiltInTools.make()).summaries
 
+    /// Built-in tools that were renamed, by their old name. A call in the thread made under an
+    /// old name still reads as the tool's summary. The model is sent it as it was made.
+    public static let formerNames: [String: String] = [
+        "read_actions": ReadActionsTool.name,
+        "change_action": ChangeActionTool.name,
+    ]
+
     /// The summary of a stored call.
     public func summary(of call: ThreadItem.ToolCall) -> String {
         summary(name: call.name, arguments: call.arguments)
@@ -51,7 +58,7 @@ public struct ToolCallSummaries: Sendable {
 
     /// The summary of a call to the tool named `name` with these arguments, as the model wrote them.
     public func summary(name: String, arguments: String) -> String {
-        guard let tool = tools[name], let parsed = JSONValue.parse(arguments), case .object = parsed else { return name }
+        guard let tool = tools[name] ?? Self.formerNames[name].flatMap({ tools[$0] }), let parsed = JSONValue.parse(arguments), case .object = parsed else { return name }
         // The same text the live row shows, so a shell command keeps its lines for Copy Command.
         let text = tool.summary(arguments: parsed)
         return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? name : text

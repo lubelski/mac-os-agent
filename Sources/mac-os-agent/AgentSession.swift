@@ -436,7 +436,7 @@ final class AgentSession {
         guard let entry = instantActions.actionLibrary?.entry(id: id), let action = entry.action, entry.isAvailable else {
             instantActions.reloadActions()
             transcript.appendError("\(title) cannot be run. " + (instantActions.actionLibrary?.entry(id: id)?.problem
-                ?? "It was turned off or removed from the actions folder."))
+                ?? "It was turned off or removed from the quick actions folder."))
             return
         }
         let startsNew = startsNewEpisode
@@ -460,7 +460,7 @@ final class AgentSession {
                     onEvent: { event in await self.handle(event, in: conversation) })
                 if case .userMessage(_, _, let record?) = entry.item, let failed = record.failedStep {
                     let output = record.steps[failed].output
-                    problems.record("Action", "\(action.name) stopped at step \(failed + 1): \(output.prefix(200))")
+                    problems.record("Quick action", "\(action.name) stopped at step \(failed + 1): \(output.prefix(200))")
                     if draft.isEmpty { draft = text }
                     showPanel?()
                 }

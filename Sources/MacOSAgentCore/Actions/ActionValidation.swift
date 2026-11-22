@@ -17,7 +17,7 @@ public enum ActionValidation {
         for (index, step) in action.steps.enumerated() {
             let label = "Step \(index + 1) (\(step.tool))"
             if excludedTools.contains(step.tool) {
-                problems.append("\(label): an action cannot call \(step.tool).")
+                problems.append("\(label): a quick action cannot call \(step.tool).")
                 continue
             }
             guard let tool = byName[step.tool] else {

@@ -62,7 +62,7 @@ private final class ActionSavingProvider: ModelProvider, @unchecked Sendable {
     private let root = FileManager.default.temporaryDirectory
         .appending(path: "mac-os-agent-app-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
 
-    private var library: SavedActionLibrary { SavedActionLibrary(folder: root.appending(path: "actions", directoryHint: .isDirectory)) }
+    private var library: SavedActionLibrary { SavedActionLibrary(folder: root.appending(path: "quick-actions", directoryHint: .isDirectory)) }
 
     private static let screensaver = SavedAction(
         id: "start-screensaver", name: "Start Screensaver", description: "Starts the screen saver.", phrases: ["screensaver"],
@@ -178,7 +178,7 @@ private final class ActionSavingProvider: ModelProvider, @unchecked Sendable {
         let sections = SettingsSection.allCases
         #expect(sections.last == .debugging)
         #expect(sections.firstIndex(of: .actions) == sections.firstIndex(of: .skills)! + 1)
-        #expect(SettingsSection.actions.title == "Actions")
+        #expect(SettingsSection.actions.title == "Quick Actions")
     }
 
     @Test func anActionTheAgentSavesIsAnnouncedAndOfferedAtOnce() async throws {
@@ -193,7 +193,7 @@ private final class ActionSavingProvider: ModelProvider, @unchecked Sendable {
         let notices = session.transcript.rows.compactMap { row -> String? in
             if case .notice(let text) = row.kind { text } else { nil }
         }
-        #expect(notices == ["The action Start Screensaver is ready to use. Type its name and press Return."])
+        #expect(notices == ["The quick action Start Screensaver is ready to use. Type its name and press Return."])
         session.draft = "screensaver"
         #expect(session.instantActions.suggestion?.choices.map(\.title) == ["Start Screensaver"])
     }

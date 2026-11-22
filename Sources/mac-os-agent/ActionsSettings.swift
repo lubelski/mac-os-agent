@@ -56,7 +56,7 @@ final class ActionsSettingsModel {
 
     var countText: String {
         let on = entries.filter(\.isAvailable).count
-        return entries.count == 1 ? "1 action, \(on) on" : "\(entries.count) actions, \(on) on"
+        return entries.count == 1 ? "1 quick action, \(on) on" : "\(entries.count) quick actions, \(on) on"
     }
 
     /// What is wrong with an action that reads: a step that names no tool, or whose arguments
@@ -105,14 +105,33 @@ struct ActionsSettingsView: View {
     @AgentName private var agentName
 
     var body: some View {
+        VStack(spacing: 0) {
+            // The section's one-line description, as Behaviors and Experiments have, with the
+            // plain explanation under it.
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Just do it.")
+                Text("A quick action is a fixed tool call, or a few, that runs at once when you type its name and press Return.")
+                    .font(.callout)
+            }
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            Divider()
+            list
+        }
+        .onAppear { model.reload() }
+    }
+
+    private var list: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                FilterField(prompt: "Filter Actions", text: $model.filter)
+                FilterField(prompt: "Filter Quick Actions", text: $model.filter)
                     .padding(10)
                 Group {
                     if model.entries.isEmpty {
                         ContentUnavailableView {
-                            Label("No Actions Yet", systemImage: "bolt")
+                            Label("No Quick Actions Yet", systemImage: "bolt")
                         } description: {
                             Text("Ask \(agentName) to make something it did instant, and it saves it here.")
                         }
@@ -129,13 +148,13 @@ struct ActionsSettingsView: View {
                 .frame(maxHeight: .infinity)
                 Divider()
                 HStack(spacing: 8) {
-                    Button("Show Actions Folder in Finder", systemImage: "folder") {
+                    Button("Show Quick Actions Folder in Finder", systemImage: "folder") {
                         try? FileManager.default.createDirectory(at: model.library.folder, withIntermediateDirectories: true)
                         NSWorkspace.shared.open(model.library.folder)
                     }
-                    .help("Show the actions folder in Finder")
+                    .help("Show the quick actions folder in Finder")
                     Button("Reload", systemImage: "arrow.clockwise") { model.reload() }
-                        .help("Read the actions folder again")
+                        .help("Read the quick actions folder again")
                     Spacer()
                     Text(model.countText)
                         .font(.caption)
@@ -153,17 +172,14 @@ struct ActionsSettingsView: View {
                     ActionDetailView(entry: entry, model: model)
                 } else {
                     VStack(spacing: 12) {
-                        ContentUnavailableView(
-                            "No Action Selected", systemImage: "bolt",
-                            description: Text("An action is a fixed tool call, or a few, that runs at once when you type its name and press Return."))
-                        Button("Show Actions Folder in Finder") { model.revealInFinder() }
+                        ContentUnavailableView("No Quick Action Selected", systemImage: "bolt")
+                        Button("Show Quick Actions Folder in Finder") { model.revealInFinder() }
                     }
                     .padding(.bottom, 40)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .onAppear { model.reload() }
     }
 }
 
@@ -243,7 +259,7 @@ struct ActionDetailView: View {
                         ForEach(Array(action.steps.enumerated()), id: \.offset) { index, step in
                             ActionStepView(number: index + 1, step: step, summaries: model.summaries)
                         }
-                        Text("Return runs every step without asking, since choosing the action is the go-ahead. A step that fails stops the rest.")
+                        Text("Return runs every step without asking, since choosing the quick action is the go-ahead. A step that fails stops the rest.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -265,7 +281,7 @@ struct ActionDetailView: View {
         .confirmationDialog("Delete \(entry.name)?", isPresented: $confirmingDelete) {
             Button("Delete", role: .destructive) { model.delete(entry) }
         } message: {
-            Text("Its file is removed from the actions folder.")
+            Text("Its file is removed from the quick actions folder.")
         }
     }
 
