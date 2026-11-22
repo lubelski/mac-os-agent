@@ -22,8 +22,8 @@ final class PanelPlacement {
 ///   `TopBarButton` in that row, before the placement controls when it acts on the
 ///   conversation, such as a clear button.
 ///
-/// Leading items do not take clicks unless they are controls, so a label still moves the
-/// panel when it is dragged. Double-clicking the bar does nothing: the panel has no zoom and
+/// A label in either area takes `.allowsHitTesting(false)`, so dragging it still moves the
+/// panel. A control does not. Double-clicking the bar does nothing: the panel has no zoom and
 /// no minimize, and hiding it on a double click would be easy to do by accident.
 struct PanelTopBar: View {
     static let height: CGFloat = 30
@@ -42,9 +42,9 @@ struct PanelTopBar: View {
         .background { WindowDragArea() }
     }
 
+    /// Give a label here `.allowsHitTesting(false)`, so dragging it moves the panel.
     private var leading: some View {
         HStack(spacing: 8) {}
-            .allowsHitTesting(false)
     }
 
     @ViewBuilder
