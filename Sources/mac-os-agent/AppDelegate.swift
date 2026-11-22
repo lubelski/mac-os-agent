@@ -80,9 +80,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateStatusIcon()
 
         summonTrigger = SummonTriggerController(registrar: CarbonHotKey { [weak self] in self?.panel.toggle() })
+        summonTrigger.onChange = { [weak self] in self?.updateStatusIcon() }
         if let problem = summonTrigger.start() {
             session.problems.record("Shortcut", problem)
         }
+        updateStatusIcon()
         if let startupError {
             session.problems.record("Startup", "Could not open the thread: \(startupError.localizedDescription)")
         }

@@ -13,7 +13,12 @@ import Observation
 @Observable
 final class SummonTriggerController {
     /// The trigger in effect, or nil when the owner removed the shortcut.
-    private(set) var trigger: SummonTrigger?
+    private(set) var trigger: SummonTrigger? {
+        didSet { if trigger != oldValue { onChange?() } }
+    }
+    /// Called after the trigger changes, so places outside SwiftUI, such as the icon's
+    /// tooltip, can show the new one.
+    @ObservationIgnored var onChange: (() -> Void)?
     /// Whether the trigger's hotkey is registered now. False while the recorder suspends it.
     private(set) var isRegistered = false
     /// Why the trigger in effect does not work, such as a failed registration at launch.
