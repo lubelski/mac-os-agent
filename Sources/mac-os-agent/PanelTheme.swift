@@ -161,8 +161,10 @@ extension EnvironmentValues {
 extension View {
     /// Draws the panel's surface from the theme: Liquid Glass, a frosted blur with its tint,
     /// or the solid fill, with the incognito tint while an incognito episode is on.
-    func panelSurface(_ palette: PanelPalette, incognito: Bool) -> some View {
-        modifier(PanelSurface(palette: palette, incognito: incognito, shape: PanelShape.surface))
+    /// - Parameter squareEdges: the sides flush against the screen's edge, whose corners are
+    ///   square. See `PanelShape.surface(squareEdges:)`.
+    func panelSurface(_ palette: PanelPalette, incognito: Bool, squareEdges: Set<PanelEdge> = []) -> some View {
+        modifier(PanelSurface(palette: palette, incognito: incognito, shape: PanelShape.surface(squareEdges: squareEdges)))
     }
 
     /// Sets the hierarchical text levels and the accent to the theme's own, unless the theme
@@ -189,7 +191,7 @@ private struct PanelText: ViewModifier {
 private struct PanelSurface: ViewModifier {
     let palette: PanelPalette
     let incognito: Bool
-    let shape: RoundedRectangle
+    let shape: UnevenRoundedRectangle
     /// Within the window, for small previews over a sample backdrop, instead of behind it.
     var blursWithinWindow = false
 
@@ -225,7 +227,10 @@ extension View {
     func previewSurface(_ palette: PanelPalette, cornerRadius: CGFloat) -> some View {
         modifier(PanelSurface(
             palette: palette, incognito: false,
-            shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous), blursWithinWindow: true))
+            shape: UnevenRoundedRectangle(cornerRadii: .init(
+                topLeading: cornerRadius, bottomLeading: cornerRadius, bottomTrailing: cornerRadius,
+                topTrailing: cornerRadius), style: .continuous),
+            blursWithinWindow: true))
     }
 }
 
@@ -295,6 +300,9 @@ extension View {
 private struct ThemedPanelRoot: ViewModifier {
     let model: ThemeModel
     let incognito: Bool
+    /// The panel's place, to square the corners on a side flush against the screen's edge.
+    /// The inspector has none, so its corners are always rounded.
+    @Environment(PanelPlacement.self) private var placement: PanelPlacement?
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -307,7 +315,7 @@ private struct ThemedPanelRoot: ViewModifier {
         content
             .panelText(palette)
             .environment(\.panelPalette, palette)
-            .panelSurface(palette, incognito: incognito)
+            .panelSurface(palette, incognito: incognito, squareEdges: placement?.squareEdges ?? [])
             .background(WindowAppearance(fixed: theme.fixedAppearance))
     }
 }

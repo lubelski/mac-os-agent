@@ -6,7 +6,7 @@ import CoreGraphics
 public enum PanelPreset: String, Sendable, CaseIterable, Identifiable {
     /// A floating panel the owner can move and resize. It appears and disappears in place.
     case centered
-    /// Full height against the left edge of its screen. It slides in from the edge when
+    /// Full height and flush against the left edge of its screen, with its left corners square. It slides in from the edge when
     /// summoned and back out past it when hidden.
     case slideOverLeft
     /// The same against the right edge.
@@ -62,11 +62,11 @@ public enum PanelPreset: String, Sendable, CaseIterable, Identifiable {
 
 extension PanelGeometry {
     /// How much room there is beside the panel on one side, inside the screen's visible area
-    /// and its slide over margin. Never negative.
+    /// less the margin a window beside the panel keeps from the screen's edge. Never negative.
     public static func room(on side: PanelEdge, of panel: CGRect, in visible: CGRect) -> CGFloat {
         let room = side == .right
-            ? (visible.maxX - slideOverMargin) - panel.maxX
-            : panel.minX - (visible.minX + slideOverMargin)
+            ? (visible.maxX - windowEdgeMargin) - panel.maxX
+            : panel.minX - (visible.minX + windowEdgeMargin)
         return max(0, room)
     }
 }

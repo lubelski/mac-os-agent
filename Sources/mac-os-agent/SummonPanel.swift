@@ -12,14 +12,16 @@ import SwiftUI
 /// and kept in the defaults:
 /// - Centered: the owner moves and resizes it, and it appears and disappears in place. Its
 ///   frame is saved under `frameName`, so it opens where it was left.
-/// - Slide over: full height against the left or right edge of its screen. It slides in from
-///   the edge when summoned and back out past it when hidden. Only the free edge resizes, and
-///   the width is kept.
+/// - Slide over: full height and flush against the left or right edge of its screen's visible
+///   area, with square corners on that side. It slides in from the edge when summoned and back
+///   out past it when hidden. Only the free edge resizes, and the width is kept.
 ///
-/// In slide over the window is wider than the glass by the margin on the edge side, so it
-/// reaches the edge of the screen's visible area. The glass slides inside the window, which
-/// cuts it off at that edge. That is how it leaves at the edge instead of travelling across a
-/// display beside this one.
+/// In slide over the window reaches the edge of the screen's visible area. The glass slides
+/// inside the window, which cuts it off at that edge. That is how it leaves at the edge instead
+/// of travelling across a display beside this one.
+///
+/// The corners on a side flush against the screen's edge are square, on the glass and on the
+/// clip of its layer alike, and rounded again once the panel moves off it. See `squareEdges`.
 ///
 /// It is above other windows only while it has focus, or always when Keep on Top is on, and
 /// the app's own windows, such as Settings, always come in front of it. Once another window
@@ -143,7 +145,8 @@ final class SummonPanel: NSPanel {
     private var centeredFrame: CGRect?
     /// The width the owner left the slide over panel at.
     private var slideOverWidth: CGFloat?
-    /// The strip the window has beyond the glass on its edge side, in slide over.
+    /// The strip the window has beyond the glass on its edge side. None now that slide over is
+    /// flush against the edge, but kept for a frame that does not reach it.
     private var inset: (edge: PanelEdge, width: CGFloat)?
     /// The slide under way, if any.
     private(set) var slide: PanelSlide?
@@ -290,8 +293,8 @@ final class SummonPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
-    /// The glass's frame on screen when it is in place: the window's frame less the strip on
-    /// the edge side in slide over.
+    /// The glass's frame on screen when it is in place: the window's frame less any strip on
+    /// the edge side.
     var panelFrame: CGRect {
         guard let inset else { return frame }
         var glass = frame
@@ -550,6 +553,15 @@ final class SummonPanel: NSPanel {
 
     // MARK: - Presets
 
+    /// Puts the panel back at its preset's default frame: Centered at the default size in the
+    /// middle of its screen, slide over flush against its edge at the full height and the width
+    /// it was left at. The same as choosing the current preset again from the layout menu, so
+    /// `placement.choose(placement.preset)` does it from the panel's content. The frames come
+    /// from `PanelGeometry.presetFrame`.
+    func returnToPresetFrame() {
+        choose(placement.preset)
+    }
+
     /// Moves the panel to a preset. Centered comes back to the frame it had before slide over,
     /// or, when it is already centered, goes to the default size in the middle of its screen.
     /// A slide over preset slides in from its edge when the panel is showing.
@@ -570,7 +582,7 @@ final class SummonPanel: NSPanel {
                 if previous != .centered, let centeredFrame {
                     place(PanelGeometry.clamped(centeredFrame, minimumSize: Self.minimumSize, in: visible))
                 } else {
-                    place(PanelGeometry.defaultFrame(size: Self.defaultSize, in: visible))
+                    place(presetFrame(.centered, in: visible))
                 }
             }
         } else {
@@ -589,8 +601,7 @@ final class SummonPanel: NSPanel {
     /// width the owner left it at. The height is held there, so only the free edge resizes.
     private func applyPreset() {
         guard let edge = placement.preset.slideOverEdge, let visible = currentScreen()?.visible else { return }
-        let glass = PanelGeometry.slideOverFrame(
-            edge, width: slideOverWidth ?? panelFrame.width, minimumWidth: Self.minimumSize.width, in: visible)
+        let glass = presetFrame(placement.preset, in: visible)
         let window = PanelGeometry.slideOverWindowFrame(panel: glass, edge: edge, in: visible)
         let strip = window.width - glass.width
         inset = strip > 0 ? (edge, strip) : nil
@@ -608,6 +619,13 @@ final class SummonPanel: NSPanel {
             place(glass)
         }
         layoutHost(offset: 0)
+    }
+
+    /// Where a preset puts the panel on a screen, from `PanelGeometry.presetFrame`.
+    private func presetFrame(_ preset: PanelPreset, in visible: CGRect) -> CGRect {
+        PanelGeometry.presetFrame(
+            preset, centeredSize: Self.defaultSize, slideOverWidth: slideOverWidth ?? panelFrame.width,
+            minimumWidth: Self.minimumSize.width, in: visible)
     }
 
     private func place(_ target: CGRect) {
@@ -636,6 +654,26 @@ final class SummonPanel: NSPanel {
         if placement.panelFrame != glass { placement.panelFrame = glass }
         let visible = currentScreen()?.visible ?? glass
         if placement.visibleFrame != visible { placement.visibleFrame = visible }
+        updateSquareEdges()
+    }
+
+    /// The sides whose corners are square now, because they are flush against the screen's
+    /// edge. The glass reads them from `placement`.
+    private(set) var squareEdges: Set<PanelEdge> = []
+
+    /// Squares the clip on the glass's layer on the sides flush against the screen's edge, and
+    /// rounds it again when the panel moves off. The window server traces the shadow from what
+    /// the window draws, so it is traced again now and once more after the glass has redrawn
+    /// in its new shape. That keeps the shadow on the rounded corners, not on a square fill.
+    private func updateSquareEdges() {
+        let edges = placement.squareEdges
+        guard edges != squareEdges else { return }
+        squareEdges = edges
+        if let layer = host.layer { PanelShape.clipToSurface(layer, squareEdges: edges) }
+        invalidateShadow()
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.invalidateShadow() }
+        }
     }
 
     /// A move or resize by the owner. Resizing the free edge of a slide over panel keeps it

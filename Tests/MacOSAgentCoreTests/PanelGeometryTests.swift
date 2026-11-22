@@ -32,19 +32,76 @@ import Testing
     }
 
     @Test(arguments: PanelEdge.allCases)
-    func aSlideOverPanelIsFullHeightAgainstItsEdgeWithAMargin(_ edge: PanelEdge) {
+    func aSlideOverPanelIsFlushAgainstItsEdgeAtTheFullHeight(_ edge: PanelEdge) {
         let frame = PanelGeometry.slideOverFrame(edge, width: 640, minimumWidth: minimum.width, in: laptop)
-        let margin = PanelGeometry.slideOverMargin
         #expect(frame.width == 640)
-        #expect(frame.minY == laptop.minY + margin)
-        #expect(frame.maxY == laptop.maxY - margin)
+        #expect(frame.minY == laptop.minY)
+        #expect(frame.maxY == laptop.maxY)
         if edge == .left {
-            #expect(frame.minX == laptop.minX + margin)
+            #expect(frame.minX == laptop.minX)
         } else {
-            #expect(frame.maxX == laptop.maxX - margin)
+            #expect(frame.maxX == laptop.maxX)
         }
         #expect(PanelGeometry.isInSlideOver(frame, at: edge, in: laptop))
         #expect(!PanelGeometry.isInSlideOver(frame, at: edge.opposite, in: laptop))
+    }
+
+    /// With the Dock on a side, the visible area stops at the Dock, and the panel is flush
+    /// against the Dock rather than under it.
+    @Test(arguments: PanelEdge.allCases)
+    func aSlideOverPanelIsFlushAgainstTheDockOnItsSide(_ edge: PanelEdge) {
+        // The laptop with a 70 point Dock on the side of the panel's edge.
+        let visible = edge == .left
+            ? CGRect(x: 70, y: 0, width: 1442, height: 949)
+            : CGRect(x: 0, y: 0, width: 1442, height: 949)
+        let frame = PanelGeometry.slideOverFrame(edge, width: 640, minimumWidth: minimum.width, in: visible)
+        if edge == .left {
+            #expect(frame.minX == 70)
+        } else {
+            #expect(frame.maxX == 1442)
+        }
+        #expect(frame.minY == visible.minY && frame.maxY == visible.maxY)
+        #expect(PanelGeometry.flushEdges(of: frame, in: visible) == [edge])
+        #expect(PanelGeometry.isInSlideOver(frame, at: edge, in: visible))
+    }
+
+    @Test(arguments: PanelEdge.allCases)
+    func onlyTheSideAgainstTheScreensEdgeIsSquare(_ edge: PanelEdge) {
+        let frame = PanelGeometry.slideOverFrame(edge, width: 640, minimumWidth: minimum.width, in: laptop)
+        #expect(PanelGeometry.flushEdges(of: frame, in: laptop) == [edge])
+    }
+
+    /// Moved off its edge by a drag, the panel has all four rounded corners again.
+    @Test(arguments: PanelEdge.allCases)
+    func theCornersComeBackWhenThePanelMovesOffTheEdge(_ edge: PanelEdge) {
+        let frame = PanelGeometry.slideOverFrame(edge, width: 640, minimumWidth: minimum.width, in: laptop)
+        let inward: CGFloat = edge == .left ? 24 : -24
+        #expect(PanelGeometry.flushEdges(of: frame.offsetBy(dx: inward, dy: 0), in: laptop).isEmpty)
+        // Partly past the edge is not flush either.
+        #expect(PanelGeometry.flushEdges(of: frame.offsetBy(dx: -inward, dy: 0), in: laptop).isEmpty)
+        // Within the tolerance it still counts as flush, so rounding never makes it flicker.
+        #expect(PanelGeometry.flushEdges(of: frame.offsetBy(dx: inward / 48, dy: 0), in: laptop) == [edge])
+        // Moved only up or down, the side is still against the edge.
+        #expect(PanelGeometry.flushEdges(of: frame.offsetBy(dx: 0, dy: -40), in: laptop) == [edge])
+    }
+
+    @Test func aCenteredPanelHasNoSquareSide() {
+        let frame = PanelGeometry.defaultFrame(size: CGSize(width: 640, height: 560), in: laptop)
+        #expect(PanelGeometry.flushEdges(of: frame, in: laptop).isEmpty)
+        // A panel on another screen is not flush against this one's edges.
+        let left = PanelGeometry.slideOverFrame(.left, width: 640, minimumWidth: minimum.width, in: external)
+        #expect(PanelGeometry.flushEdges(of: left.offsetBy(dx: 0, dy: 2000), in: external).isEmpty)
+    }
+
+    @Test func eachPresetsFrameComesFromOnePlace() {
+        let size = CGSize(width: 640, height: 560)
+        #expect(PanelGeometry.presetFrame(.centered, centeredSize: size, slideOverWidth: 500, minimumWidth: 440, in: laptop)
+            == PanelGeometry.defaultFrame(size: size, in: laptop))
+        for edge in PanelEdge.allCases {
+            #expect(PanelGeometry.presetFrame(
+                PanelPreset(slideOver: edge), centeredSize: size, slideOverWidth: 500, minimumWidth: 440, in: laptop)
+                == PanelGeometry.slideOverFrame(edge, width: 500, minimumWidth: 440, in: laptop))
+        }
     }
 
     @Test func aSlideOverPanelIsAtMostHalfTheScreenAndAtLeastTheMinimum() {
@@ -57,14 +114,14 @@ import Testing
     @Test func aSlideOverPanelNeverOverflowsAScreenNarrowerThanTheMinimum() {
         let tiny = CGRect(x: 0, y: 0, width: 400, height: 300)
         let frame = PanelGeometry.slideOverFrame(.right, width: 640, minimumWidth: minimum.width, in: tiny)
-        #expect(frame.width == 380)
+        #expect(frame.width == 400)
         #expect(tiny.contains(frame))
     }
 
     @Test func slideOverUsesTheScreensOwnOrigin() {
         let frame = PanelGeometry.slideOverFrame(.left, width: 640, minimumWidth: minimum.width, in: external)
-        #expect(frame.minX == external.minX + PanelGeometry.slideOverMargin)
-        #expect(frame.minY == external.minY + PanelGeometry.slideOverMargin)
+        #expect(frame.minX == external.minX)
+        #expect(frame.minY == external.minY)
     }
 
     @Test func changingTheFreeEdgeKeepsThePanelEdgeed() {
@@ -166,5 +223,15 @@ import Testing
         let frame = PanelGeometry.besideFrame(size: size, beside: panel, in: visible)
         #expect(frame.minX == panel.maxX + PanelGeometry.besideGap)
         #expect(frame.maxY == visible.maxY - PanelGeometry.screenMargin)
+    }
+
+    /// Flush against the right edge, the panel has no room on its right, so the incognito
+    /// window opens to its left, inside the screen's margin.
+    @Test func aSlideOverPanelAtTheRightHasItToTheLeft() {
+        let panel = PanelGeometry.slideOverFrame(.right, width: 640, minimumWidth: 440, in: visible)
+        let frame = PanelGeometry.besideFrame(size: size, beside: panel, in: visible)
+        #expect(frame.maxX == panel.minX - PanelGeometry.besideGap)
+        #expect(!frame.intersects(panel))
+        #expect(visible.insetBy(dx: PanelGeometry.screenMargin, dy: PanelGeometry.screenMargin).contains(frame))
     }
 }

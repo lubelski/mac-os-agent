@@ -156,6 +156,81 @@ final class WindowRecorder {
         #expect(panel.contentMaxSize.height == .greatestFiniteMagnitude)
     }
 
+    /// The glass's layer, which carries the clip that gives the window, and so its shadow, its
+    /// shape.
+    private func glassLayer(_ panel: SummonPanel) throws -> CALayer {
+        try #require(panel.contentView?.subviews.first?.layer)
+    }
+
+    @Test(arguments: PanelEdge.allCases)
+    func aSlideOverPanelIsFlushWithSquareCornersOnItsEdge(_ edge: PanelEdge) throws {
+        let (panel, defaults) = try makePanel()
+        defer { cleanUp(defaults) }
+        panel.choose(PanelPreset(slideOver: edge))
+        // Flush against the edge, from just below the menu bar to the bottom, with no strip.
+        if edge == .left { #expect(panel.panelFrame.minX == laptop.minX) } else { #expect(panel.panelFrame.maxX == laptop.maxX) }
+        #expect(panel.panelFrame.minY == laptop.minY && panel.panelFrame.maxY == laptop.maxY)
+        #expect(panel.frame == panel.panelFrame)
+        #expect(panel.squareEdges == [edge])
+        #expect(panel.placement.squareEdges == [edge])
+        #expect(try glassLayer(panel).maskedCorners == PanelShape.roundedCorners(squareEdges: [edge]))
+        #expect(try glassLayer(panel).masksToBounds)
+    }
+
+    @Test(arguments: PanelEdge.allCases)
+    func draggedOffItsEdgeThePanelHasFourRoundedCornersAgain(_ edge: PanelEdge) throws {
+        let (panel, defaults) = try makePanel()
+        defer { cleanUp(defaults) }
+        panel.choose(PanelPreset(slideOver: edge))
+        let inward: CGFloat = edge == .left ? 30 : -30
+        panel.setFrameOrigin(CGPoint(x: panel.frame.minX + inward, y: panel.frame.minY))
+        #expect(panel.placement.preset == .centered)
+        #expect(panel.squareEdges.isEmpty)
+        #expect(panel.placement.squareEdges.isEmpty)
+        #expect(try glassLayer(panel).maskedCorners == PanelShape.roundedCorners(squareEdges: []))
+        // Back to the preset, square again.
+        panel.choose(PanelPreset(slideOver: edge))
+        #expect(panel.squareEdges == [edge])
+    }
+
+    @Test func aCenteredPanelHasFourRoundedCorners() throws {
+        let (panel, defaults) = try makePanel()
+        defer { cleanUp(defaults) }
+        panel.choose(.slideOverLeft)
+        panel.choose(.centered)
+        #expect(panel.squareEdges.isEmpty)
+        #expect(try glassLayer(panel).maskedCorners == PanelShape.roundedCorners(squareEdges: []))
+    }
+
+    /// With the Dock at the left or right, the panel is flush against the Dock, not under it.
+    @Test(arguments: PanelEdge.allCases)
+    func withTheDockOnItsSideThePanelIsFlushAgainstTheDock(_ edge: PanelEdge) throws {
+        let dock: CGFloat = 64
+        let visible = edge == .left
+            ? CGRect(x: dock, y: 0, width: 1512 - dock, height: 949)
+            : CGRect(x: 0, y: 0, width: 1512 - dock, height: 949)
+        standIn.screens = [SummonPanel.Screen(frame: StandInScreens.laptop.frame, visible: visible)]
+        let (panel, defaults) = try makePanel()
+        defer { cleanUp(defaults) }
+        panel.choose(PanelPreset(slideOver: edge))
+        #expect(panel.panelFrame == slideOver(edge, in: visible))
+        if edge == .left { #expect(panel.frame.minX == dock) } else { #expect(panel.frame.maxX == 1512 - dock) }
+        #expect(panel.squareEdges == [edge])
+    }
+
+    /// Choosing the current preset again puts the panel back at its preset's frame.
+    @Test func returningToThePresetFramePutsThePanelBack() throws {
+        let (panel, defaults) = try makePanel()
+        defer { cleanUp(defaults) }
+        panel.setFrame(CGRect(x: 20, y: 30, width: 900, height: 700), display: false)
+        panel.returnToPresetFrame()
+        #expect(panel.frame == PanelGeometry.presetFrame(
+            .centered, centeredSize: SummonPanel.defaultSize, slideOverWidth: 640, minimumWidth: 440, in: laptop))
+        panel.choose(.slideOverRight)
+        panel.returnToPresetFrame()
+        #expect(panel.panelFrame == slideOver(.right))
+    }
+
     @Test(arguments: PanelEdge.allCases)
     func resizingTheFreeEdgeKeepsSlideOverAndRemembersTheWidth(_ edge: PanelEdge) throws {
         let (panel, defaults) = try makePanel()
@@ -507,10 +582,10 @@ final class WindowRecorder {
         panel.choose(.slideOverRight)
         #expect(panel.placement.freeSide == .left)
         let glass = panel.panelFrame
-        #expect(panel.placement.roomOnFreeSide == glass.minX - (laptop.minX + PanelGeometry.slideOverMargin))
+        #expect(panel.placement.roomOnFreeSide == glass.minX - (laptop.minX + PanelGeometry.windowEdgeMargin))
         panel.choose(.slideOverLeft)
         #expect(panel.placement.freeSide == .right)
-        #expect(panel.placement.roomOnFreeSide == laptop.maxX - PanelGeometry.slideOverMargin - panel.panelFrame.maxX)
+        #expect(panel.placement.roomOnFreeSide == laptop.maxX - PanelGeometry.windowEdgeMargin - panel.panelFrame.maxX)
     }
 
     private func panelSession(_ panel: SummonPanel) -> AgentSession {

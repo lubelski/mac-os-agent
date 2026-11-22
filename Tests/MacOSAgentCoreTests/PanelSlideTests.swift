@@ -30,7 +30,7 @@ import Testing
 
     @Test func theRoomBesideThePanelStopsAtTheMargin() {
         let left = PanelGeometry.slideOverFrame(.left, width: 640, minimumWidth: 440, in: laptop)
-        let margin = PanelGeometry.slideOverMargin
+        let margin = PanelGeometry.windowEdgeMargin
         #expect(PanelGeometry.room(on: .right, of: left, in: laptop) == laptop.maxX - margin - left.maxX)
         #expect(PanelGeometry.room(on: .left, of: left, in: laptop) == 0)
         // A panel hanging past the edge has no room on that side, not less than none.
@@ -130,8 +130,8 @@ import Testing
         let panel = PanelGeometry.slideOverFrame(edge, width: 640, minimumWidth: 440, in: laptop)
         let window = PanelGeometry.slideOverWindowFrame(panel: panel, edge: edge, in: laptop)
         #expect(window.contains(panel))
-        #expect(window.width == panel.width + PanelGeometry.slideOverMargin)
-        #expect(window.height == panel.height)
+        // The panel is flush against the edge, so the window is the glass, with no strip.
+        #expect(window == panel)
         if edge == .left {
             #expect(window.minX == laptop.minX)
             #expect(window.maxX == panel.maxX)
