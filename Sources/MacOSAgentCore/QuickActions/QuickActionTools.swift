@@ -1,20 +1,22 @@
 import Foundation
 
 extension ToolSource {
-    public static let actions = ToolSource(id: "actions", title: "Quick Actions")
+    // The id stays "actions", from before quick actions were renamed. Nothing stores it, and
+    // keeping it means nothing keyed by a source's id changes with the rename.
+    public static let quickActions = ToolSource(id: "actions", title: "Quick Actions")
 }
 
 /// Lists the owner's quick actions and the file format, or shows one action's whole file.
-public struct ReadActionsTool: AgentTool {
+public struct ReadQuickActionsTool: AgentTool {
     public static let name = "read_quick_actions"
 
-    public let library: SavedActionLibrary
+    public let library: QuickActionLibrary
 
-    public init(library: SavedActionLibrary) {
+    public init(library: QuickActionLibrary) {
         self.library = library
     }
 
-    public var source: ToolSource { .actions }
+    public var source: ToolSource { .quickActions }
 
     public var definition: ToolDefinition {
         ToolDefinition(
@@ -31,9 +33,9 @@ public struct ReadActionsTool: AgentTool {
 
     /// How the format reads, for the agent.
     static let formatGuide = """
-        A quick action file is JSON with "format": 1, a "name" of up to \(SavedAction.maximumNameLength) characters \
+        A quick action file is JSON with "format": 1, a "name" of up to \(QuickAction.maximumNameLength) characters \
         that the person types to find it, a one-line "description", optional "phrases" (other things they \
-        might type for it), "enabled" (true or false), and "steps": a list of up to \(SavedAction.maximumSteps) \
+        might type for it), "enabled" (true or false), and "steps": a list of up to \(QuickAction.maximumSteps) \
         objects, each with "tool", a tool's name, and "arguments", the whole arguments object for that tool, \
         exactly as you would call it. Steps run in order and stop at the first that fails. Arguments are \
         fixed: there are no parameters.
@@ -71,20 +73,20 @@ public struct ReadActionsTool: AgentTool {
 /// Saves or deletes a quick action. A save is checked in full: the file's shape, and each step
 /// against its tool's schema, so nothing the app cannot run reaches the folder. Saving needs
 /// no go-ahead, since nothing runs until the owner picks the action. Deleting asks first.
-public struct ChangeActionTool: AgentTool {
+public struct ChangeQuickActionTool: AgentTool {
     public static let name = "change_quick_action"
     public static let operations = ["save", "delete"]
 
-    public let library: SavedActionLibrary
+    public let library: QuickActionLibrary
     /// The tools a step may call, for checking a save. Read when a save is checked.
     public let tools: @Sendable () -> [ToolDefinition]
 
-    public init(library: SavedActionLibrary, tools: @escaping @Sendable () -> [ToolDefinition]) {
+    public init(library: QuickActionLibrary, tools: @escaping @Sendable () -> [ToolDefinition]) {
         self.library = library
         self.tools = tools
     }
 
-    public var source: ToolSource { .actions }
+    public var source: ToolSource { .quickActions }
     public var goAhead: ToolGoAhead { .sometimes("Asks for a go-ahead before deleting a quick action.") }
 
     public var definition: ToolDefinition {
@@ -117,9 +119,9 @@ public struct ChangeActionTool: AgentTool {
         if operation == "save" { return save(file: arguments["file"]?.stringValue, id: id) }
 
         guard let id else { return "Error: delete needs an action_id." }
-        guard let entry = library.find(id) else { return "Error: there is no quick action \(id). Call \(ReadActionsTool.name) for the list." }
+        guard let entry = library.find(id) else { return "Error: there is no quick action \(id). Call \(ReadQuickActionsTool.name) for the list." }
         let approved = await context.confirm(ConfirmationRequest(
-            callID: context.callID, kind: .deleteAction, body: .item(name: entry.name, detail: "\(AgentPaths.actionsFolderName)/\(entry.id).json"),
+            callID: context.callID, kind: .deleteQuickAction, body: .item(name: entry.name, detail: "\(AgentPaths.quickActionsFolderName)/\(entry.id).json"),
             reason: "removes its file from the quick actions folder"))
         guard approved else { return "The owner declined. \(entry.name) is still there." }
         if Task.isCancelled { return "The task was stopped before \(entry.name) was deleted." }
@@ -145,18 +147,18 @@ public struct ChangeActionTool: AgentTool {
             target = id
         } else {
             let name = JSONValue.parse(file)?["name"]?.trimmedString ?? ""
-            target = SavedActionLibrary.identifier(for: name)
+            target = QuickActionLibrary.identifier(for: name)
         }
-        let action: SavedAction
+        let action: QuickAction
         do {
-            action = try SavedAction.parse(file, id: target)
+            action = try QuickAction.parse(file, id: target)
         } catch {
             return "Error: the quick action was not saved. \(String(describing: error))"
         }
         if id == nil, library.entry(id: target) != nil {
             return "Error: a quick action with the id \(target) already exists. Pass action_id \(target) to replace it, or choose another name."
         }
-        let problems = ActionValidation.problems(action, tools: tools())
+        let problems = QuickActionValidation.problems(action, tools: tools())
         if !problems.isEmpty {
             return (["Error: the quick action was not saved."] + problems.map { "- \($0)" } + ["Fix those and save again."])
                 .joined(separator: "\n")
@@ -169,7 +171,7 @@ public struct ChangeActionTool: AgentTool {
         var lines = ["Saved \(action.name) as \(action.id). Typing \"\(action.name)\" in the panel offers it, and Return runs it."]
         if !action.isEnabled { lines = ["Saved \(action.name) as \(action.id). It is off, so the panel does not offer it until it is turned on."] }
         for (index, step) in action.steps.enumerated() {
-            if let reason = ActionValidation.goAheadNote(step) {
+            if let reason = QuickActionValidation.goAheadNote(step) {
                 lines.append("Step \(index + 1) \(reason). It runs without asking when the owner runs the quick action, since choosing it is the go-ahead.")
             }
         }

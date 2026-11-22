@@ -3,23 +3,23 @@ import MacOSAgentCore
 import Observation
 import SwiftUI
 
-/// The saved actions for Settings, kept live: the folder is watched, and the app's own changes
-/// post `SavedActionLibrary.didChangeNotification`.
+/// The quick actions for Settings, kept live: the folder is watched, and the app's own changes
+/// post `QuickActionLibrary.didChangeNotification`.
 @MainActor
 @Observable
-final class ActionsSettingsModel {
-    private(set) var entries: [SavedActionEntry] = []
-    var selection: SavedActionEntry.ID?
+final class QuickActionsSettingsModel {
+    private(set) var entries: [QuickActionEntry] = []
+    var selection: QuickActionEntry.ID?
     var filter = ""
     var errorMessage: String?
-    @ObservationIgnored let library: SavedActionLibrary
+    @ObservationIgnored let library: QuickActionLibrary
     /// The tools a step may call, for showing a step that does not fit its tool.
     @ObservationIgnored private let tools: [ToolDefinition]
     @ObservationIgnored let summaries: ToolCallSummaries
     @ObservationIgnored private var watcher: FolderWatcher?
     @ObservationIgnored private var observer: NSObjectProtocol?
 
-    init(library: SavedActionLibrary, tools: [ToolDefinition], summaries: ToolCallSummaries, watches: Bool = true) {
+    init(library: QuickActionLibrary, tools: [ToolDefinition], summaries: ToolCallSummaries, watches: Bool = true) {
         self.library = library
         self.tools = tools
         self.summaries = summaries
@@ -27,7 +27,7 @@ final class ActionsSettingsModel {
         guard watches else { return }
         watcher = FolderWatcher(folder: library.folder) { [weak self] in self?.reload() }
         observer = NotificationCenter.default.addObserver(
-            forName: SavedActionLibrary.didChangeNotification, object: nil, queue: .main
+            forName: QuickActionLibrary.didChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.reload() }
         }
@@ -45,14 +45,14 @@ final class ActionsSettingsModel {
         if selection == nil { selection = entries.first?.id }
     }
 
-    var filteredEntries: [SavedActionEntry] {
+    var filteredEntries: [QuickActionEntry] {
         entries.filter { entry in
             guard let action = entry.action else { return filter.isEmpty || entry.id.localizedCaseInsensitiveContains(filter) }
             return action.matches(filter)
         }
     }
 
-    var selectedEntry: SavedActionEntry? { entries.first { $0.id == selection } }
+    var selectedEntry: QuickActionEntry? { entries.first { $0.id == selection } }
 
     var countText: String {
         let on = entries.filter(\.isAvailable).count
@@ -61,11 +61,11 @@ final class ActionsSettingsModel {
 
     /// What is wrong with an action that reads: a step that names no tool, or whose arguments
     /// do not fit it.
-    func problems(_ action: SavedAction) -> [String] {
-        ActionValidation.problems(action, tools: tools)
+    func problems(_ action: QuickAction) -> [String] {
+        QuickActionValidation.problems(action, tools: tools)
     }
 
-    func setEnabled(_ enabled: Bool, _ entry: SavedActionEntry) {
+    func setEnabled(_ enabled: Bool, _ entry: QuickActionEntry) {
         do {
             try library.setEnabled(enabled, id: entry.id)
             errorMessage = nil
@@ -75,7 +75,7 @@ final class ActionsSettingsModel {
         reload()
     }
 
-    func delete(_ entry: SavedActionEntry) {
+    func delete(_ entry: QuickActionEntry) {
         do {
             try library.delete(id: entry.id)
             errorMessage = nil
@@ -85,7 +85,7 @@ final class ActionsSettingsModel {
         reload()
     }
 
-    func open(_ entry: SavedActionEntry) {
+    func open(_ entry: QuickActionEntry) {
         NSWorkspace.shared.open(entry.fileURL)
     }
 
@@ -99,9 +99,9 @@ final class ActionsSettingsModel {
     }
 }
 
-/// Saved actions as a list beside the selected action's detail, as Skills is.
-struct ActionsSettingsView: View {
-    @Bindable var model: ActionsSettingsModel
+/// Quick actions as a list beside the selected action's detail, as Skills is.
+struct QuickActionsSettingsView: View {
+    @Bindable var model: QuickActionsSettingsModel
     @AgentName private var agentName
 
     var body: some View {
@@ -139,7 +139,7 @@ struct ActionsSettingsView: View {
                         ContentUnavailableView.search(text: model.filter)
                     } else {
                         List(model.filteredEntries, selection: $model.selection) { entry in
-                            ActionRow(entry: entry).tag(entry.id)
+                            QuickActionRow(entry: entry).tag(entry.id)
                         }
                         .listStyle(.inset)
                         .scrollContentBackground(.hidden)
@@ -169,7 +169,7 @@ struct ActionsSettingsView: View {
             Divider()
             Group {
                 if let entry = model.selectedEntry {
-                    ActionDetailView(entry: entry, model: model)
+                    QuickActionDetailView(entry: entry, model: model)
                 } else {
                     VStack(spacing: 12) {
                         ContentUnavailableView("No Quick Action Selected", systemImage: "bolt")
@@ -183,8 +183,8 @@ struct ActionsSettingsView: View {
     }
 }
 
-struct ActionRow: View {
-    let entry: SavedActionEntry
+struct QuickActionRow: View {
+    let entry: QuickActionEntry
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -213,9 +213,9 @@ struct ActionRow: View {
     }
 }
 
-struct ActionDetailView: View {
-    let entry: SavedActionEntry
-    let model: ActionsSettingsModel
+struct QuickActionDetailView: View {
+    let entry: QuickActionEntry
+    let model: QuickActionsSettingsModel
     @State private var confirmingDelete = false
 
     var body: some View {
@@ -257,7 +257,7 @@ struct ActionDetailView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(action.steps.count == 1 ? "Step" : "Steps, in order").font(.headline)
                         ForEach(Array(action.steps.enumerated()), id: \.offset) { index, step in
-                            ActionStepView(number: index + 1, step: step, summaries: model.summaries)
+                            QuickActionStepView(number: index + 1, step: step, summaries: model.summaries)
                         }
                         Text("Return runs every step without asking, since choosing the quick action is the go-ahead. A step that fails stops the rest.")
                             .font(.callout)
@@ -299,9 +299,9 @@ struct ActionDetailView: View {
 }
 
 /// One step: what it does in the tool's words, the tool's name, and its arguments as JSON.
-struct ActionStepView: View {
+struct QuickActionStepView: View {
     let number: Int
-    let step: SavedAction.Step
+    let step: QuickAction.Step
     let summaries: ToolCallSummaries
     @AgentName private var agentName
 
@@ -324,7 +324,7 @@ struct ActionStepView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.background.secondary, in: .rect(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
-            if let reason = ActionValidation.goAheadNote(step) {
+            if let reason = QuickActionValidation.goAheadNote(step) {
                 Text("When \(agentName) makes this call it asks first, because it \(reason). Here it runs without asking.")
                     .font(.callout)
                     .foregroundStyle(.secondary)

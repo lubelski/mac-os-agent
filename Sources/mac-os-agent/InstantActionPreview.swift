@@ -25,13 +25,13 @@ enum InstantActionPreview {
         return session
     }
 
-    /// Stand-in saved actions, never read from the actions folder.
-    static let actions: [SavedAction] = [
-        SavedAction(
+    /// Stand-in quick actions, never read from the quick actions folder.
+    static let actions: [QuickAction] = [
+        QuickAction(
             id: "start-screensaver", name: "Start Screensaver", description: "Starts the screen saver.",
             phrases: ["screensaver", "screen saver"],
             steps: [.init(tool: "open_application", arguments: ["bundle_identifier_or_path": "/System/Library/CoreServices/ScreenSaverEngine.app"])]),
-        SavedAction(
+        QuickAction(
             id: "spotify-focus", name: "Spotify Focus", description: "Opens Spotify and hides the other apps.",
             steps: [
                 .init(tool: "open_application", arguments: ["bundle_identifier_or_path": "com.spotify.client"]),

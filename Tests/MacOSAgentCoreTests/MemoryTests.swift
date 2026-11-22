@@ -410,7 +410,7 @@ private func write(_ text: String, _ path: String, in library: MemoryLibrary) th
 
     @Test func memoryToolsAreTheLastBuiltInToolsWithSmallStrictSchemas() {
         #expect(BuiltInTools.names.suffix(2) == [ReadMemoryTool.name, ChangeMemoryTool.name])
-        #expect(Array(BuiltInTools.names.dropLast(2).suffix(2)) == [ReadActionsTool.name, ChangeActionTool.name])
+        #expect(Array(BuiltInTools.names.dropLast(2).suffix(2)) == [ReadQuickActionsTool.name, ChangeQuickActionTool.name])
         var characters = 0
         for tool in BuiltInTools.make().suffix(2) {
             let definition = tool.definition

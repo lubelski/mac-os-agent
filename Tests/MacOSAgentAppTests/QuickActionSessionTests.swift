@@ -36,7 +36,7 @@ private final class StandInStepTool: AgentTool, @unchecked Sendable {
 }
 
 /// Saves an action with `change_action` on the first request of each instruction, then replies "Done.".
-private final class ActionSavingProvider: ModelProvider, @unchecked Sendable {
+private final class QuickActionSavingProvider: ModelProvider, @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
     static let file = #"{"format": 1, "name": "Start Screensaver", "description": "Starts the screen saver.", "phrases": ["screensaver"], "steps": [{"tool": "open_application", "arguments": {"bundle_identifier_or_path": "/System/Library/CoreServices/ScreenSaverEngine.app"}}]}"#
@@ -45,7 +45,7 @@ private final class ActionSavingProvider: ModelProvider, @unchecked Sendable {
         let count = lock.withLock { count += 1; return count }
         let arguments: JSONValue = ["operation": "save", "action_id": nil, "file": .string(Self.file)]
         let event: ModelStreamEvent = count % 2 == 1
-            ? .item(.toolCall(.init(callID: "call-\(count)", name: ChangeActionTool.name, arguments: arguments.encodedString(), provider: "test", model: "test-model")))
+            ? .item(.toolCall(.init(callID: "call-\(count)", name: ChangeQuickActionTool.name, arguments: arguments.encodedString(), provider: "test", model: "test-model")))
             : .item(.assistantMessage(.init(text: "Done.", provider: "test", model: "test-model")))
         return AsyncThrowingStream { continuation in
             continuation.yield(event)
@@ -54,17 +54,17 @@ private final class ActionSavingProvider: ModelProvider, @unchecked Sendable {
     }
 }
 
-/// Saved actions in the main panel's session: Return runs one with no model request, the run
+/// Quick actions in the main panel's session: Return runs one with no model request, the run
 /// is kept, a failure brings the panel back, the incognito window offers none, and an action
 /// the agent saves is announced. Everything is in a temporary folder.
 @MainActor
-@Suite(.serialized) struct ActionSessionTests {
+@Suite(.serialized) struct QuickActionSessionTests {
     private let root = FileManager.default.temporaryDirectory
         .appending(path: "mac-os-agent-app-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
 
-    private var library: SavedActionLibrary { SavedActionLibrary(folder: root.appending(path: "quick-actions", directoryHint: .isDirectory)) }
+    private var library: QuickActionLibrary { QuickActionLibrary(folder: root.appending(path: "quick-actions", directoryHint: .isDirectory)) }
 
-    private static let screensaver = SavedAction(
+    private static let screensaver = QuickAction(
         id: "start-screensaver", name: "Start Screensaver", description: "Starts the screen saver.", phrases: ["screensaver"],
         steps: [.init(tool: "open_application", arguments: ["bundle_identifier_or_path": "/System/Library/CoreServices/ScreenSaverEngine.app"])])
 
@@ -81,7 +81,7 @@ private final class ActionSavingProvider: ModelProvider, @unchecked Sendable {
         let recorder = Recorder()
         session.instantActions = InstantActions(
             applications: InstantActionPreview.applications, open: { recorder.opened.append($0.name) },
-            actionLibrary: library, summaries: ToolCallSummaries(tools))
+            quickActionLibrary: library, summaries: ToolCallSummaries(tools))
         session.hidePanel = { recorder.hides += 1 }
         session.showPanel = { recorder.shows += 1 }
         return (session, thread, recorder)
@@ -165,7 +165,7 @@ private final class ActionSavingProvider: ModelProvider, @unchecked Sendable {
             incognito: { AgentLoop(provider: EchoProvider(), thread: InMemoryThreadStore(), tools: [], episodeTimeout: { .infinity }) },
             signedIn: true)
         incognito.instantActions = main.instantActions.incognitoCopy()
-        #expect(incognito.instantActions.actionLibrary == nil)
+        #expect(incognito.instantActions.quickActionLibrary == nil)
         incognito.draft = "screensaver"
         #expect(incognito.instantActions.suggestion == nil)
         incognito.draft = "open safari"
@@ -177,16 +177,19 @@ private final class ActionSavingProvider: ModelProvider, @unchecked Sendable {
     @Test func actionsIsASectionOfItsOwnAndDebuggingStaysLast() {
         let sections = SettingsSection.allCases
         #expect(sections.last == .debugging)
-        #expect(sections.firstIndex(of: .actions) == sections.firstIndex(of: .skills)! + 1)
-        #expect(SettingsSection.actions.title == "Quick Actions")
+        #expect(sections.firstIndex(of: .quickActions) == sections.firstIndex(of: .skills)! + 1)
+        #expect(SettingsSection.quickActions.title == "Quick Actions")
+        // The stored preference and the `--preview-settings` name are from before the rename.
+        #expect(SettingsSection.quickActions.rawValue == "actions")
+        #expect(SettingsSection(rawValue: "actions") == .quickActions)
     }
 
     @Test func anActionTheAgentSavesIsAnnouncedAndOfferedAtOnce() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let step = StandInStepTool("open_application", result: "Opened.")
         let definitions = [step.definition]
-        let change = ChangeActionTool(library: library, tools: { definitions })
-        let (session, _, _) = try makeSession(provider: ActionSavingProvider(), tools: [step, change])
+        let change = ChangeQuickActionTool(library: library, tools: { definitions })
+        let (session, _, _) = try makeSession(provider: QuickActionSavingProvider(), tools: [step, change])
         session.draft = "make starting the screensaver instant"
         session.submitToAgent()
         await session.waitUntilIdle()
@@ -199,14 +202,14 @@ private final class ActionSavingProvider: ModelProvider, @unchecked Sendable {
     }
 }
 
-/// Renders the instant row offering a saved action, and the Actions section of Settings,
+/// Renders the instant row offering a quick action, and the Quick Actions section of Settings,
 /// offscreen for a pull request when screen capture is not available. Run with
-/// MAC_OS_AGENT_RENDER_ACTIONS set to a folder. The Liquid Glass is drawn as its fallback fill.
+/// MAC_OS_AGENT_RENDER_QUICK_ACTIONS set to a folder. The Liquid Glass is drawn as its fallback fill.
 @MainActor
-@Suite(.enabled(if: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_ACTIONS"] != nil))
-struct ActionRenders {
+@Suite(.enabled(if: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_QUICK_ACTIONS"] != nil))
+struct QuickActionRenders {
     private var out: URL {
-        URL(filePath: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_ACTIONS"]!, directoryHint: .isDirectory)
+        URL(filePath: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_QUICK_ACTIONS"]!, directoryHint: .isDirectory)
     }
 
     @Test func rendersTheRowOfferingAnAction() throws {
@@ -244,19 +247,19 @@ struct ActionRenders {
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
         let folder = FileManager.default.temporaryDirectory.appending(path: "actions-render-\(UUID().uuidString)", directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let library = SavedActionLibrary(folder: folder)
+        let library = QuickActionLibrary(folder: folder)
         for action in InstantActionPreview.actions { try library.save(action) }
-        var off = SavedAction(id: "focus-music", name: "Focus Music", description: "Opens Music for a work session.",
+        var off = QuickAction(id: "focus-music", name: "Focus Music", description: "Opens Music for a work session.",
                               steps: [.init(tool: "open_application", arguments: ["bundle_identifier_or_path": "com.apple.Music"])])
         off.isEnabled = false
         try library.save(off)
         try Data("{ \"format\": 1, \"name\": \"Half Written\"".utf8).write(to: folder.appending(path: "half-written.json"))
         let registry = ToolRegistry(builtIn: BuiltInTools.make())
-        let model = ActionsSettingsModel(library: library, tools: registry.definitions, summaries: registry.summaries, watches: false)
+        let model = QuickActionsSettingsModel(library: library, tools: registry.definitions, summaries: registry.summaries, watches: false)
         for (selection, name) in [("start-screensaver", "actions-settings"), ("spotify-focus", "actions-settings-two-steps"), ("half-written", "actions-settings-problem")] {
             model.selection = selection
             for dark in [false, true] {
-                try write(ActionsSettingsView(model: model).background(Color(nsColor: .windowBackgroundColor)),
+                try write(QuickActionsSettingsView(model: model).background(Color(nsColor: .windowBackgroundColor)),
                           size: NSSize(width: 700, height: 560), dark: dark,
                           to: out.appending(path: "\(name)-\(dark ? "dark" : "light").png"))
             }

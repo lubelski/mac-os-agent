@@ -30,15 +30,15 @@ public enum InstantMatchStrength: Int, Sendable, Comparable, CaseIterable {
 /// What an instant action does when it is taken.
 public enum InstantActionTarget: Sendable, Equatable, Hashable {
     case application(InstalledApplication)
-    /// A saved action, by its id. It is read again from its file when it runs, so an action
+    /// A quick action, by its id. It is read again from its file when it runs, so an action
     /// turned off or changed since the row was shown runs as it is now, or not at all.
-    case action(id: String)
+    case quickAction(id: String)
 
     /// What Return does, in the row's words: "opens" or "runs".
     public var actionLabel: String {
         switch self {
         case .application: "opens"
-        case .action: "runs"
+        case .quickAction: "runs"
         }
     }
 }
@@ -50,7 +50,7 @@ public struct InstantActionCandidate: Sendable, Equatable, Identifiable {
     public var id: String
     /// The name shown in the row.
     public var title: String
-    /// What it will do, in a few words, shown beside the name for a saved action, such as
+    /// What it will do, in a few words, shown beside the name for a quick action, such as
     /// "Open ScreenSaverEngine". Nil for an app, whose name says it.
     public var detail: String?
     public var strength: InstantMatchStrength
@@ -108,7 +108,7 @@ public protocol InstantActionProvider: Sendable {
     /// at least `InstantMatchStrength.initials` belong here.
     func candidates(for phrase: InstantPhrase) -> [InstantActionCandidate]
     /// True when the provider is asked whatever verb the phrase starts with, because its names
-    /// can start with one, such as a saved action named "Start Screensaver". It then matches
+    /// can start with one, such as a quick action named "Start Screensaver". It then matches
     /// against the whole input as well as the subject.
     var matchesAnyVerb: Bool { get }
 }

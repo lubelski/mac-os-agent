@@ -296,7 +296,7 @@ final class FakeApplicationWorkspace: ApplicationWorkspace, @unchecked Sendable 
         let history = try ThreadStore(fileURL: temporaryThreadFile())
         let first = ToolRegistry(builtIn: BuiltInTools.make(applicationWorkspace: workspace, history: history))
         let second = ToolRegistry(builtIn: BuiltInTools.make(applicationWorkspace: workspace, history: history))
-        // The list before the action tools is exactly as it was, so a cached prefix holds.
+        // The list before the quick action tools is exactly as it was, so a cached prefix holds.
         let before = [
             "run_shell_command", "search_applications", "open_application", "list_running_applications", "load_skill",
             "search_history", "read_episode", "read_reminders", "change_reminders", "read_events", "change_events",

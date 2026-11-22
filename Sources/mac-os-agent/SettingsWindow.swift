@@ -14,7 +14,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case instructions
     case memory
     case skills
-    case actions
+    // The raw value stays "actions": it is the section kept in the preferences, and the
+    // name `--preview-settings` takes, from before quick actions were renamed.
+    case quickActions = "actions"
     case tools
     case history
     case behaviors
@@ -30,7 +32,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .instructions: "Instructions"
         case .memory: "Memory"
         case .skills: "Skills"
-        case .actions: "Quick Actions"
+        case .quickActions: "Quick Actions"
         case .tools: "Tools"
         case .history: "History"
         case .behaviors: "Behaviors"
@@ -46,7 +48,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .instructions: "text.quote"
         case .memory: "brain"
         case .skills: "puzzlepiece.extension"
-        case .actions: "bolt"
+        case .quickActions: "bolt"
         case .tools: "wrench.and.screwdriver"
         case .history: "clock.arrow.circlepath"
         case .behaviors: "keyboard"
@@ -89,7 +91,7 @@ struct SettingsModels {
     let instructions: InstructionsSettingsModel
     let memory: MemorySettingsModel
     let skills: SkillsSettingsModel
-    let actions: ActionsSettingsModel
+    let quickActions: QuickActionsSettingsModel
     let tools: ToolsSettingsModel
     let history: HistorySettingsModel
     let debugging: DebuggingSettingsModel
@@ -147,8 +149,8 @@ struct SettingsRootView: View {
             MemorySettingsView(model: models.memory)
         case .skills:
             SkillsSettingsView(model: models.skills)
-        case .actions:
-            ActionsSettingsView(model: models.actions)
+        case .quickActions:
+            QuickActionsSettingsView(model: models.quickActions)
         case .tools:
             ToolsSettingsView(model: models.tools)
         case .history:
@@ -184,7 +186,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         history: ThreadStore?, problems: ProblemLog, signInStatus: @escaping @Sendable () async -> SignInStatus?,
         summonTrigger: SummonTriggerController, defaults: UserDefaults = .standard, remembersFrame: Bool = true,
         privacyAccess: any PrivacyAccessGate = EventKitStore.shared,
-        actions: SavedActionLibrary = SavedActionLibrary(),
+        quickActions: QuickActionLibrary = QuickActionLibrary(),
         updater: AppUpdater = .unavailable()
     ) {
         models = SettingsModels(
@@ -194,7 +196,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             instructions: InstructionsSettingsModel(prompt: prompt),
             memory: MemorySettingsModel(prompt: prompt),
             skills: SkillsSettingsModel(library: prompt.skills),
-            actions: ActionsSettingsModel(library: actions, tools: tools.definitions, summaries: tools.summaries),
+            quickActions: QuickActionsSettingsModel(library: quickActions, tools: tools.definitions, summaries: tools.summaries),
             tools: ToolsSettingsModel(registry: tools, access: privacyAccess),
             history: HistorySettingsModel(history: history),
             debugging: DebuggingSettingsModel(
@@ -270,7 +272,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         // The agent can write skills and the person can edit files in Finder while the window
         // is closed, so read them again whenever it comes forward.
         models.skills.reload()
-        models.actions.reload()
+        models.quickActions.reload()
         models.instructions.reloadIfUnchanged()
         models.memory.reload()
         models.debugging.reload()
@@ -360,7 +362,7 @@ enum SettingsPreview {
         } else if let item {
             controller.models.history.query = section == .history ? item : ""
             controller.models.skills.selection = item
-            if section == .actions { controller.models.actions.selection = item }
+            if section == .quickActions { controller.models.quickActions.selection = item }
             controller.models.tools.selection = item
             controller.models.debugging.scrollTarget = item
         }

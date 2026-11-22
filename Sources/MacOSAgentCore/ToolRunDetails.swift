@@ -9,7 +9,7 @@ public struct ToolRunDetails: Sendable, Equatable, Codable {
     public enum GoAhead: String, Sendable, Equatable, Codable {
         case approved
         case declined
-        /// A step of a saved action that would have asked if the agent had made the call. The
+        /// A step of a quick action that would have asked if the agent had made the call. The
         /// owner chose the action from a list, which is the go-ahead, so it did not ask.
         case preapproved
     }

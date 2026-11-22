@@ -51,12 +51,12 @@ public enum AgentPaths {
     }
 
     /// One JSON file per quick action: a stored tool call, or a few, that the instant row runs.
-    public static var actionsFolder: URL {
-        applicationSupport.appending(path: actionsFolderName, directoryHint: .isDirectory)
+    public static var quickActionsFolder: URL {
+        applicationSupport.appending(path: quickActionsFolderName, directoryHint: .isDirectory)
     }
 
-    public static let actionsFolderName = "quick-actions"
-    /// What the quick actions folder was called before. See `SavedActionLibrary.moveFolderFromOldName`.
+    public static let quickActionsFolderName = "quick-actions"
+    /// What the quick actions folder was called before. See `QuickActionLibrary.moveFolderFromOldName`.
     public static let oldActionsFolderName = "actions"
 
     /// Token counts for each model request, one JSON line per request. No message content.

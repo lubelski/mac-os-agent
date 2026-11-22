@@ -31,7 +31,7 @@ struct InputFooterContent: Equatable {
         case typing
         /// A task is running.
         case running(queuedCount: Int)
-        /// Return would take an app or a saved action. `others` is how many more matches the
+        /// Return would take an app or a quick action. `others` is how many more matches the
         /// list would show.
         case suggestion(InstantActionTarget, others: Int)
         /// The instant action list is open. Nil target is the Ask row.
@@ -86,7 +86,7 @@ struct InputFooterContent: Equatable {
     static func verb(_ target: InstantActionTarget) -> String {
         switch target {
         case .application: "open"
-        case .action: "run"
+        case .quickAction: "run"
         }
     }
 
@@ -169,7 +169,7 @@ struct FooterFill: View {
 }
 
 /// The mark to the left of the text field. It is `›` whenever Return sends the text as a
-/// message, and the icon of the app or saved action Return will act on otherwise, so the
+/// message, and the icon of the app or quick action Return will act on otherwise, so the
 /// owner can see at a glance whether Return runs something or sends it.
 struct InputMark: View {
     let target: InstantActionCandidate?
@@ -190,7 +190,7 @@ struct InputMark: View {
     }
 }
 
-/// An app's own icon, or a symbol for a saved action.
+/// An app's own icon, or a symbol for a quick action.
 struct SuggestionIcon: View {
     let target: InstantActionTarget
     let size: CGFloat
@@ -202,7 +202,7 @@ struct SuggestionIcon: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: size, height: size)
-        case .action:
+        case .quickAction:
             Image(systemName: "bolt.fill")
                 .font(.system(size: size * 0.72))
                 .foregroundStyle(.secondary)
@@ -364,7 +364,7 @@ private struct SuggestionRowView: View {
         case .candidate(let candidate):
             switch candidate.target {
             case .application: "app"
-            case .action: "quick action"
+            case .quickAction: "quick action"
             }
         case .ask: Mark.commandReturn
         case .command(let item):
@@ -377,7 +377,7 @@ private struct SuggestionRowView: View {
         case .candidate(let candidate):
             switch candidate.target {
             case .application: "\(candidate.title), app"
-            case .action: "\(candidate.title), quick action"
+            case .quickAction: "\(candidate.title), quick action"
             }
         case .ask(let text): "Ask \(agentName): \(text)"
         case .command(let item): "\(item.name), \(item.summary(incognito: incognito))"

@@ -1,12 +1,12 @@
 import Foundation
 
-/// A saved action: a stored tool call, or a short run of them, with the arguments filled in.
+/// A quick action: a stored tool call, or a short run of them, with the arguments filled in.
 /// The app runs it on its own when the owner picks it in the instant row, with no model
 /// request. It is data the app runs, not prose the model reads. That is what tells it apart
 /// from a skill, which is instructions the model follows with its own judgment.
 ///
-/// An action is a JSON file in `actions/` in Application Support, one per action, named by its
-/// id, such as `actions/start-screensaver.json`:
+/// A quick action is a JSON file in `quick-actions/` in Application Support, one per action,
+/// named by its id, such as `quick-actions/start-screensaver.json`:
 ///
 /// ```json
 /// {
@@ -29,7 +29,7 @@ import Foundation
 /// top-level `parameters` list and an argument value of the form `{"$parameter": "level"}`,
 /// in a file marked `"format": 2`, which this version lists with a problem instead of running
 /// the placeholder as written.
-public struct SavedAction: Sendable, Equatable, Identifiable {
+public struct QuickAction: Sendable, Equatable, Identifiable {
     public struct Step: Sendable, Equatable {
         /// The tool's name, as the model sees it, such as `open_application`.
         public var tool: String
@@ -80,24 +80,24 @@ public struct SavedAction: Sendable, Equatable, Identifiable {
     // MARK: - The file
 
     /// Reads a file's text. The id comes from the file's name, so it is passed in.
-    public static func parse(_ text: String, id: String) throws(SavedActionError) -> SavedAction {
-        guard let value = JSONValue.parse(text) else { throw SavedActionError("The file is not valid JSON.") }
-        guard case .object(let object) = value else { throw SavedActionError("The file should be a JSON object.") }
+    public static func parse(_ text: String, id: String) throws(QuickActionError) -> QuickAction {
+        guard let value = JSONValue.parse(text) else { throw QuickActionError("The file is not valid JSON.") }
+        guard case .object(let object) = value else { throw QuickActionError("The file should be a JSON object.") }
         guard let format = object["format"]?.numberValue else {
-            throw SavedActionError("The file needs \"format\": \(Self.format).")
+            throw QuickActionError("The file needs \"format\": \(Self.format).")
         }
         guard format == Double(Self.format) else {
-            throw SavedActionError("The file is format \(Self.formatted(format)), and this version of the app reads format \(Self.format).")
+            throw QuickActionError("The file is format \(Self.formatted(format)), and this version of the app reads format \(Self.format).")
         }
-        guard let rawName = object["name"]?.stringValue else { throw SavedActionError("The file needs a \"name\".") }
+        guard let rawName = object["name"]?.stringValue else { throw QuickActionError("The file needs a \"name\".") }
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { throw SavedActionError("The name is empty.") }
+        guard !name.isEmpty else { throw QuickActionError("The name is empty.") }
         guard name.count <= maximumNameLength else {
-            throw SavedActionError("The name is longer than \(maximumNameLength) characters.")
+            throw QuickActionError("The name is longer than \(maximumNameLength) characters.")
         }
-        guard !name.contains(where: \.isNewline) else { throw SavedActionError("The name is more than one line.") }
+        guard !name.contains(where: \.isNewline) else { throw QuickActionError("The name is more than one line.") }
         let description = object["description"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !description.isEmpty else { throw SavedActionError("The file needs a one-line \"description\".") }
+        guard !description.isEmpty else { throw QuickActionError("The file needs a one-line \"description\".") }
 
         var phrases: [String] = []
         switch object["phrases"] {
@@ -105,40 +105,40 @@ public struct SavedAction: Sendable, Equatable, Identifiable {
         case .array(let values)?:
             for value in values {
                 guard let phrase = value.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !phrase.isEmpty else {
-                    throw SavedActionError("Each phrase should be a string with some text.")
+                    throw QuickActionError("Each phrase should be a string with some text.")
                 }
-                guard !phrase.contains(where: \.isNewline) else { throw SavedActionError("The phrase \"\(phrase)\" is more than one line.") }
+                guard !phrase.contains(where: \.isNewline) else { throw QuickActionError("The phrase \"\(phrase)\" is more than one line.") }
                 if !phrases.contains(where: { $0.caseInsensitiveCompare(phrase) == .orderedSame }) { phrases.append(phrase) }
             }
-            guard phrases.count <= maximumPhrases else { throw SavedActionError("There are more than \(maximumPhrases) phrases.") }
+            guard phrases.count <= maximumPhrases else { throw QuickActionError("There are more than \(maximumPhrases) phrases.") }
         default:
-            throw SavedActionError("\"phrases\" should be a list of strings.")
+            throw QuickActionError("\"phrases\" should be a list of strings.")
         }
 
         let enabled: Bool
         switch object["enabled"] {
         case nil, .null?: enabled = true
         case .bool(let value)?: enabled = value
-        default: throw SavedActionError("\"enabled\" should be true or false.")
+        default: throw QuickActionError("\"enabled\" should be true or false.")
         }
 
         guard let stepValues = object["steps"]?.arrayValue else {
-            throw SavedActionError("The file needs \"steps\", a list of tool calls.")
+            throw QuickActionError("The file needs \"steps\", a list of tool calls.")
         }
-        guard !stepValues.isEmpty else { throw SavedActionError("The quick action has no steps.") }
-        guard stepValues.count <= maximumSteps else { throw SavedActionError("The quick action has more than \(maximumSteps) steps.") }
+        guard !stepValues.isEmpty else { throw QuickActionError("The quick action has no steps.") }
+        guard stepValues.count <= maximumSteps else { throw QuickActionError("The quick action has more than \(maximumSteps) steps.") }
         var steps: [Step] = []
         for (index, value) in stepValues.enumerated() {
             let number = index + 1
-            guard case .object(let step) = value else { throw SavedActionError("Step \(number) should be an object.") }
+            guard case .object(let step) = value else { throw QuickActionError("Step \(number) should be an object.") }
             guard let tool = step["tool"]?.stringValue?.trimmingCharacters(in: .whitespaces), !tool.isEmpty else {
-                throw SavedActionError("Step \(number) needs a \"tool\".")
+                throw QuickActionError("Step \(number) needs a \"tool\".")
             }
             let arguments = step["arguments"] ?? .object([:])
-            guard case .object = arguments else { throw SavedActionError("Step \(number)'s \"arguments\" should be an object.") }
+            guard case .object = arguments else { throw QuickActionError("Step \(number)'s \"arguments\" should be an object.") }
             steps.append(Step(tool: tool, arguments: arguments))
         }
-        return SavedAction(id: id, name: name, description: description, phrases: phrases, isEnabled: enabled, steps: steps)
+        return QuickAction(id: id, name: name, description: description, phrases: phrases, isEnabled: enabled, steps: steps)
     }
 
     /// The file as the app writes it, with its keys in reading order and two spaces of indent.
@@ -170,20 +170,20 @@ public struct SavedAction: Sendable, Equatable, Identifiable {
     }
 }
 
-/// Why an action file could not be read, saved, or deleted.
-public struct SavedActionError: Error, Equatable, CustomStringConvertible, LocalizedError {
+/// Why a quick action file could not be read, saved, or deleted.
+public struct QuickActionError: Error, Equatable, CustomStringConvertible, LocalizedError {
     public var description: String
     public init(_ description: String) { self.description = description }
     public var errorDescription: String? { description }
 }
 
-/// An action as Settings and the agent list it: a file in the actions folder, read or not.
-public struct SavedActionEntry: Sendable, Equatable, Identifiable {
+/// An action as Settings and the agent list it: a file in the quick actions folder, read or not.
+public struct QuickActionEntry: Sendable, Equatable, Identifiable {
     public var id: String
     /// The name from the file, or the id when the file could not be read.
     public var name: String
     /// Nil when the file could not be read.
-    public var action: SavedAction?
+    public var action: QuickAction?
     /// Why the file could not be read. Nil when it is fine.
     public var problem: String?
     public var fileURL: URL
@@ -192,33 +192,33 @@ public struct SavedActionEntry: Sendable, Equatable, Identifiable {
     public var isAvailable: Bool { action?.isEnabled == true && problem == nil }
 }
 
-/// The action files in `actions/` in Application Support. The folder is read each time, so a
+/// The quick action files in `quick-actions/` in Application Support. The folder is read each time, so a
 /// file the owner or the agent writes is picked up without a relaunch.
-public struct SavedActionLibrary: Sendable {
+public struct QuickActionLibrary: Sendable {
     public let folder: URL
 
     public static let fileExtension = "json"
     /// Posted after the app itself changes an action, so the panel and Settings read again.
-    public static let didChangeNotification = Notification.Name("dev.lubelski.mac-os-agent.actionsDidChange")
+    public static let didChangeNotification = Notification.Name("dev.lubelski.mac-os-agent.quickActionsDidChange")
 
-    public init(folder: URL = AgentPaths.actionsFolder) {
+    public init(folder: URL = AgentPaths.quickActionsFolder) {
         self.folder = folder
     }
 
-    /// Every action file, by name. A file that cannot be read is listed with its problem.
-    public func entries() -> [SavedActionEntry] {
+    /// Every quick action file, by name. A file that cannot be read is listed with its problem.
+    public func entries() -> [QuickActionEntry] {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.plainPath) else { return [] }
         return names
             .filter { $0.hasSuffix("." + Self.fileExtension) && !$0.hasPrefix(".") }
-            .map { fileName -> SavedActionEntry in
+            .map { fileName -> QuickActionEntry in
                 let id = String(fileName.dropLast(Self.fileExtension.count + 1))
                 let url = folder.appending(path: fileName)
-                var entry = SavedActionEntry(id: id, name: id, action: nil, problem: nil, fileURL: url)
+                var entry = QuickActionEntry(id: id, name: id, action: nil, problem: nil, fileURL: url)
                 if !ThemeLibrary.isValidIdentifier(id) {
                     entry.problem = "The file name should be lowercase letters, digits, and hyphens, then .json."
                 } else if let text = try? String(contentsOf: url, encoding: .utf8) {
                     do {
-                        let action = try SavedAction.parse(text, id: id)
+                        let action = try QuickAction.parse(text, id: id)
                         entry.action = action
                         entry.name = action.name
                     } catch {
@@ -233,16 +233,16 @@ public struct SavedActionLibrary: Sendable {
     }
 
     /// The actions the instant row may offer: those that read and are on.
-    public func availableActions() -> [SavedAction] {
+    public func availableActions() -> [QuickAction] {
         entries().compactMap { $0.isAvailable ? $0.action : nil }
     }
 
-    public func entry(id: String) -> SavedActionEntry? {
+    public func entry(id: String) -> QuickActionEntry? {
         entries().first { $0.id == id }
     }
 
     /// Finds an action by its id or, ignoring case, its name.
-    public func find(_ idOrName: String) -> SavedActionEntry? {
+    public func find(_ idOrName: String) -> QuickActionEntry? {
         let wanted = idOrName.trimmingCharacters(in: .whitespaces)
         let all = entries()
         return all.first { $0.id == wanted } ?? all.first { $0.name.caseInsensitiveCompare(wanted) == .orderedSame }
@@ -250,38 +250,38 @@ public struct SavedActionLibrary: Sendable {
 
     /// Writes an action to its file, named by its id, and returns the id.
     @discardableResult
-    public func save(_ action: SavedAction) throws(SavedActionError) -> String {
+    public func save(_ action: QuickAction) throws(QuickActionError) -> String {
         guard ThemeLibrary.isValidIdentifier(action.id) else {
-            throw SavedActionError("The id \"\(action.id)\" should be lowercase letters, digits, and hyphens.")
+            throw QuickActionError("The id \"\(action.id)\" should be lowercase letters, digits, and hyphens.")
         }
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try Data(action.fileText.utf8).write(to: fileURL(id: action.id), options: .atomic)
         } catch {
-            throw SavedActionError("Could not write the quick action file: \(error.localizedDescription)")
+            throw QuickActionError("Could not write the quick action file: \(error.localizedDescription)")
         }
         Self.postChange()
         return action.id
     }
 
     /// Turns an action on or off by rewriting its file with the flag changed.
-    public func setEnabled(_ enabled: Bool, id: String) throws(SavedActionError) {
+    public func setEnabled(_ enabled: Bool, id: String) throws(QuickActionError) {
         guard var action = entry(id: id)?.action else {
-            throw SavedActionError("The file for \(id) cannot be read, so it cannot be turned \(enabled ? "on" : "off").")
+            throw QuickActionError("The file for \(id) cannot be read, so it cannot be turned \(enabled ? "on" : "off").")
         }
         action.isEnabled = enabled
         try save(action)
     }
 
-    public func delete(id: String) throws(SavedActionError) {
+    public func delete(id: String) throws(QuickActionError) {
         let url = fileURL(id: id)
         guard FileManager.default.fileExists(atPath: url.plainPath) else {
-            throw SavedActionError("There is no quick action file \(url.lastPathComponent).")
+            throw QuickActionError("There is no quick action file \(url.lastPathComponent).")
         }
         do {
             try FileManager.default.removeItem(at: url)
         } catch {
-            throw SavedActionError("Could not delete the quick action file: \(error.localizedDescription)")
+            throw QuickActionError("Could not delete the quick action file: \(error.localizedDescription)")
         }
         Self.postChange()
     }
@@ -301,11 +301,11 @@ public struct SavedActionLibrary: Sendable {
     }
 }
 
-extension SavedActionLibrary {
+extension QuickActionLibrary {
     /// The one line shown by the text field after a task that added or changed actions the
     /// instant row offers, such as "The quick action Start Screensaver is ready to use. Type its name
     /// and press Return.", or nil when none did. Actions that are off or broken are not named.
-    public static func changeNotice(from before: [SavedActionEntry], to after: [SavedActionEntry]) -> String? {
+    public static func changeNotice(from before: [QuickActionEntry], to after: [QuickActionEntry]) -> String? {
         let old = Dictionary(before.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var added: [String] = []
         var changed: [String] = []
@@ -337,7 +337,7 @@ extension SavedActionLibrary {
     }
 }
 
-extension SavedActionLibrary {
+extension QuickActionLibrary {
     /// What happened to the folder quick actions were kept in before they were renamed,
     /// `actions/`, when the app started.
     public enum FolderMove: Sendable, Equatable {
@@ -356,11 +356,11 @@ extension SavedActionLibrary {
             switch self {
             case .nothingToMove, .moved: nil
             case .bothExist:
-                "The data folder has both \(AgentPaths.oldActionsFolderName)/ and \(AgentPaths.actionsFolderName)/. "
-                    + "The app uses \(AgentPaths.actionsFolderName)/ and leaves \(AgentPaths.oldActionsFolderName)/ as it is."
+                "The data folder has both \(AgentPaths.oldActionsFolderName)/ and \(AgentPaths.quickActionsFolderName)/. "
+                    + "The app uses \(AgentPaths.quickActionsFolderName)/ and leaves \(AgentPaths.oldActionsFolderName)/ as it is."
             case .failed(let reason):
-                "Could not rename \(AgentPaths.oldActionsFolderName)/ to \(AgentPaths.actionsFolderName)/: \(reason) "
-                    + "The app uses \(AgentPaths.actionsFolderName)/."
+                "Could not rename \(AgentPaths.oldActionsFolderName)/ to \(AgentPaths.quickActionsFolderName)/: \(reason) "
+                    + "The app uses \(AgentPaths.quickActionsFolderName)/."
             }
         }
     }
@@ -370,7 +370,7 @@ extension SavedActionLibrary {
     public static func moveFolderFromOldName(in dataFolder: URL = AgentPaths.applicationSupport) -> FolderMove {
         let manager = FileManager.default
         let old = dataFolder.appending(path: AgentPaths.oldActionsFolderName, directoryHint: .isDirectory)
-        let new = dataFolder.appending(path: AgentPaths.actionsFolderName, directoryHint: .isDirectory)
+        let new = dataFolder.appending(path: AgentPaths.quickActionsFolderName, directoryHint: .isDirectory)
         var isDirectory: ObjCBool = false
         guard manager.fileExists(atPath: old.plainPath, isDirectory: &isDirectory), isDirectory.boolValue else { return .nothingToMove }
         guard !manager.fileExists(atPath: new.plainPath) else { return .bothExist }

@@ -45,7 +45,7 @@ private struct GoAheadTool: AgentTool {
             applicationWorkspace: FakeApplicationWorkspace(installed: []), reminders: store, calendar: store,
             system: FakeSystemControl()))
         let groups = registry.groups
-        #expect(groups.map(\.source) == [.builtIn, .reminders, .calendar, .system, .appearance, .actions, .memory])
+        #expect(groups.map(\.source) == [.builtIn, .reminders, .calendar, .system, .appearance, .quickActions, .memory])
         #expect(groups.flatMap(\.tools).map(\.name) == BuiltInTools.names)
         #expect(groups[1].tools.map(\.name) == ["read_reminders", "change_reminders"])
         #expect(groups[2].tools.map(\.name) == ["read_events", "change_events"])

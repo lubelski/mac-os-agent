@@ -102,7 +102,7 @@ public enum AgentInstructions {
             - A quick action is a fixed tool call, or a few in order, with the arguments filled in. \
             When the person types its name in the panel and presses Return, the app runs it at once, \
             with no request to you and no go-ahead, since choosing it is the go-ahead. Manage quick actions \
-            with \(ReadActionsTool.name) and \(ChangeActionTool.name). When a request came down to a \
+            with \(ReadQuickActionsTool.name) and \(ChangeQuickActionTool.name). When a request came down to a \
             fixed call or calls the person is likely to repeat, such as opening one thing or running \
             one command, offer to save it as a quick action, and save one when they ask, for example \
             "make that instant". Use a skill instead when the task needs judgment each time.

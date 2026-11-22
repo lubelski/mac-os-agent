@@ -5,13 +5,13 @@ import Foundation
 /// schemas use a small part of JSON Schema (types, properties, required, enum, items, and
 /// `additionalProperties: false`), and that is the part checked here. What a tool checks for
 /// itself when it runs, such as whether an app exists at a path, is left to the run.
-public enum ActionValidation {
+public enum QuickActionValidation {
     /// Tools an action cannot call. An action that changed actions would be a surprise to
     /// run from a list.
-    public static let excludedTools: Set<String> = [ReadActionsTool.name, ChangeActionTool.name]
+    public static let excludedTools: Set<String> = [ReadQuickActionsTool.name, ChangeQuickActionTool.name]
 
     /// What is wrong with the steps, one line each, or none.
-    public static func problems(_ action: SavedAction, tools: [ToolDefinition]) -> [String] {
+    public static func problems(_ action: QuickAction, tools: [ToolDefinition]) -> [String] {
         var problems: [String] = []
         let byName = Dictionary(tools.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         for (index, step) in action.steps.enumerated() {
@@ -98,7 +98,7 @@ public enum ActionValidation {
     /// plain from the arguments alone, such as "deletes files" for a shell command. An action
     /// runs without asking, since the owner chose it from a list. This is said in Settings and
     /// when the action is saved, so the owner knows what they chose.
-    public static func goAheadNote(_ step: SavedAction.Step) -> String? {
+    public static func goAheadNote(_ step: QuickAction.Step) -> String? {
         switch step.tool {
         case ShellCommandTool.name:
             guard let command = step.arguments["command"]?.stringValue else { return nil }

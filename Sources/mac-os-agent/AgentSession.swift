@@ -70,9 +70,9 @@ final class AgentSession {
     /// The skill commands as they were when the running task started, to tell afterwards which
     /// ones it added or changed.
     @ObservationIgnored private var menuAtTaskStart: SlashCommandMenu?
-    /// The saved actions as they were when the running task started, to tell afterwards which
+    /// The quick actions as they were when the running task started, to tell afterwards which
     /// ones it added or changed.
-    @ObservationIgnored private var actionsAtTaskStart: [SavedActionEntry]?
+    @ObservationIgnored private var quickActionsAtTaskStart: [QuickActionEntry]?
     /// The memory folder the main panel's agent reads and writes. Nil in the incognito window,
     /// which keeps nothing.
     @ObservationIgnored var memories: MemoryLibrary?
@@ -406,8 +406,8 @@ final class AgentSession {
     /// closing it. If the action fails, the window comes back with the text and a line saying
     /// why, which is shown only and never kept.
     func perform(_ candidate: InstantActionCandidate) {
-        if case .action(let id) = candidate.target {
-            runSavedAction(id: id, title: candidate.title)
+        if case .quickAction(let id) = candidate.target {
+            runQuickAction(id: id, title: candidate.title)
             return
         }
         let text = draft
@@ -429,19 +429,19 @@ final class AgentSession {
         }
     }
 
-    /// A saved action, from the instant row. It runs with no model request, through the same
+    /// A quick action, from the instant row. It runs with no model request, through the same
     /// tools the agent's calls use, and with every go-ahead given, since the owner chose it from
     /// a list. Unlike opening an app it is kept: the owner's typed text and a record of each
     /// step go into the thread as their message, so the agent sees what happened next time.
     /// The main panel hides the normal way and comes back when a step fails, with the text in
     /// the field and the failure in the history.
-    private func runSavedAction(id: String, title: String) {
+    private func runQuickAction(id: String, title: String) {
         guard kind == .kept, let loop else { return }
         let text = draft
         // Read as it is now, so the action runs as its file says, or not at all.
-        guard let entry = instantActions.actionLibrary?.entry(id: id), let action = entry.action, entry.isAvailable else {
+        guard let entry = instantActions.quickActionLibrary?.entry(id: id), let action = entry.action, entry.isAvailable else {
             instantActions.reloadActions()
-            transcript.appendError("\(title) cannot be run. " + (instantActions.actionLibrary?.entry(id: id)?.problem
+            transcript.appendError("\(title) cannot be run. " + (instantActions.quickActionLibrary?.entry(id: id)?.problem
                 ?? "It was turned off or removed from the quick actions folder."))
             return
         }
@@ -458,10 +458,10 @@ final class AgentSession {
             skillCommands.reload()
             menuAtTaskStart = skillCommands.menu
         }
-        actionsAtTaskStart = instantActions.actionLibrary?.entries()
+        quickActionsAtTaskStart = instantActions.quickActionLibrary?.entries()
         task = Task {
             do {
-                let entry = try await loop.runAction(
+                let entry = try await loop.runQuickAction(
                     action, typed: text, startsNewEpisode: startsNew, now: clock(),
                     onEvent: { event in await self.handle(event, in: conversation) })
                 if case .userMessage(_, _, let record?) = entry.item, let failed = record.failedStep {
@@ -581,7 +581,7 @@ final class AgentSession {
             skillCommands.reload()
             menuAtTaskStart = skillCommands.menu
         }
-        if !isIncognito { actionsAtTaskStart = instantActions.actionLibrary?.entries() }
+        if !isIncognito { quickActionsAtTaskStart = instantActions.quickActionLibrary?.entries() }
         if !isIncognito { memoryJournalAtTaskStart = memories?.journal.entries().count }
 
         // The task holds the session strongly until it ends. Discarding an incognito
@@ -774,13 +774,13 @@ final class AgentSession {
         }
     }
 
-    /// After a task in which a saved action was added or changed, such as one the agent just
+    /// After a task in which a quick action was added or changed, such as one the agent just
     /// saved, the instant row already offers it, and a quiet line by the text field says so.
     private func announceActionChanges() {
-        guard let before = actionsAtTaskStart, let library = instantActions.actionLibrary else { return }
-        actionsAtTaskStart = nil
+        guard let before = quickActionsAtTaskStart, let library = instantActions.quickActionLibrary else { return }
+        quickActionsAtTaskStart = nil
         instantActions.reloadActions()
-        if let notice = SavedActionLibrary.changeNotice(from: before, to: library.entries()) {
+        if let notice = QuickActionLibrary.changeNotice(from: before, to: library.entries()) {
             transcript.appendNotice(notice)
         }
     }
@@ -824,7 +824,7 @@ final class AgentSession {
             // A command may have written a skill or an action. The lists follow at once.
             skillCommands?.reload()
             if !isIncognito { instantActions.reloadActions() }
-        case .actionStarted(let start):
+        case .quickActionStarted(let start):
             transcript.beginActionRun(start)
         }
     }
