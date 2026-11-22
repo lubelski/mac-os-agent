@@ -8,15 +8,15 @@ import SwiftUI
 /// inner shape is never rounder than the one that holds it.
 enum PanelShape {
     /// The outer corners of the panel, the incognito window, and the inspector.
-    static let cornerRadius: CGFloat = 18
+    static let cornerRadius: CGFloat = 12
     /// The go-ahead card and the card that asks before discarding an incognito conversation.
-    static let cardCornerRadius: CGFloat = 12
+    static let cardCornerRadius: CGFloat = 9
     /// The owner's message boxes, the agent's reply boxes, and the outlines that stand in
     /// for them.
-    static let messageCornerRadius: CGFloat = 10
+    static let messageCornerRadius: CGFloat = 6
     /// The hover and selection fills of small controls: the top bar's buttons and a selected
     /// tool row.
-    static let controlCornerRadius: CGFloat = 6
+    static let controlCornerRadius: CGFloat = 4
 
     /// The shape of the panel's surface: the glass, the blur, or the solid fill, with all four
     /// corners rounded.

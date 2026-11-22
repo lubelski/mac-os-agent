@@ -186,8 +186,8 @@ struct ThemeSample: View {
     var allowsGlass = true
     static let cornerRadius: CGFloat = 12
     /// The small panel and its message boxes, in the proportion of the real ones.
-    static let panelCornerRadius: CGFloat = 7
-    static let messageCornerRadius: CGFloat = 5
+    static let panelCornerRadius: CGFloat = 5
+    static let messageCornerRadius: CGFloat = 3
 
     var body: some View {
         let palette = PanelPalette(theme: theme, dark: dark, allowsGlass: allowsGlass)
