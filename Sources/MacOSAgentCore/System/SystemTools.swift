@@ -415,7 +415,8 @@ public struct QuitOrHideApplicationTool: AgentTool {
         let approved = await context.confirm(ConfirmationRequest(
             callID: context.callID, kind: .quitApplication, body: .item(name: app.name, detail: app.bundleIdentifier),
             reason: "may ask you to save unsaved work first"))
-        guard approved else { return "The owner declined. \(app.name) is still running." }
+        // Stopping the task answers a waiting go-ahead with no, which is not the owner declining.
+        if !approved, !Task.isCancelled { return "The owner declined. \(app.name) is still running." }
         if Task.isCancelled { return "The task was stopped before \(app.name) was quit." }
         switch await system.quit(app) {
         case .quit: return "Quit \(label)."

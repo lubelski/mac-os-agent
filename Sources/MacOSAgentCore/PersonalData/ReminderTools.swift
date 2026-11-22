@@ -224,7 +224,8 @@ public struct ChangeRemindersTool: AgentTool {
         if let reason = Self.reasonToConfirm(count: plans.count, deletions: deletions, noun: "reminder") {
             let approved = await context.confirm(ConfirmationRequest(
                 callID: context.callID, kind: .reminderChanges, body: .changes(plans.map(\.change)), reason: reason))
-            if !approved { return "The owner declined. Nothing was changed." }
+            // Stopping the task answers a waiting go-ahead with no, which is not the owner declining.
+            if !approved, !Task.isCancelled { return "The owner declined. Nothing was changed." }
         }
         if Task.isCancelled { return "The task was stopped before anything was changed." }
 

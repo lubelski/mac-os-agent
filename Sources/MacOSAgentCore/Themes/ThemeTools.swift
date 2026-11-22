@@ -149,7 +149,8 @@ public struct ChangeThemeTool: AgentTool {
             let approved = await context.confirm(ConfirmationRequest(
                 callID: context.callID, kind: .deleteTheme, body: .item(name: entry.name, detail: "themes/\(entry.id).json"),
                 reason: "removes its file from the themes folder"))
-            guard approved else { return "The owner declined. \(entry.name) is still there." }
+            // Stopping the task answers a waiting go-ahead with no, which is not the owner declining.
+            if !approved, !Task.isCancelled { return "The owner declined. \(entry.name) is still there." }
             if Task.isCancelled { return "The task was stopped before \(entry.name) was deleted." }
             do {
                 try library.delete(id: entry.id)

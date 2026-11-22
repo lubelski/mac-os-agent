@@ -88,7 +88,8 @@ public struct ShellCommandTool: AgentTool {
         if let reason = DestructiveCommandCheck.reasonToConfirm(command: command, markedDestructive: markedDestructive) {
             let approved = await context.confirm(
                 ConfirmationRequest(callID: context.callID, command: command, reason: reason))
-            if !approved {
+            // Stopping the task answers a waiting go-ahead with no, which is not the owner declining.
+            if !approved, !Task.isCancelled {
                 return Self.declinedOutput
             }
         }

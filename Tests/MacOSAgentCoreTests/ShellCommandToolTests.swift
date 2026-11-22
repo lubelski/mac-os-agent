@@ -90,6 +90,43 @@ import Testing
         #expect(await Self.exits(child, within: .seconds(3)))
     }
 
+    /// Stopping ends every process of a pipeline at once, with SIGTERM, well before the grace
+    /// period that SIGKILL waits for.
+    @Test func stoppingAPipelineEndsEveryPartPromptly() async throws {
+        let pidFile = Self.temporaryFile()
+        let tool = ShellCommandTool(killGracePeriod: .seconds(10))
+        let task = Task {
+            await tool.run(
+                arguments: ["command": .string("echo $$ >> \(pidFile.path); sleep 300 | cat"), "destructive": false],
+                context: neverAsk)
+        }
+        let group = try await Self.waitForProcessID(in: pidFile)
+        defer { killpg(group, SIGKILL) }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(killpg(group, 0) == 0, "the pipeline is running in zsh's process group")
+        let started = ContinuousClock.now
+        task.cancel()
+        let output = await task.value
+        #expect(ContinuousClock.now - started < .seconds(1))
+        #expect(output.contains(ShellCommandTool.stoppedWhileRunningNote))
+        // Well inside the 10 second grace period, so SIGTERM alone ended them.
+        let deadline = ContinuousClock.now + .seconds(3)
+        while killpg(group, 0) == 0, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        let left = killpg(group, 0) == 0 || errno != ESRCH
+        if left {
+            // What is left, for the failure message.
+            let ps = Process()
+            ps.executableURL = URL(filePath: "/bin/ps")
+            ps.arguments = ["-o", "pid,ppid,pgid,stat,command", "-g", String(group)]
+            let pipe = Pipe()
+            ps.standardOutput = pipe
+            try ps.run()
+            ps.waitUntilExit()
+            let listing = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            Issue.record("something is left of the process group: \(listing)")
+        }
+    }
+
     @Test func theCommandLeadsItsOwnProcessGroup() async {
         let output = await ShellCommandTool().run(
             arguments: ["command": "ps -o pid=,pgid= -p $$", "destructive": false], context: neverAsk)

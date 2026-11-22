@@ -29,6 +29,13 @@ public enum AgentLoopError: Error, Equatable, LocalizedError {
 ///
 /// The loop runs the same against the kept thread and an incognito conversation held in memory.
 public final class AgentLoop: Sendable {
+    /// The result a call gets when the task was stopped before it ran, such as the second of two
+    /// calls in one reply, or a call the model had written when its reply was cut off.
+    public static let stoppedBeforeRunningOutput = "The task was stopped before this call ran."
+    /// The result a call left without one gets at the start of the next instruction, when the
+    /// app quit while it ran.
+    public static let unfinishedOutput = "This command did not finish. The app quit or the task was stopped while it ran."
+
     public let provider: any ModelProvider
     public let thread: any ThreadStorage
     public let tools: [any AgentTool]
@@ -71,6 +78,9 @@ public final class AgentLoop: Sendable {
     /// Handles one instruction from the person. Returns when the model has finished, and
     /// throws `CancellationError` when the surrounding task is cancelled.
     ///
+    /// A stopped task leaves the thread ready for the next request: every call the model made
+    /// has a result before this throws. A call that never ran gets `stoppedBeforeRunningOutput`.
+    ///
     /// - Parameters:
     ///   - userText: What the owner typed.
     ///   - skill: The skill they invoked with a slash, with the message the model is sent in
@@ -97,12 +107,7 @@ public final class AgentLoop: Sendable {
 
         // A call left without a result, because the app quit or a task was stopped, would make
         // the next request invalid. Answer it at the end of the thread instead of editing history.
-        for call in await thread.unansweredToolCalls() {
-            let entry = try await thread.append(.toolResult(.init(
-                callID: call.callID,
-                output: "This command did not finish. The app quit or the task was stopped while it ran.")))
-            await onEvent(.entryAdded(entry))
-        }
+        try await answerUnansweredCalls(with: Self.unfinishedOutput, onEvent: onEvent)
 
         await onEvent(.entryAdded(try await thread.append(.userMessage(text: userText, skill: skill), date: now)))
         let definitions = tools.map(\.definition)
@@ -110,6 +115,33 @@ public final class AgentLoop: Sendable {
         let fingerprint = PromptFingerprint.make(instructions: instructions, tools: definitions)
         let episodeID = await thread.currentEpisode?.id
 
+        do {
+            try await replyAndRunTools(
+                instructions: instructions, definitions: definitions, fingerprint: fingerprint, episodeID: episodeID,
+                onEvent: onEvent, confirm: confirm)
+        } catch {
+            // Stopping can surface as the provider's own error, such as a cancelled request, so
+            // any error in a cancelled task counts as stopping.
+            guard Task.isCancelled else { throw error }
+            try await answerUnansweredCalls(with: Self.stoppedBeforeRunningOutput, onEvent: onEvent)
+            throw CancellationError()
+        }
+    }
+
+    /// Answers each call in the current episode that has no result, at the end of the thread.
+    private func answerUnansweredCalls(with output: String, onEvent: @Sendable (AgentEvent) async -> Void) async throws {
+        for call in await thread.unansweredToolCalls() {
+            let entry = try await thread.append(.toolResult(.init(callID: call.callID, output: output)))
+            await onEvent(.entryAdded(entry))
+            await onEvent(.toolFinished(callID: call.callID))
+        }
+    }
+
+    private func replyAndRunTools(
+        instructions: String, definitions: [ToolDefinition], fingerprint: String, episodeID: UUID?,
+        onEvent: @escaping @Sendable (AgentEvent) async -> Void,
+        confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
+    ) async throws {
         for _ in 0..<maximumModelReplies {
             try Task.checkCancellation()
             // Only the current episode goes to the model. Within it the request only grows at
@@ -173,8 +205,10 @@ public final class AgentLoop: Sendable {
             let asked = ContinuousClock.now
             let approved = await confirm(request)
             let waited = Self.seconds(ContinuousClock.now - asked)
+            // Stopping the task ends the wait with no answer from the owner, so none is noted.
+            let stopped = !approved && Task.isCancelled
             report.note { details in
-                details.goAhead = approved ? .approved : .declined
+                if !stopped { details.goAhead = approved ? .approved : .declined }
                 details.waitedSeconds = (details.waitedSeconds ?? 0) + waited
             }
             return approved
