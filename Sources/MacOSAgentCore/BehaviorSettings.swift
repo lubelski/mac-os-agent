@@ -46,12 +46,17 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
     /// Return while a task runs queues the message, and the queue is sent one message per turn
     /// when the task finishes. See `MessageQueue`.
     case queueMessagesWhileRunning
+    /// The instant action and the slash commands are offered in the text field itself, with a
+    /// footer under it that says what the keys do, and Down Arrow grows the footer into a short
+    /// list of matches. The row above the field is not shown. See `InputFooter`.
+    case suggestionsInFieldAndFooter
 
     public var id: String { rawValue }
 
     public var key: String {
         switch self {
         case .queueMessagesWhileRunning: "ExperimentQueueMessagesWhileRunning"
+        case .suggestionsInFieldAndFooter: "ExperimentSuggestionsInFieldAndFooter"
         }
     }
 

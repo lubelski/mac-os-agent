@@ -12,7 +12,7 @@ enum PanelPreview {
         "empty", "running", "confirmation", "finished", "history", "draft", "multiline-draft",
         "fresh-start", "scrollback", "command-hint", "tool-states", "first-message", "streaming",
         "fresh-start-slot", "markdown", "markdown-streaming", "markdown-code-streaming", "controls",
-    ] + goAheadStates + incognitoStates + inspectorStates + InstantActionPreview.names
+    ] + goAheadStates + incognitoStates + inspectorStates + InstantActionPreview.names + FooterPreview.names
 
     /// The states shown in the incognito window rather than the main panel. `incognito-beside`
     /// shows the main panel too, with the incognito window beside it.
@@ -22,7 +22,7 @@ enum PanelPreview {
 
     /// Which window a state is shown in.
     static func role(named name: String) -> SummonPanel.Role {
-        incognitoStates.contains(name) ? .incognito : .main
+        incognitoStates.contains(name) || name == "footer-incognito" ? .incognito : .main
     }
 
     /// The go-ahead card for each tool that asks, beside the shell tool's `confirmation`.
@@ -69,6 +69,7 @@ enum PanelPreview {
     static func session(named name: String) -> AgentSession? {
         if inspectorStates.contains(name) { return inspectorSession() }
         if let session = InstantActionPreview.session(named: name) { return session }
+        if let session = FooterPreview.session(named: name) { return session }
         switch name {
         case "empty":
             return AgentSession(previewEntries: [])

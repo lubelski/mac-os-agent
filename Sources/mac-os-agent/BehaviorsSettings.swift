@@ -44,6 +44,7 @@ struct BehaviorsSettingsView: View {
 /// Features being tried, each a switch, off until the owner turns it on. See `Experiment`.
 struct ExperimentsSettingsView: View {
     @AppStorage(Experiment.queueMessagesWhileRunning.key) private var queuesMessages = false
+    @AppStorage(Experiment.suggestionsInFieldAndFooter.key) private var suggestionsInField = false
 
     var body: some View {
         Form {
@@ -51,6 +52,10 @@ struct ExperimentsSettingsView: View {
                 Toggle(isOn: $queuesMessages) {
                     Text("Queue messages while a task runs")
                     Text("Return while a task runs adds the message to a queue above the field, and each one is sent as its own turn when the one before finishes. Stopping the task pauses the queue.")
+                }
+                Toggle(isOn: $suggestionsInField) {
+                    Text("Suggestions in the field and a footer")
+                    Text("An app or saved action that Return would open is shown in the field itself, with its icon beside it and its name in gray after what you typed, and a line under the field says what the keys do. Down Arrow lists the other matches under the field. Nothing is added above the field, so the conversation stays where it is.")
                 }
             } header: {
                 Text("Features being tried. They may change or go.")

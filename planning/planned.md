@@ -16,6 +16,10 @@ What is not built yet: proposals waiting for agreement, open questions, and work
 
 - Which ChatGPT plans and models the sign-in token covers, and what OpenAI's terms say about third-party apps using it. Neither has been checked.
 - Whether a new episode should start with a short summary of the recent ones, and whether the agent should name episodes by topic. For now it starts with nothing from before and searches when it needs to.
+- For the suggestions-in-the-field experiment, which is built behind its switch (see Experiments in [decided.md](decided.md)):
+  - Whether the list under the field should open by itself when there are two or more matches, as Alfred does, instead of on Down Arrow.
+  - Whether queued messages should move into the footer instead of the rows above the field.
+  - If the experiment wins, the rows above the field go away: the instant action row and the slash command list.
 
 ## Not started
 
