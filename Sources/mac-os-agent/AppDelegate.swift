@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var panel: SummonPanel!
     private var hotKey: SummonHotKey!
     private var hotKeyRegistered = false
+    private var settings: SettingsWindowController!
+    private let prompt = AgentPrompt()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let installationID = AgentPaths.installationID()
@@ -23,7 +25,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 authenticator: authenticator,
                 model: { ModelSetting.current() },
                 promptCacheKey: "mac-os-agent-\(installationID.uuidString.lowercased())")
-            loop = AgentLoop(provider: provider, thread: thread, tools: ToolRegistry(builtIn: BuiltInTools.make()).tools)
+            let prompt = prompt
+            loop = AgentLoop(
+                provider: provider, thread: thread,
+                tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills)).tools,
+                instructions: { prompt.current() })
         } catch {
             startupError = error
         }
@@ -40,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         hotKey = SummonHotKey { [weak self] in self?.panel.toggle() }
         hotKeyRegistered = hotKey.register()
+        settings = SettingsWindowController(session: session, prompt: prompt, shortcutAvailable: hotKeyRegistered)
         log.notice("Hotkey \(SummonShortcut.displayName, privacy: .public) registered: \(self.hotKeyRegistered, privacy: .public). Status item button: \(self.statusItem.button != nil, privacy: .public)")
 
         Task { await session.start() }
@@ -127,6 +134,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(modelItem)
 
         menu.addItem(.separator())
+        let settingsItem = item("Settings…", #selector(openSettings(_:)))
+        settingsItem.keyEquivalent = ","
+        menu.addItem(settingsItem)
         menu.addItem(item("Show Thread in Finder", #selector(showThread)))
         menu.addItem(NSMenuItem(title: "Quit mac-os-agent", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
@@ -144,6 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func openPanel() { panel.summon() }
+    @objc func openSettings(_ sender: Any?) { settings.show() }
     @objc private func stopTask() { session.stop() }
     @objc private func signIn() { session.signIn() }
     @objc private func cancelSignIn() { session.cancelSignIn() }

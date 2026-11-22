@@ -293,7 +293,7 @@ final class FakeApplicationWorkspace: ApplicationWorkspace, @unchecked Sendable 
         let first = ToolRegistry(builtIn: BuiltInTools.make(applicationWorkspace: workspace))
         let second = ToolRegistry(builtIn: BuiltInTools.make(applicationWorkspace: workspace))
         #expect(first.definitions.map(\.name) == [
-            "run_shell_command", "search_applications", "open_application", "list_running_applications",
+            "run_shell_command", "search_applications", "open_application", "list_running_applications", "load_skill",
         ])
         #expect(first.definitions == second.definitions)
     }

@@ -4,12 +4,37 @@ import Foundation
 public enum AgentPaths {
     public static let folderName = "mac-os-agent"
 
+    /// The launch argument that points the app at another folder, for checking a build by hand
+    /// without touching the real thread: `--data-folder /tmp/somewhere`.
+    public static let dataFolderArgument = "--data-folder"
+
     public static var applicationSupport: URL {
-        URL.applicationSupportDirectory.appending(path: folderName, directoryHint: .isDirectory)
+        if let folder = dataFolder(from: CommandLine.arguments) { return folder }
+        return URL.applicationSupportDirectory.appending(path: folderName, directoryHint: .isDirectory)
+    }
+
+    static func dataFolder(from arguments: [String]) -> URL? {
+        guard let index = arguments.firstIndex(of: dataFolderArgument), index + 1 < arguments.count else { return nil }
+        return URL(filePath: (arguments[index + 1] as NSString).expandingTildeInPath, directoryHint: .isDirectory)
     }
 
     public static var threadFile: URL {
         applicationSupport.appending(path: "thread.jsonl")
+    }
+
+    /// The agent's standing instructions as the person edited them. Missing until the first edit.
+    public static var instructionsFile: URL {
+        applicationSupport.appending(path: "instructions.md")
+    }
+
+    /// One folder per skill, each with a `SKILL.md`.
+    public static var skillsFolder: URL {
+        applicationSupport.appending(path: "skills", directoryHint: .isDirectory)
+    }
+
+    /// Which skills are turned off.
+    public static var skillSettingsFile: URL {
+        applicationSupport.appending(path: "skill-settings.json")
     }
 
     public static var installationIDFile: URL {

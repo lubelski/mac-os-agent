@@ -4,7 +4,20 @@ MainActor.assumeIsolated {
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
 
+    MainMenu.install()
     let arguments = CommandLine.arguments
+    if let index = arguments.firstIndex(of: "--preview-settings"), index + 1 < arguments.count,
+       let pane = SettingsPane(rawValue: arguments[index + 1])
+    {
+        // Shows the Settings window with a stand-in session and nothing else, for pull request
+        // screenshots. Pass --data-folder too, so its files are not the real ones.
+        if let index = arguments.firstIndex(of: "--appearance"), index + 1 < arguments.count {
+            app.appearance = NSAppearance(named: arguments[index + 1] == "light" ? .aqua : .darkAqua)
+        }
+        SettingsPreview.show(pane)
+        app.run()
+        return
+    }
     if let index = arguments.firstIndex(of: "--preview-panel"), index + 1 < arguments.count,
        let session = PanelPreview.session(named: arguments[index + 1])
     {
