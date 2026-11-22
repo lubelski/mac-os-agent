@@ -32,6 +32,8 @@ struct HistoryView: View {
 
     static let topPadding: CGFloat = 4
     static let bottomPadding: CGFloat = 16
+    /// The room above a fresh page's separator, at the top of the view.
+    static let freshPageTopInset: CGFloat = 12
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Within this distance of the end counts as at the bottom.
@@ -56,8 +58,8 @@ struct HistoryView: View {
                     row(index, in: rows)
                 }
                 if isFreshPage {
-                    // A fresh page fills the view exactly with the padding around it, so nothing
-                    // of the episode before it shows at the top.
+                    // A fresh page fills the view from just above its separator down, so the
+                    // separator's own gap above holds the episode before it out of view.
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(pageStart..<rows.count, id: \.self) { index in
                             row(index, in: rows)
@@ -69,7 +71,8 @@ struct HistoryView: View {
                             FreshStartContent(session: session)
                         }
                     }
-                    .frame(height: max(0, containerHeight - Self.topPadding - Self.bottomPadding), alignment: .top)
+                    .frame(height: max(0, containerHeight - Self.bottomPadding - Self.freshPageTopInset
+                                       + Self.spacing(pageStart > 0 ? .episode : .none)), alignment: .top)
                 } else {
                     // The current episode, only as tall as its rows.
                     ForEach(pageStart..<rows.count, id: \.self) { index in

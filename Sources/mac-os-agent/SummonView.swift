@@ -139,19 +139,25 @@ private struct ConfirmationCard: View {
     let session: AgentSession
     @Environment(\.colorSchemeContrast) private var contrast
 
+    private var commandText: some View {
+        Text(verbatim: request.command)
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Run this command? It \(request.reason).")
                 .foregroundStyle(.primary)
             CodeBracket(font: .system(size: 12, design: .monospaced)) {
-                ScrollView {
-                    Text(verbatim: request.command)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                // A short command shows whole. A long one scrolls within a few lines.
+                ViewThatFits(in: .vertical) {
+                    commandText
+                    ScrollView { commandText }
+                        .scrollBounceBehavior(.basedOnSize)
                 }
-                .scrollBounceBehavior(.basedOnSize)
                 .frame(maxHeight: 120)
                 .fixedSize(horizontal: false, vertical: true)
             }

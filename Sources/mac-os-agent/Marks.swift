@@ -63,16 +63,17 @@ struct CodeBracket<Content: View>: View {
             Text(verbatim: label?.isEmpty == false ? label! : Mark.bracketTop)
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(label == nil)
-            HStack(alignment: .top, spacing: 0) {
-                Rectangle()
-                    .fill(.tertiary)
-                    .frame(width: 1)
-                    .padding(.leading, 3)
-                    .padding(.trailing, 8)
-                    .accessibilityHidden(true)
-                content
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            // The rule is drawn beside the content and takes its height, never more.
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 12)
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .fill(.tertiary)
+                        .frame(width: 1)
+                        .padding(.leading, 3)
+                        .accessibilityHidden(true)
+                }
             Text(verbatim: Mark.bracketBottom)
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)

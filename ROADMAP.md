@@ -73,10 +73,17 @@ When a decision changes, move it between the lists here in the same pull request
   - Either one is enough. The model cannot talk its way past the pattern list.
 - A conversation you summon
   - The panel is a small chat window, not a launcher bar. It opens at 640 by 560 points, the owner can move and resize it, and it comes back where it was left, across summons and launches.
-  - The whole thread is scrollable history above the text field, read as episodes. Each episode starts with a quiet separator that shows its date and time. Rows are built lazily as they scroll into view, so a long thread scrolls smoothly.
-  - The current episode is a page at least as tall as the history. When the panel comes up after the last episode timed out, or after `/new`, it opens on an empty page, with earlier episodes above it, out of view until the owner scrolls up. Within the timeout it opens on the current episode.
+  - The whole thread is scrollable history above the text field, read as episodes. Each episode starts with a separator that shows its date and time between hairlines across the history, with the widest gap in the thread above it and a wide one below it, so it reads as a break between episodes and not a mark inside one. Rows are built lazily as they scroll into view, so a long thread scrolls smoothly.
+  - When the panel comes up after the last episode timed out, or after `/new`, it opens on an empty page as tall as the history, with earlier episodes above it, out of view until the owner scrolls up. The page has a line saying the earlier episodes are above, and a slot at the bottom for content such as suggestions. Within the timeout it opens on the current episode.
+  - Once an episode has its first message, it is only as tall as its rows, which sit at the bottom by the text field with no space left over below them. The episode before shows above, past its separator. A thread shorter than the panel sits at the bottom too.
+  - Rows of one exchange sit close together, commands in a run closer still, and each exchange starts a little further down.
   - It opens at the latest message and follows new output unless the owner has scrolled up.
-  - The owner's messages and the agent's replies sit in quiet boxes on opposite sides. Commands are small secondary lines between them, with their output behind a disclosure. Inside an episode, a time label marks a message on a new day or after a pause of 30 minutes or more.
+  - The owner's messages and the agent's replies sit in quiet boxes on opposite sides. The owner's have a faint accent tint, and the agent's a neutral tint strong enough to stand apart from the glass. Inside an episode, a time label marks a message on a new day or after a pause of 30 minutes or more.
+  - The conversation uses no icons and no status colors. Its marks are characters in the text color, at secondary and tertiary levels, taken from the owner's Pi customizations in agent-customizations.
+    - A command is one small line that starts with `›`, or `✗` when it failed. The program draws in the secondary level and its arguments in the tertiary. Clicking the line opens its output below it.
+    - A command that needs words gets one more line starting with `└`, beneath the start of the command: why it failed, that it is running, that it is waiting for a go-ahead, or that it never ran because the owner declined or the task stopped. A command that never ran is struck through.
+    - Code and command text is held by an open bracket: `┌──` above, a rule down its left side, and `└──` below. The go-ahead card and a command's output use it.
+    - The text field starts with a `›` prompt mark. Arrows are the characters `↑` and `↓`.
   - It stays light: a floating Liquid Glass panel with no title bar, sidebar, or conversation list. The text field has focus when it appears, Return sends, and Escape hides it.
   - A slim bar across the top of the glass moves the panel. Its right end has three small controls: re-center, dock to the left, and dock to the right. Its left end is free for a state label or an episode title later. Double-clicking the bar does nothing.
   - Re-center puts the panel back at 640 by 560 points, centered on the screen it is on.
@@ -119,7 +126,7 @@ Ideas the owner has raised that nobody has designed or built yet.
 - A fast path for simple requests such as opening an app: a cheap model or a rule-based matcher answers first, and the request escalates only when there is no confident answer.
 - Limits on incognito: fewer tools available, and it stays on until the owner clears it instead of ending on the timeout.
 - Interfaces the agent builds itself: a small markup language for forms and other inputs shown in the panel, with the go-ahead card as the first case, and later visualizations such as maps.
-- Suggestions in the empty space of a fresh episode. What they contain is not decided.
+- Suggestions in the empty space of a fresh episode. What they contain is not decided. The slot for them exists: `FreshStartContent` in `Sources/mac-os-agent/HistoryView.swift` is shown at the bottom of a fresh page and is empty for now.
 - MCP servers, managed from a Settings section above Debugging, with each server's tools as a group in Tools.
 - Summoning by double-tapping Option. Shelved in favor of Option-Shift-Space for now.
 - Building the history index off the main thread on first launch, before the thread gets large.

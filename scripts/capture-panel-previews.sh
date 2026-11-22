@@ -61,7 +61,7 @@ for appearance in dark light; do
       "$BIN" --preview-panel "$state" --appearance "$appearance" ${DOCK[@]+"${DOCK[@]}"} >"$LOG" &
     fi
     PID=$!
-    sleep 1.5
+    sleep 2
     if [[ $BACKDROP == 1 ]]; then
       RECT="$(awk '/^capture-rect / { print $2 }' "$LOG")"
       FILE="$OUT/panel-$state$SUFFIX-$appearance-backdrop.png"
