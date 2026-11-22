@@ -35,7 +35,9 @@ struct SummonView: View {
                     .padding(.bottom, 10)
             }
             InstantActionRow(actions: session.instantActions)
-            CommandHint(suggestions: SlashCommand.suggestions(for: session.draft), incognito: session.isIncognito)
+            CommandHint(
+                suggestions: session.commandSuggestions, selection: session.hintSelection,
+                incognito: session.isIncognito, choose: session.complete)
             PanelDivider()
             inputRow
         }
@@ -81,7 +83,8 @@ struct SummonView: View {
                 onCancel: onDismiss,
                 onMove: { offset in inspector?.move(by: offset) ?? false },
                 onSubmitToAgent: session.submitToAgent,
-                onChoose: { offset in session.instantActions.move(by: offset) })
+                onChoose: { offset in session.moveHintSelection(by: offset) || session.instantActions.move(by: offset) },
+                onComplete: session.completeHint)
                 .overlay(alignment: .topLeading) {
                     if session.draft.isEmpty {
                         Text(placeholder)
@@ -142,34 +145,82 @@ private struct DiscardCard: View {
     }
 }
 
-/// The commands that match what the owner is typing, such as `/new` after a slash. It shows
-/// nothing until the text starts with a slash. The incognito window describes them as they
-/// act there.
-private struct CommandHint: View {
-    let suggestions: [SlashCommand]
+/// The commands that match what the owner is typing, such as `/new` after a slash, and in the
+/// main panel the skills the owner can invoke, each with its description. It shows nothing
+/// until the text starts with a slash. The chosen one is set on a faint capsule, the arrow keys
+/// choose, Tab or Return puts it in the field, and a click does too. The incognito window
+/// describes the app's commands as they act there, and has no skills.
+struct CommandHint: View {
+    let suggestions: [SlashCommandItem]
+    let selection: Int
     let incognito: Bool
+    var choose: (SlashCommandItem) -> Void = { _ in }
+    @Environment(\.panelPalette) private var palette
+
+    /// The most commands listed at once. The rest scroll into the list as the arrows reach them.
+    static let visibleLimit = 6
 
     var body: some View {
         if !suggestions.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(suggestions, id: \.self) { command in
+            let chosen = min(selection, suggestions.count - 1)
+            let window = Self.window(count: suggestions.count, selection: chosen)
+            let several = suggestions.count > 1
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(window, id: \.self) { index in
+                    let item = suggestions[index]
+                    let isChosen = several && index == chosen
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(command.name)
+                        Text(verbatim: item.name)
                             .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .frame(minWidth: 80, alignment: .leading)
-                        Text(incognito ? command.incognitoSummary : command.summary)
+                            // The weight stays the same whether chosen or not. Only the level and
+                            // the capsule change.
+                            .foregroundStyle(isChosen ? .primary : .secondary)
+                            .lineLimit(1)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 1)
+                            .background {
+                                if isChosen { Capsule().fill(palette.textTint(0.08)) }
+                            }
+                            .frame(minWidth: 94, alignment: .leading)
+                        Text(verbatim: item.summary(incognito: incognito))
                             .font(.caption)
                             .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
+                    .contentShape(.rect)
+                    .onTapGesture { choose(item) }
+                }
+                if suggestions.count > window.count {
+                    Text(verbatim: "\(suggestions.count - window.count) more   \(Mark.up)\(Mark.down) chooses   tab completes")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.leading, 7)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 44)
+            .padding(.leading, 37)
             .padding(.trailing, 16)
             .padding(.vertical, 8)
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityText(chosen: chosen))
         }
+    }
+
+    /// The indexes listed: the first few, moved along so the chosen one is always in view.
+    static func window(count: Int, selection: Int) -> [Int] {
+        guard count > visibleLimit else { return Array(0..<count) }
+        let start = max(0, min(selection - visibleLimit + 1, count - visibleLimit))
+        return Array(start..<(start + visibleLimit))
+    }
+
+    private func accessibilityText(chosen: Int) -> String {
+        let item = suggestions[chosen]
+        var text = "\(item.name), \(item.summary(incognito: incognito))."
+        if suggestions.count > 1 {
+            text += " \(suggestions.count) commands match. Up and Down choose. Tab completes."
+        }
+        return text + " Escape dismisses."
     }
 }
 

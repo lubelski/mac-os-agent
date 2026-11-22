@@ -30,6 +30,9 @@ struct InputField: NSViewRepresentable {
     /// Up, Shift-Tab (-1) or Down, Tab (1) while the field has text. Returns true when it used
     /// the key, to choose between instant action matches. Otherwise the key does what it always does.
     var onChoose: (Int) -> Bool = { _ in false }
+    /// Tab while the field has text, before `onChoose`. Returns true when it used the key, to
+    /// complete the command chosen in the list of slash commands.
+    var onComplete: () -> Bool = { false }
 
     static let font = NSFont.systemFont(ofSize: 15)
     static let maximumLines = 8
@@ -183,6 +186,11 @@ struct InputField: NSViewRepresentable {
                 parent.onCancel()
                 return true
             case .standard:
+                if !textView.string.isEmpty, !textView.hasMarkedText(), selector == #selector(NSResponder.insertTab(_:)),
+                   parent.onComplete()
+                {
+                    return true
+                }
                 if !textView.string.isEmpty, !textView.hasMarkedText(), let offset = Self.choiceOffset(selector),
                    parent.onChoose(offset)
                 {

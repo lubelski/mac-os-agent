@@ -71,10 +71,15 @@ public final class AgentLoop: Sendable {
     /// Handles one instruction from the person. Returns when the model has finished, and
     /// throws `CancellationError` when the surrounding task is cancelled.
     ///
-    /// - Parameter startsNewEpisode: True when the owner asked for a fresh start, such as with
-    ///   `/new`. A new episode also starts on its own when the current one has timed out.
+    /// - Parameters:
+    ///   - userText: What the owner typed.
+    ///   - skill: The skill they invoked with a slash, with the message the model is sent in
+    ///     place of the typed text. Nil for a plain message.
+    ///   - startsNewEpisode: True when the owner asked for a fresh start, such as with `/new`.
+    ///     A new episode also starts on its own when the current one has timed out.
     public func run(
         _ userText: String,
+        skill: ThreadItem.SkillInvocation? = nil,
         startsNewEpisode: Bool = false,
         now: Date = Date(),
         onEvent: @escaping @Sendable (AgentEvent) async -> Void,
@@ -99,7 +104,7 @@ public final class AgentLoop: Sendable {
             await onEvent(.entryAdded(entry))
         }
 
-        await onEvent(.entryAdded(try await thread.append(.userMessage(text: userText), date: now)))
+        await onEvent(.entryAdded(try await thread.append(.userMessage(text: userText, skill: skill), date: now)))
         let definitions = tools.map(\.definition)
         let instructions = await self.instructions()
         let fingerprint = PromptFingerprint.make(instructions: instructions, tools: definitions)

@@ -392,8 +392,9 @@ final class SummonPanel: NSPanel {
         }
     }
 
-    /// Escape dismisses an instant action suggestion first when one is showing, then closes
-    /// the inspector when it is open, and hides the main panel on the next press.
+    /// Escape dismisses an instant action suggestion or the list of slash commands first when
+    /// one is showing, then closes the inspector when it is open, and hides the main panel on
+    /// the next press.
     ///
     /// In the incognito window it never goes further than the inspector. Closing that window
     /// discards its conversation, so a reflex press of Escape must not do it. A question about
@@ -403,7 +404,7 @@ final class SummonPanel: NSPanel {
             session.cancelDiscard()
             return
         }
-        if session.instantActions.dismiss() { return }
+        if session.dismissSuggestionOrHint() { return }
         if inspector.isOpen {
             inspector.close()
         } else if role == .main {

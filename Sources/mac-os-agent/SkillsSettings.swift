@@ -240,6 +240,12 @@ struct SkillDetailView: View {
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if let status = SlashCommandMenu.commandStatus(for: skill) {
+                    Text(status)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if let error = model.errorMessage {
                     Text(error).font(.callout).foregroundStyle(.red)
                 }

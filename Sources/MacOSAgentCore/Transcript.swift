@@ -185,7 +185,7 @@ public struct Transcript: Equatable, Sendable {
         switch entry.item {
         case .episodeStart:
             break
-        case .userMessage(let text):
+        case .userMessage(let text, _):
             let showsTime = lastUserDate != nil
                 && Self.startsNewStretch(previous: lastUserDate, current: entry.date, calendar: calendar)
             lastUserDate = entry.date

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// A skill: a folder with a `SKILL.md` that has `name` and `description` front matter and
@@ -12,6 +13,12 @@ public struct Skill: Sendable, Equatable, Identifiable {
     public var isEnabled: Bool
     /// Why the skill cannot be used, such as a missing description. Nil when it is fine.
     public var problem: String?
+    /// Whether the owner can invoke it with a slash in the panel, from the `user-invocable`
+    /// front matter key. True unless the key says false.
+    public var isUserInvocable: Bool = true
+    /// A fingerprint of the `SKILL.md` text, which changes whenever the file does. Nil when
+    /// there is no readable file.
+    public var revision: String?
 
     public var fileURL: URL { folderURL.appending(path: SkillLibrary.fileName) }
     /// Listed in the instructions and loadable by the agent.
@@ -43,6 +50,13 @@ public struct SkillDocument: Sendable, Equatable {
     public var description: String
     /// Everything after the front matter.
     public var body: String
+    /// False when the front matter has `user-invocable: false`, for a skill meant only for the
+    /// agent. This is the key Claude Code uses for the same thing. The Agent Skills format
+    /// itself has no key for it.
+    public var isUserInvocable: Bool = true
+
+    /// The front matter key that turns off invoking a skill with a slash.
+    public static let userInvocableKey = "user-invocable"
 
     public enum ParseError: Error, Equatable, CustomStringConvertible {
         case noFrontMatter
@@ -50,6 +64,7 @@ public struct SkillDocument: Sendable, Equatable {
         case missingField(String)
         case invalidName(String)
         case descriptionTooLong(Int)
+        case invalidUserInvocable(String)
 
         public var description: String {
             switch self {
@@ -59,6 +74,8 @@ public struct SkillDocument: Sendable, Equatable {
             case .invalidName(let name):
                 "The name \"\(name)\" should be up to 64 lowercase letters, digits, and hyphens."
             case .descriptionTooLong(let count): "The description is \(count) characters. The limit is 1024."
+            case .invalidUserInvocable(let value):
+                "user-invocable is \"\(value)\". It should be true or false."
             }
         }
     }
@@ -91,8 +108,16 @@ public struct SkillDocument: Sendable, Equatable {
         guard !description.isEmpty else { throw .missingField("description") }
         guard isValidName(name) else { throw .invalidName(name) }
         guard description.count <= descriptionLimit else { throw .descriptionTooLong(description.count) }
+        var userInvocable = true
+        if let value = fields[userInvocableKey]?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            switch value.lowercased() {
+            case "true": userInvocable = true
+            case "false": userInvocable = false
+            default: throw .invalidUserInvocable(value)
+            }
+        }
         let body = lines[(end + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        return SkillDocument(name: name, description: description, body: body)
+        return SkillDocument(name: name, description: description, body: body, isUserInvocable: userInvocable)
     }
 
     /// Lowercase letters, digits, and single hyphens between them, up to 64 characters.
@@ -154,6 +179,9 @@ public struct SkillDocument: Sendable, Equatable {
 /// new skills itself, which is how it extends what it can do.
 public struct SkillLibrary: Sendable {
     public static let fileName = "SKILL.md"
+    /// Posted when the app itself changes the skills, such as turning one on or off in
+    /// Settings, so the panel's slash commands follow at once.
+    public static let didChangeNotification = Notification.Name("dev.lubelski.mac-os-agent.skillsDidChange")
 
     public let folder: URL
     public let settingsFile: URL
@@ -189,10 +217,14 @@ public struct SkillLibrary: Sendable {
             var skill = Skill(
                 folderName: folderName, folderURL: url, name: folderName, description: "",
                 isEnabled: !disabled.contains(folderName), problem: nil)
+            let text = try? String(contentsOf: url.appending(path: Self.fileName), encoding: .utf8)
+            skill.revision = text.map(Self.revision(of:))
             do {
-                let document = try document(in: url)
+                guard let text else { throw CocoaError(.fileReadNoSuchFile) }
+                let document = try SkillDocument.parse(text)
                 skill.name = document.name
                 skill.description = document.description
+                skill.isUserInvocable = document.isUserInvocable
                 if !names.insert(document.name).inserted {
                     skill.problem = "Another skill already has the name \(document.name)."
                 }
@@ -204,6 +236,10 @@ public struct SkillLibrary: Sendable {
             skills.append(skill)
         }
         return skills
+    }
+
+    static func revision(of text: String) -> String {
+        SHA256.hash(data: Data(text.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
     func document(in folderURL: URL) throws -> SkillDocument {
@@ -283,6 +319,7 @@ public struct SkillLibrary: Sendable {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try FileManager.default.createDirectory(at: settingsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         try encoder.encode(Settings(disabled: disabled.sorted())).write(to: settingsFile, options: .atomic)
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 
     // MARK: - Creating skills
@@ -308,6 +345,7 @@ public struct SkillLibrary: Sendable {
 
             """
         try Data(text.utf8).write(to: skillFolder.appending(path: Self.fileName), options: .atomic)
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
         return skills().first { $0.folderName == name }!
     }
 
@@ -376,21 +414,22 @@ public struct LoadSkillTool: AgentTool {
         case .failure(.broken(let problem)):
             return "Error: the \(name) skill cannot be used. \(problem)"
         case .success(let (skill, document)):
-            var text = "Skill \(document.name), from \(skill.fileURL.plainPath)\n"
-            let files = otherFiles(in: skill.folderURL)
-            if !files.isEmpty {
-                text += "Files beside SKILL.md, in \(skill.folderURL.plainPath):\n"
-                text += files.map { "- \($0)" }.joined(separator: "\n") + "\n"
-            }
-            return text + "\n" + document.body
+            return Self.instructions(skill: skill, document: document, fileListLimit: fileListLimit)
         }
     }
 
-    private func otherFiles(in folder: URL) -> [String] {
-        let files = SkillLibrary.files(in: folder)
+    /// A skill's instructions as the agent reads them: where it is, the files beside SKILL.md,
+    /// and the instructions. A skill invoked with a slash sends the same text in its message.
+    public static func instructions(skill: Skill, document: SkillDocument, fileListLimit: Int = 50) -> String {
+        var text = "Skill \(document.name), from \(skill.fileURL.plainPath)\n"
+        var files = SkillLibrary.files(in: skill.folderURL)
         if files.count > fileListLimit {
-            return Array(files.prefix(fileListLimit)) + ["(\(files.count - fileListLimit) more)"]
+            files = Array(files.prefix(fileListLimit)) + ["(\(files.count - fileListLimit) more)"]
         }
-        return files
+        if !files.isEmpty {
+            text += "Files beside SKILL.md, in \(skill.folderURL.plainPath):\n"
+            text += files.map { "- \($0)" }.joined(separator: "\n") + "\n"
+        }
+        return text + "\n" + document.body
     }
 }

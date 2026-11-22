@@ -58,6 +58,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         session.onStatusChange = { [weak self] in self?.statusDidChange() }
         session.toolSources = tools.sourceTitles
         session.instantActions = .live()
+        // The skills the owner can invoke with a slash, kept live as the folder changes.
+        session.skillCommands = SkillCommandsModel(library: prompt.skills)
         panel = SummonPanel(session: session)
 
         incognito = IncognitoWindowController(makeSession: { [weak self] in
