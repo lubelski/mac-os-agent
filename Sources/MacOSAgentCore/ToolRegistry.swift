@@ -41,6 +41,12 @@ public enum BuiltInTools {
         ChangeRemindersTool.name,
         ReadEventsTool.name,
         ChangeEventsTool.name,
+        OpenItemTool.name,
+        FindFilesTool.name,
+        ReadClipboardTool.name,
+        WriteClipboardTool.name,
+        SetDesktopPictureTool.name,
+        QuitOrHideApplicationTool.name,
     ]
 
     /// - Parameter history: The kept thread, which the history tools search and read. Incognito
@@ -48,12 +54,14 @@ public enum BuiltInTools {
     /// - Parameters:
     ///   - reminders: Reminders, which the reminder tools read and change.
     ///   - calendar: Calendar, which the event tools read and change.
+    ///   - system: Files, the clipboard, the desktop picture, and running apps, for the system tools.
     public static func make(
         applicationWorkspace: any ApplicationWorkspace = SystemApplicationWorkspace(),
         skills: SkillLibrary = SkillLibrary(),
         history: ThreadStore? = nil,
         reminders: any ReminderStore = EventKitStore.shared,
-        calendar: any CalendarStore = EventKitStore.shared
+        calendar: any CalendarStore = EventKitStore.shared,
+        system: any SystemControl = SystemControlOnMac()
     ) -> [any AgentTool] {
         let reminderIDs = ShortIdentifierTable()
         let eventIDs = ShortIdentifierTable()
@@ -69,6 +77,12 @@ public enum BuiltInTools {
             ChangeRemindersTool(store: reminders, identifiers: reminderIDs),
             ReadEventsTool(store: calendar, identifiers: eventIDs),
             ChangeEventsTool(store: calendar, identifiers: eventIDs),
+            OpenItemTool(system: system, applications: applicationWorkspace),
+            FindFilesTool(system: system),
+            ReadClipboardTool(system: system),
+            WriteClipboardTool(system: system),
+            SetDesktopPictureTool(system: system),
+            QuitOrHideApplicationTool(system: system, applications: applicationWorkspace),
         ]
         assert(tools.map(\.definition.name) == names)
         return tools
