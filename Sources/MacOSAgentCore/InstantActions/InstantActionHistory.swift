@@ -7,7 +7,7 @@ import Synchronization
 ///
 /// It holds names of apps and the short text typed for them, never anything sent to the
 /// model. It is kept in `instant-actions.json` in Application Support, and never written
-/// during an incognito episode.
+/// from an incognito window.
 public struct InstantActionHistory: Codable, Sendable, Equatable {
     public struct Use: Codable, Sendable, Equatable {
         public var count: Int

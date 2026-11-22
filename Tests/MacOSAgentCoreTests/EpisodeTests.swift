@@ -215,13 +215,25 @@ func writeLegacyThread() throws -> URL {
         #expect(!text.contains("incognito"))
     }
 
-    @Test func anIncognitoEpisodeIsToldNothingIsKept() {
+    @Test func theIncognitoWindowHasItsOwnFixedPart() {
         let folder = URL(filePath: "/tmp/skills")
-        let kept = AgentInstructions.assemble(editable: "Hi.", skills: [], skillsFolder: folder)
-        let incognito = AgentInstructions.assemble(editable: "Hi.", skills: [], skillsFolder: folder, incognito: true)
-        #expect(incognito.contains("This episode is incognito."))
+        let kept = AgentInstructions.assemble(editable: "Hi.", skills: [.init(name: "tidy", description: "Tidies.")], skillsFolder: folder)
+        let incognito = AgentInstructions.assembleIncognito(editable: "Hi.")
+        // The owner's editable part comes first, as in the main panel.
+        #expect(incognito.hasPrefix("Hi.\n\n"))
+        #expect(incognito == "Hi.\n\n" + AgentInstructions.incognitoFixed)
         #expect(incognito != kept)
-        #expect(AgentInstructions.assemble(editable: "Hi.", skills: [], skillsFolder: folder, incognito: true) == incognito)
+        // Byte for byte the same each time, so the cache holds.
+        #expect(AgentInstructions.assembleIncognito(editable: "Hi.") == incognito)
+        // It names its three tools, says nothing is kept, and points to the main panel.
+        for name in BuiltInTools.incognitoNames { #expect(incognito.contains(name)) }
+        #expect(incognito.contains("Nothing from it is kept."))
+        #expect(incognito.contains("main panel"))
+        // Skills, the shell, and history are the main panel's.
+        #expect(!AgentInstructions.incognitoFixed.contains("tidy"))
+        #expect(!AgentInstructions.incognitoFixed.contains(SearchHistoryTool.name))
+        #expect(!AgentInstructions.incognitoFixed.contains(ShellCommandTool.name))
+        #expect(!AgentInstructions.incognitoFixed.contains(LoadSkillTool.name))
     }
 }
 

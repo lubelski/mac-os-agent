@@ -52,7 +52,17 @@ MainActor.assumeIsolated {
             dark = arguments[index + 1] != "light"
             app.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         }
-        let panel = SummonPanel(session: session, remembersFrame: false)
+        let name = arguments[index + 1]
+        let panel = SummonPanel(session: session, role: PanelPreview.role(named: name), remembersFrame: false)
+        // `incognito-beside` shows the main panel as well, with the incognito window placed
+        // beside it the way it opens.
+        var mainPanel: SummonPanel?
+        if name == "incognito-beside", let history = PanelPreview.session(named: "history") {
+            let main = SummonPanel(session: history, remembersFrame: false)
+            main.showForPreview()
+            panel.mainPanelFrame = { [weak main] in main?.placedFrame }
+            mainPanel = main
+        }
         // `--preview-reduce-motion` fades instead of sliding, as with Reduce Motion on.
         if arguments.contains("--preview-reduce-motion") {
             panel.reduceMotion = { true }
@@ -88,6 +98,13 @@ MainActor.assumeIsolated {
         }
         if arguments.contains("--backdrop") {
             PanelPreview.showBackdrop(behind: panel, dark: dark)
+        }
+        if let mainPanel {
+            // The capture covers both windows.
+            let both = mainPanel.frame.union(panel.frame)
+            let primaryHeight = NSScreen.screens.first?.frame.height ?? both.maxY
+            print("capture-rect \(Int(both.minX)),\(Int(primaryHeight - both.maxY)),\(Int(both.width)),\(Int(both.height))")
+            fflush(stdout)
         }
         var seconds = 4.0
         if let index = arguments.firstIndex(of: "--preview-seconds"), index + 1 < arguments.count,

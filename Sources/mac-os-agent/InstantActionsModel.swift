@@ -27,6 +27,8 @@ final class InstantActions {
     /// Nil keeps what is learned in memory only, for previews and tests.
     @ObservationIgnored private let store: InstantActionHistoryStore?
     @ObservationIgnored private var memoryHistory = InstantActionHistory()
+    /// False for the incognito window, which learns nothing from what the owner opens.
+    @ObservationIgnored let learns: Bool
     @ObservationIgnored private let catalog: ApplicationCatalog?
     @ObservationIgnored private let runningPaths: @MainActor () -> Set<String>
     /// Opens an app and brings it to the front. Tests stand in their own.
@@ -40,18 +42,37 @@ final class InstantActions {
     ///   - catalog: where to read the installed apps from. Nil for a fixed list.
     ///   - store: where learned use is kept. Nil keeps it in memory.
     ///   - open: opens an app and brings it to the front.
+    ///   - learns: false to learn nothing, for the incognito window.
+    ///   - history: what was learned before, for a copy that ranks the same without a store.
     init(
         applications: [InstalledApplication] = [],
         catalog: ApplicationCatalog? = nil,
         store: InstantActionHistoryStore? = nil,
         runningPaths: @escaping @MainActor () -> Set<String> = { [] },
-        open: @escaping @MainActor (InstalledApplication) async throws -> Void = { _ in }
+        open: @escaping @MainActor (InstalledApplication) async throws -> Void = { _ in },
+        learns: Bool = true,
+        history: InstantActionHistory = InstantActionHistory()
     ) {
         engine = InstantActionEngine(providers: [ApplicationInstantActions(applications: applications)])
         self.catalog = catalog
         self.store = store
         self.runningPaths = runningPaths
         openApplication = open
+        self.learns = learns
+        memoryHistory = history
+        self.applications = applications
+    }
+
+    /// The incognito window's instant actions: the same apps, ranked by what the main panel has
+    /// learned as it stands now, with no store at all and learning turned off. Nothing taken
+    /// here can reach `instant-actions.json`, or even this copy's memory.
+    func incognitoCopy() -> InstantActions {
+        let copy = InstantActions(
+            applications: applications, catalog: catalog, store: nil, runningPaths: runningPaths,
+            open: openApplication, learns: false, history: history)
+        copy.clock = clock
+        copy.refresh()
+        return copy
     }
 
     /// The real thing: the installed apps, learned use in Application Support, and Launch Services.
@@ -86,7 +107,11 @@ final class InstantActions {
     /// Waits for a refresh in flight, for tests.
     func waitForRefresh() async { await refreshTask?.value }
 
+    /// The apps matched against, as last read.
+    @ObservationIgnored private var applications: [InstalledApplication] = []
+
     func setApplications(_ applications: [InstalledApplication]) {
+        self.applications = applications
         engine = InstantActionEngine(providers: [ApplicationInstantActions(applications: applications, runningPaths: runningPaths())])
         evaluate()
     }
@@ -129,8 +154,8 @@ final class InstantActions {
     }
 
     /// Return. The chosen candidate for this exact draft, or nil when Return should send it to
-    /// the agent. Its use is learned unless `learns` is false, which an incognito episode passes.
-    func take(for draft: String, learns: Bool) -> InstantActionCandidate? {
+    /// the agent. Its use is learned unless `learns` is false, as in the incognito window.
+    func take(for draft: String) -> InstantActionCandidate? {
         if draft != self.draft { draftChanged(draft) }
         guard let suggestion, suggestion.input == draft else { return nil }
         let candidate = suggestion.choices[min(selection, suggestion.choices.count - 1)]

@@ -20,8 +20,23 @@ import SwiftUI
 /// reaches the edge of the screen's visible area. The glass slides inside the window, which
 /// cuts it off at that edge. That is how it leaves at the edge instead of travelling across a
 /// display beside this one.
+///
+/// The incognito window is the same panel with the `.incognito` role. It has no layouts and
+/// no slide, keeps nothing about its place, and opens beside the main panel. Closing it, with
+/// the close button or Command-W, discards its conversation, so Escape never closes it.
 @MainActor
 final class SummonPanel: NSPanel {
+    /// Which window this is.
+    enum Role: Equatable {
+        /// The main panel the hotkey and the menu bar icon toggle.
+        case main
+        /// The incognito window, opened beside the main panel.
+        case incognito
+    }
+
+    /// The incognito window's size when it opens. It is for opening apps and short questions,
+    /// so it is smaller than the main panel.
+    static let incognitoSize = NSSize(width: 480, height: 500)
     static let defaultSize = NSSize(width: 640, height: 560)
     static let minimumSize = NSSize(width: 440, height: 300)
     static let cornerRadius: CGFloat = 26
@@ -58,8 +73,11 @@ final class SummonPanel: NSPanel {
         var visible: CGRect
     }
 
+    let role: Role
     private let session: AgentSession
     let placement = PanelPlacement()
+    /// For the incognito window: the main panel's frame when it has one, to open beside it.
+    var mainPanelFrame: () -> CGRect? = { nil }
     /// The tool call inspector beside the panel, and the call it shows.
     let inspector = ToolInspector()
     private(set) var inspectorWindow: ToolInspectorWindow!
@@ -108,6 +126,8 @@ final class SummonPanel: NSPanel {
     private(set) var isPresented = false
 
     /// - Parameters:
+    ///   - role: the main panel, or the incognito window. The incognito window never reads or
+    ///     writes the defaults, whatever the other arguments say.
     ///   - remembersFrame: false for preview runs, so they neither read nor overwrite the frame
     ///     or the preset the owner left the panel with.
     ///   - placementDefaults: where to keep the preset. Defaults to the standard defaults when
@@ -115,19 +135,23 @@ final class SummonPanel: NSPanel {
     ///   - screens: the screens to place the panel on. Defaults to the connected displays.
     ///   - mouseLocation: where the mouse is. Defaults to the real one.
     init(
-        session: AgentSession, remembersFrame: Bool = true, placementDefaults: UserDefaults? = nil,
+        session: AgentSession, role: Role = .main, remembersFrame: Bool = true, placementDefaults: UserDefaults? = nil,
         screens: @escaping () -> [Screen] = { NSScreen.screens.map { Screen(frame: $0.frame, visible: $0.visibleFrame) } },
         mouseLocation: @escaping () -> CGPoint = { NSEvent.mouseLocation }
     ) {
+        self.role = role
         self.session = session
         self.screens = screens
         self.mouseLocation = mouseLocation
-        defaults = placementDefaults ?? (remembersFrame ? .standard : nil)
+        // Remembering where the incognito window was would be a trace of it.
+        let remembersFrame = remembersFrame && role == .main
+        defaults = role == .incognito ? nil : placementDefaults ?? (remembersFrame ? .standard : nil)
         hostingController = NSHostingController(rootView: AnyView(EmptyView()))
         // The window's size is the owner's to choose, not the content's.
         hostingController.sizingOptions = []
+        let size = role == .incognito ? Self.incognitoSize : Self.defaultSize
         super.init(
-            contentRect: NSRect(origin: .zero, size: Self.defaultSize),
+            contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.nonactivatingPanel, .borderless, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: true)
@@ -148,21 +172,22 @@ final class SummonPanel: NSPanel {
         session.hidePanel = { [weak self] in self?.dismiss() }
         session.showPanel = { [weak self] in self?.summon() }
         placement.choose = { [weak self] preset in self?.choose(preset) }
-        placement.close = { [weak self] in self?.dismiss() }
+        placement.close = { [weak self] in self?.closeButtonPressed() }
+        placement.offersLayouts = role == .main
         inspectorWindow = ToolInspectorWindow(inspector: inspector, session: session, defaults: defaults)
-        inspector.callIDs = { [weak session] in session?.visibleTranscript.toolCallIDs ?? [] }
+        inspector.callIDs = { [weak session] in session?.transcript.toolCallIDs ?? [] }
         inspector.onChange = { [weak self] in self?.updateInspector() }
         inspectorWindow.onResize = { [weak self] in self?.placeInspector() }
         hostingController.rootView = AnyView(SummonView(session: session, onDismiss: { [weak self] in
             self?.escape()
         }).environment(placement).environment(inspector))
 
-        container.frame = NSRect(origin: .zero, size: Self.defaultSize)
+        container.frame = NSRect(origin: .zero, size: size)
         host.frame = container.bounds
         host.autoresizingMask = [.width, .height]
         container.addSubview(host)
         contentView = container
-        setContentSize(Self.defaultSize)
+        setContentSize(size)
         Self.giveRoundedShape(to: host)
 
         if remembersFrame {
@@ -316,12 +341,20 @@ final class SummonPanel: NSPanel {
     }
 
     /// Escape dismisses an instant action suggestion first when one is showing, then closes
-    /// the inspector when it is open, and hides the panel on the next press.
+    /// the inspector when it is open, and hides the main panel on the next press.
+    ///
+    /// In the incognito window it never goes further than the inspector. Closing that window
+    /// discards its conversation, so a reflex press of Escape must not do it. A question about
+    /// closing while a task runs is answered no.
     func escape() {
+        if session.pendingDiscard != nil {
+            session.cancelDiscard()
+            return
+        }
         if session.instantActions.dismiss() { return }
         if inspector.isOpen {
             inspector.close()
-        } else {
+        } else if role == .main {
             dismiss()
         }
     }
@@ -332,7 +365,24 @@ final class SummonPanel: NSPanel {
 
     /// Command-W, from the Window menu. The close button in the top bar does the same.
     override func performClose(_ sender: Any?) {
-        dismiss()
+        closeButtonPressed()
+    }
+
+    /// The close button and Command-W. The main panel hides and its task keeps going. The
+    /// incognito window closes and discards its conversation, after asking when a task runs.
+    private func closeButtonPressed() {
+        switch role {
+        case .main: dismiss()
+        case .incognito: session.requestDiscard(.close)
+        }
+    }
+
+    /// The Show or Hide item in the menu bar menu. It follows whether the panel is presented,
+    /// so during a slide out it already offers Show, and choosing it turns the slide around.
+    var menuItemHides: Bool { isPresented }
+
+    func toggleFromMenu() {
+        if isPresented { dismiss() } else { summon() }
     }
 
     /// Anything that takes the window off screen leaves it hidden, with no slide left running.
@@ -653,11 +703,22 @@ final class SummonPanel: NSPanel {
         PanelGeometry.isReachable(panelFrame, on: screens().map(\.visible))
     }
 
-    /// The default place on the screen that has the mouse.
+    /// The default place on the screen that has the mouse. The incognito window goes beside
+    /// the main panel instead, on the main panel's screen, when the main panel has a place.
     private func placeOnActiveScreen() {
-        guard let visible = mouseScreen(screens())?.visible else { return }
+        let screens = screens()
+        if role == .incognito, let main = mainPanelFrame(),
+           let index = PanelGeometry.screenIndex(for: main, among: screens.map(\.frame))
+        {
+            place(PanelGeometry.besideFrame(size: panelFrame.size, beside: main, in: screens[index].visible))
+            return
+        }
+        guard let visible = mouseScreen(screens)?.visible else { return }
         place(PanelGeometry.defaultFrame(size: panelFrame.size, in: visible))
     }
+
+    /// Where the panel is when it has been placed, for a window that opens beside it.
+    var placedFrame: CGRect? { hasBeenPlaced ? panelFrame : nil }
 }
 
 /// The window's content view. It draws nothing, and it cuts the glass off at its bounds while

@@ -3,8 +3,8 @@ import Foundation
 /// Where a conversation's entries live. The agent loop works the same against either kind:
 ///
 /// - `ThreadStore` is the one kept thread, a file in Application Support with a search index.
-/// - `InMemoryThreadStore` is an incognito episode. It has no file and no index, so nothing in
-///   it can reach the disk, and it is gone when the app lets go of it.
+/// - `InMemoryThreadStore` is an incognito window's conversation. It has no file and no
+///   index, so nothing in it can reach the disk, and it is gone when the app lets go of it.
 public protocol ThreadStorage: Actor {
     var contents: ThreadContents { get }
     /// Adds an entry at the end and returns it.
@@ -136,9 +136,9 @@ public actor ThreadStore: ThreadStorage {
     }
 }
 
-/// An incognito episode: the same interface as the kept thread, held only in memory. It has
+/// An incognito conversation: the same interface as the kept thread, held only in memory. It has
 /// no file, no index, and no way to be given one, so nothing written to it reaches the disk.
-/// Letting go of the store lets go of the episode.
+/// Letting go of the store lets go of the conversation.
 public actor InMemoryThreadStore: ThreadStorage {
     public private(set) var contents = ThreadContents()
 

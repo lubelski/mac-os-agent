@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusMenu = NSMenu()
     private var session: AgentSession!
     private var panel: SummonPanel!
+    private var incognito: IncognitoWindowController!
     private var summonTrigger: SummonTriggerController!
     private var settings: SettingsWindowController!
     private let prompt = AgentPrompt()
@@ -19,7 +20,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let installationID = AgentPaths.installationID()
         let authenticator = ChatGPTAuthenticator(installationID: installationID)
         var loop: AgentLoop?
-        var makeIncognitoLoop: (() -> AgentLoop)?
         var startupError: Error?
         var thread: ThreadStore?
         do {
@@ -43,23 +43,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 instructions: { prompt.current() },
                 usageLog: usageLog,
                 episodeTimeout: timeout)
-            // An incognito episode runs the same tools over a store that lives only in memory.
-            // The usage log still gets its token counts, which hold no content.
-            makeIncognitoLoop = {
-                AgentLoop(
-                    provider: provider, thread: InMemoryThreadStore(),
-                    tools: tools.tools,
-                    instructions: { prompt.current(incognito: true) },
-                    usageLog: usageLog,
-                    episodeTimeout: timeout)
-            }
+        }
+        // The incognito window has a provider of its own with its own cache key, so its
+        // requests, with their own instructions and tools, are a separate cached prefix.
+        let incognitoProvider = OpenAIResponsesProvider(
+            authenticator: authenticator,
+            model: { ModelSetting.current() },
+            promptCacheKey: "mac-os-agent-incognito-\(installationID.uuidString.lowercased())")
+        let makeIncognitoLoop = { [prompt = self.prompt, usageLog = self.usageLog] in
+            IncognitoWindowController.makeLoop(provider: incognitoProvider, prompt: prompt, usageLog: usageLog)
         }
 
-        session = AgentSession(loop: loop, authenticator: authenticator, makeIncognitoLoop: makeIncognitoLoop)
-        session.onStatusChange = { [weak self] in self?.updateStatusIcon() }
+        session = AgentSession(loop: loop, authenticator: authenticator)
+        session.onStatusChange = { [weak self] in self?.statusDidChange() }
         session.toolSources = tools.sourceTitles
         session.instantActions = .live()
         panel = SummonPanel(session: session)
+
+        incognito = IncognitoWindowController(makeSession: { [weak self] in
+            let incognito = AgentSession(incognito: makeIncognitoLoop, signedIn: self?.session.signInState == .signedIn)
+            if let main = self?.session {
+                incognito.toolSources = main.toolSources
+                incognito.instantActions = main.instantActions.incognitoCopy()
+            }
+            return incognito
+        })
+        incognito.mainPanelFrame = { [weak self] in self?.panel.placedFrame }
+        incognito.onChange = { [weak self] in self?.updateStatusIcon() }
+        session.openIncognito = { [weak self] in self?.incognito.open() }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusMenu.delegate = self
@@ -116,13 +127,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         summonTrigger?.stop()
     }
 
+    /// The main panel's session changed: the icon follows it, and the incognito window's
+    /// sign-in follows the main panel's.
+    private func statusDidChange() {
+        incognito?.session?.followSignIn(session.signInState)
+        updateStatusIcon()
+    }
+
+    /// The icon shows a task running, or waiting for a go-ahead, in either window.
     private func updateStatusIcon() {
         let symbol: String
         let description: String
-        if session.pendingConfirmation != nil {
+        let incognitoSession = incognito?.session
+        if session.pendingConfirmation != nil || incognitoSession?.pendingConfirmation != nil {
             symbol = "hand.raised.fill"
             description = "mac-os-agent is waiting for your go-ahead"
-        } else if session.isRunning {
+        } else if session.isRunning || incognitoSession?.isRunning == true {
             symbol = "sparkle.magnifyingglass"
             description = "mac-os-agent is working"
         } else {
@@ -148,8 +168,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
+        // The panel's presented state, not whether its window is on screen, so during a slide
+        // out the item already says Show and brings it back.
         let open = NSMenuItem(
-            title: panel.isVisible ? "Hide mac-os-agent" : "Show mac-os-agent",
+            title: panel.menuItemHides ? "Hide mac-os-agent" : "Show mac-os-agent",
             action: #selector(togglePanel), keyEquivalent: "")
         if let chord = summonTrigger.trigger?.keyChord {
             open.keyEquivalent = chord.menuKeyEquivalent(keys: summonTrigger.keys())
@@ -163,13 +185,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if session.isRunning {
             menu.addItem(item("Stop the Current Task", #selector(stopTask)))
         }
-        if session.canUseIncognito {
-            let incognito = item("Incognito", #selector(toggleIncognito))
-            incognito.state = session.isIncognito ? .on : .off
-            // The menu enables items with an action on its own, so a running task takes the action away.
-            if session.isRunning { incognito.action = nil }
-            menu.addItem(incognito)
+        if incognito.session?.isRunning == true {
+            menu.addItem(item("Stop the Incognito Task", #selector(stopIncognitoTask)))
         }
+        menu.addItem(item(incognito.isOpen ? "Show Incognito Window" : "Open Incognito Window", #selector(openIncognito)))
         menu.addItem(.separator())
 
         switch session.signInState {
@@ -221,16 +240,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// From the menu, which takes keyboard focus while it is open, so the panel is never key
-    /// here: a visible panel hides and a hidden one shows.
+    /// here: a presented panel hides and a hidden one, or one sliding out, shows.
     @objc private func togglePanel() {
-        if panel.isVisible { panel.dismiss() } else { panel.summon() }
+        panel.toggleFromMenu()
     }
     @objc func openSettings(_ sender: Any?) { settings.show() }
     @objc private func stopTask() { session.stop() }
 
-    @objc private func toggleIncognito() {
-        session.toggleIncognito()
-        panel.summon()
+    @objc private func stopIncognitoTask() { incognito.session?.stop() }
+
+    /// Opens the incognito window beside the main panel, or brings it forward. The main panel
+    /// stays as it is.
+    @objc private func openIncognito() {
+        incognito.open()
     }
     @objc private func signIn() { session.signIn() }
     @objc private func cancelSignIn() { session.cancelSignIn() }

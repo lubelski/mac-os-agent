@@ -19,7 +19,15 @@ public enum SlashCommand: String, CaseIterable, Sendable, Equatable {
     public var summary: String {
         switch self {
         case .new: "Start a new episode"
-        case .incognito: "Start or end an incognito episode. Nothing from it is kept."
+        case .incognito: "Open an incognito window. Nothing from it is kept."
+        }
+    }
+
+    /// The summary as the incognito window shows it, where the commands act on that window.
+    public var incognitoSummary: String {
+        switch self {
+        case .new: "Clear this conversation"
+        case .incognito: "This window is already incognito"
         }
     }
 

@@ -10,9 +10,20 @@ import SwiftUI
 enum PanelPreview {
     static let names = [
         "empty", "running", "confirmation", "finished", "history", "draft", "multiline-draft",
-        "fresh-start", "scrollback", "incognito", "command-hint", "tool-states", "first-message", "streaming",
+        "fresh-start", "scrollback", "command-hint", "tool-states", "first-message", "streaming",
         "fresh-start-slot", "markdown", "markdown-streaming", "markdown-code-streaming", "controls",
-    ] + inspectorStates + InstantActionPreview.names
+    ] + incognitoStates + inspectorStates + InstantActionPreview.names
+
+    /// The states shown in the incognito window rather than the main panel. `incognito-beside`
+    /// shows the main panel too, with the incognito window beside it.
+    static let incognitoStates = [
+        "incognito", "incognito-empty", "incognito-closing", "incognito-command-hint", "incognito-beside",
+    ]
+
+    /// Which window a state is shown in.
+    static func role(named name: String) -> SummonPanel.Role {
+        incognitoStates.contains(name) ? .incognito : .main
+    }
 
     /// The states that show the tool call inspector beside the panel, each open on one call.
     static let inspectorStates = [
@@ -98,13 +109,22 @@ enum PanelPreview {
             let session = AgentSession(previewEntries: thread.entries, freshStart: true)
             session.previewStartsAtTop = true
             return session
-        case "incognito":
-            var thread = StandInThread(now: Date())
-            thread.earlierExchanges()
-            var incognito = StandInThread(now: Date())
-            incognito.user("what's a good farewell gift for a coworker who loves hiking", minutesAgo: 1)
-            incognito.reply("A packable rain shell or a national parks pass are both easy to give and get used a lot.")
-            return AgentSession(previewEntries: thread.entries, incognitoEntries: incognito.entries)
+        case "incognito", "incognito-beside":
+            return AgentSession(previewEntries: incognitoExchange().entries, incognito: true)
+        case "incognito-empty":
+            return AgentSession(previewEntries: [], incognito: true)
+        case "incognito-command-hint":
+            let session = AgentSession(previewEntries: incognitoExchange().entries, incognito: true)
+            session.draft = "/"
+            return session
+        case "incognito-closing":
+            var thread = incognitoExchange()
+            thread.user("is it supposed to rain in Yosemite this weekend", minutesAgo: 0.2)
+            let session = AgentSession(
+                previewEntries: thread.entries, streamingText: "I can’t check a forecast from here, since this window",
+                isRunning: true, incognito: true)
+            session.previewPendingDiscard(.close)
+            return session
         case "tool-states":
             // Every state a tool call row can be in, one after another.
             var thread = StandInThread(now: Date())
@@ -196,6 +216,20 @@ enum PanelPreview {
         default:
             return nil
         }
+    }
+
+    /// A short incognito conversation: a question, and an app opened through a tool.
+    private static func incognitoExchange() -> StandInThread {
+        var thread = StandInThread(now: Date())
+        thread.user("what's a good farewell gift for a coworker who loves hiking", minutesAgo: 3)
+        thread.reply("A packable rain shell or a national parks pass are both easy to give and get used a lot.")
+        thread.user("open maps so I can find an outdoor shop nearby", minutesAgo: 1)
+        thread.call("call_maps", name: OpenApplicationTool.name,
+                    arguments: ["bundle_identifier_or_path": "com.apple.Maps"],
+                    output: "Opened Maps. It is now in front.",
+                    details: ToolRunDetails(started: Date().addingTimeInterval(-58), seconds: 0.31, source: "Built In"))
+        thread.reply("Maps is open. Search for “outdoor gear” to see the shops around you.")
+        return thread
     }
 
     /// One episode with a call of each kind the inspector lays out, the last one still running.

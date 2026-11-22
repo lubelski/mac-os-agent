@@ -122,6 +122,14 @@ struct ToolDetailView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
+                    Text("In the incognito window").font(.headline)
+                    Text(BuiltInTools.incognitoNames.contains(tool.name)
+                         ? "Available. The incognito window has only the three application tools."
+                         : "Not available. The incognito window only opens apps and answers questions, with the three application tools.")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
                     Text("Description sent to the model").font(.headline)
                     Text(tool.description)
                         .textSelection(.enabled)

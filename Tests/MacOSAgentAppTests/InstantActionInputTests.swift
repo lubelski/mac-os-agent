@@ -29,7 +29,7 @@ import Testing
 
     @Test func returnOpensTheAppAndHidesThePanelWithoutSendingAnything() async throws {
         let (harness, recorder) = try makeHarness()
-        let rowsBefore = harness.session.visibleTranscript.rows.count
+        let rowsBefore = harness.session.transcript.rows.count
         harness.type("open safari")
         await harness.settle()
         #expect(harness.session.instantActions.suggestion?.choices.map(\.title) == ["Safari"])
@@ -39,7 +39,7 @@ import Testing
         #expect(recorder.hides == 1)
         #expect(harness.session.draft == "")
         #expect(harness.session.instantActions.suggestion == nil)
-        #expect(harness.session.visibleTranscript.rows.count == rowsBefore, "nothing is added to the conversation")
+        #expect(harness.session.transcript.rows.count == rowsBefore, "nothing is added to the conversation")
         #expect(!harness.session.isRunning)
     }
 
@@ -133,7 +133,7 @@ import Testing
     @Test func escapeDismissesTheSuggestionThenClosesTheInspectorThenHidesThePanel() async throws {
         let (harness, recorder) = try makeHarness()
         let panel = try #require(harness.panel as? SummonPanel)
-        let callID = try #require(harness.session.visibleTranscript.toolCallIDs.first)
+        let callID = try #require(harness.session.transcript.toolCallIDs.first)
         panel.inspector.open(callID)
         harness.type("cal")
         await harness.settle()
@@ -213,10 +213,7 @@ import Testing
     private func makeSession(provider: CountingProvider, store: InstantActionHistoryStore, opened: @escaping (String) -> Void) throws -> AgentSession {
         let thread = try ThreadStore(fileURL: folder.appending(path: "thread.jsonl"), searchIndexURL: folder.appending(path: "history-index.sqlite"))
         let loop = AgentLoop(provider: provider, thread: thread, tools: [], episodeTimeout: { 1800 })
-        let session = AgentSession(
-            loop: loop, authenticator: nil,
-            makeIncognitoLoop: { AgentLoop(provider: provider, thread: InMemoryThreadStore(), tools: [], episodeTimeout: { 1800 }) },
-            episodeTimeout: { 1800 }, signedIn: true)
+        let session = AgentSession(loop: loop, authenticator: nil, episodeTimeout: { 1800 }, signedIn: true)
         session.instantActions = InstantActions(
             applications: InstantActionPreview.applications, store: store,
             open: { opened($0.name) })
@@ -255,21 +252,45 @@ import Testing
         #expect(store.history.wasPicked("application:/Applications/Safari.app", for: "safari"))
     }
 
-    @Test func anIncognitoEpisodeLearnsNothingAndWritesNoFile() async throws {
+    @Test func theIncognitoWindowLearnsNothingAndWritesNoFile() async throws {
         defer { try? FileManager.default.removeItem(at: folder) }
         let file = folder.appending(path: "instant-actions.json")
         let store = InstantActionHistoryStore(fileURL: file)
         var opened: [String] = []
-        let session = try makeSession(provider: CountingProvider(), store: store) { opened.append($0) }
-        session.perform(.incognito)
-        #expect(session.isIncognito)
+        let main = try makeSession(provider: CountingProvider(), store: store) { opened.append($0) }
+        let provider = CountingProvider()
+        let session = AgentSession(
+            incognito: { AgentLoop(provider: provider, thread: InMemoryThreadStore(), tools: [], episodeTimeout: { .infinity }) },
+            signedIn: true)
+        session.instantActions = main.instantActions.incognitoCopy()
+        #expect(!session.instantActions.learns)
         session.draft = "xcode"
         session.submit()
         try await Task.sleep(for: .milliseconds(20))
         await store.waitForWrites()
         #expect(opened == ["Xcode"])
+        #expect(provider.requests == 0)
         #expect(store.history == InstantActionHistory())
+        #expect(session.instantActions.history == InstantActionHistory())
         #expect(!FileManager.default.fileExists(atPath: file.path(percentEncoded: false)))
+    }
+
+    @Test func theIncognitoWindowRanksByWhatTheMainPanelLearned() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = InstantActionHistoryStore(fileURL: folder.appending(path: "instant-actions.json"))
+        let main = try makeSession(provider: CountingProvider(), store: store) { _ in }
+        main.draft = "cal"
+        _ = main.instantActions.move(by: 1)
+        main.submit()
+        try await Task.sleep(for: .milliseconds(20))
+        await store.waitForWrites()
+        let saved = try Data(contentsOf: folder.appending(path: "instant-actions.json"))
+        let copy = main.instantActions.incognitoCopy()
+        copy.draftChanged("cal")
+        #expect(copy.suggestion?.choices.map(\.title) == ["Calculator"])
+        _ = copy.take(for: "cal")
+        await store.waitForWrites()
+        #expect(try Data(contentsOf: folder.appending(path: "instant-actions.json")) == saved)
     }
 
     @Test func whatTheOwnerPicksRanksFirstNextTime() async throws {

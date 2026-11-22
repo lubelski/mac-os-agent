@@ -33,7 +33,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
 public struct ToolRunContext: Sendable {
     public var callID: String
     /// The episode the call was made in. History search leaves it out, since the model already
-    /// sees it. An incognito episode's id is never in the kept thread, so nothing is left out.
+    /// sees it.
     public var episodeID: UUID?
     /// Asks the person whether to go ahead. Waits as long as it takes.
     public var confirm: @Sendable (ConfirmationRequest) async -> Bool

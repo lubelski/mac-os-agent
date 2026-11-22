@@ -2,10 +2,7 @@ import Foundation
 
 /// Searches every past episode of the kept thread: the owner's messages, the agent's replies,
 /// and the commands that ran. Each match comes with its date, its episode, and the entries
-/// around it.
-///
-/// It reads the kept thread even during an incognito episode, which only means it cannot add
-/// to what there is to find.
+/// around it. An incognito window does not have it.
 public struct SearchHistoryTool: AgentTool {
     public static let name = "search_history"
     public static let defaultLimit = 8

@@ -10,9 +10,12 @@
 #   scripts/capture-panel-previews.sh --states instant [out-dir]  the instant action row
 #   scripts/capture-panel-previews.sh --states inspector [out-dir]  the tool call inspector beside
 #                                                           the panel, one state per kind of output
+#   scripts/capture-panel-previews.sh --states incognito [out-dir]  the incognito window, and the
+#                                                           two windows side by side
 #
 # An inspector state is always captured over the busy page, since it is two windows: the panel
-# and the inspector attached to it.
+# and the inspector attached to it. `incognito-beside` is captured as the rectangle around both
+# windows, the main panel and the incognito window beside it.
 #
 #   scripts/capture-panel-previews.sh --theme tidewater [out-dir]  in a theme, without saving it
 #   scripts/capture-panel-previews.sh --glass off [out-dir]        as drawn with Use glass off
@@ -29,7 +32,7 @@ BACKDROP=0
 DOCK=()
 THEME=()
 SUFFIX=""
-STATES=(empty history running confirmation finished draft multiline-draft fresh-start scrollback incognito command-hint tool-states first-message streaming fresh-start-slot markdown markdown-streaming markdown-code-streaming controls)
+STATES=(empty history running confirmation finished draft multiline-draft fresh-start scrollback incognito incognito-empty incognito-closing incognito-command-hint command-hint tool-states first-message streaming fresh-start-slot markdown markdown-streaming markdown-code-streaming controls)
 APPEARANCES=(dark light)
 while [[ "${1:-}" == --* ]]; do
   case "$1" in
@@ -38,6 +41,8 @@ while [[ "${1:-}" == --* ]]; do
     --states)
       if [[ "$2" == "inspector" ]]; then
         STATES=(inspector-json inspector-table inspector-diff inspector-long inspector-running inspector-fields)
+      elif [[ "$2" == "incognito" ]]; then
+        STATES=(incognito incognito-empty incognito-closing incognito-command-hint incognito-beside)
       elif [[ "$2" == "instant" ]]; then
         STATES=(instant-one instant-several)
       else
@@ -78,8 +83,8 @@ for appearance in "${APPEARANCES[@]}"; do
     fi
     PID=$!
     sleep 2
-    if [[ $BACKDROP == 1 || $state == inspector-* ]]; then
-      RECT="$(awk '/^capture-rect / { print $2 }' "$LOG")"
+    if [[ $BACKDROP == 1 || $state == inspector-* || $state == incognito-beside ]]; then
+      RECT="$(awk '/^capture-rect / { rect = $2 } END { print rect }' "$LOG")"
       FILE="$OUT/panel-$state$SUFFIX-$appearance-backdrop.png"
       if [[ -n "$RECT" ]]; then
         screencapture -x -R "$RECT" "$FILE"

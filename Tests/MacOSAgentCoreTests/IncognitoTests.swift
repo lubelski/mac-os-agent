@@ -14,7 +14,21 @@ func snapshot(of folder: URL) throws -> [String: Data] {
 }
 
 @Suite struct IncognitoTests {
-    @Test func anIncognitoEpisodeWritesNothingAndCanStillSearch() async throws {
+    private static let maps = InstalledApplication(
+        name: "Maps", bundleIdentifier: "com.apple.Maps",
+        url: URL(filePath: "/System/Applications/Maps.app", directoryHint: .isDirectory))
+
+    @Test func theIncognitoToolListIsExactlyTheThreeApplicationTools() {
+        let names = BuiltInTools.makeIncognito(applicationWorkspace: FakeApplicationWorkspace(installed: [])).map(\.definition.name)
+        #expect(names == ["search_applications", "open_application", "list_running_applications"])
+        #expect(names == BuiltInTools.incognitoNames)
+        // The same definitions as the main panel's, so each reads the same wherever it is sent.
+        let main = BuiltInTools.make(applicationWorkspace: FakeApplicationWorkspace(installed: []), system: FakeSystemControl())
+        let shared = main.filter { names.contains($0.definition.name) }.map(\.definition)
+        #expect(shared == BuiltInTools.makeIncognito(applicationWorkspace: FakeApplicationWorkspace(installed: [])).map(\.definition))
+    }
+
+    @Test func anIncognitoConversationWritesNothingAndCannotReachTheHistory() async throws {
         // The kept thread, its index, and the usage log, as in Application Support.
         let file = try writeLegacyThread()
         let folder = file.deletingLastPathComponent()
@@ -24,31 +38,39 @@ func snapshot(of folder: URL) throws -> [String: Data] {
 
         let incognito = InMemoryThreadStore()
         let secret = "the surprise party is on saturday"
+        let workspace = FakeApplicationWorkspace(installed: [Self.maps])
         let provider = FakeProvider(replies: [
             [.item(toolCall("s", name: SearchHistoryTool.name, arguments: ["query": "dark mode", "limit": .null])),
-             .item(toolCall("r", name: "record", arguments: ["note": .string(secret)])),
+             .item(toolCall("r", name: ShellCommandTool.name, arguments: ["command": .string("echo '\(secret)' > ~/note.txt"), "destructive": false])),
+             .item(toolCall("o", name: OpenApplicationTool.name, arguments: ["bundle_identifier_or_path": "com.apple.Maps"])),
              .usage(TokenUsage(inputTokens: 100, cachedInputTokens: 0, outputTokens: 10), provider: "test", model: "test-model")],
-            [.item(assistant("Noted, and dark mode came up on Nov 18."))],
+            [.item(assistant("Maps is open. I cannot search earlier conversations from here."))],
         ])
-        let instructions = AgentInstructions.assemble(editable: "", skills: [], skillsFolder: folder, incognito: true)
+        let instructions = AgentInstructions.assembleIncognito(editable: "")
         let loop = AgentLoop(
             provider: provider, thread: incognito,
-            tools: [SearchHistoryTool(history: history), RecordingTool()],
+            tools: BuiltInTools.makeIncognito(applicationWorkspace: workspace),
             instructions: { instructions },
             usageLog: usageLog)
 
-        try await loop.run(secret, onEvent: { _ in }, confirm: { _ in true })
+        try await loop.run(secret, onEvent: { _ in }, confirm: { _ in
+            Issue.record("the incognito tools never ask")
+            return false
+        })
 
-        // The episode is all in memory.
-        let items = await incognito.entries.map(\.item)
-        #expect(items.first == .userMessage(text: secret))
-        #expect(items.count == 6)
-        // The search found the kept past, with nothing left out.
-        guard case .toolResult(let found) = items[3] else {
-            Issue.record("expected the search result, got \(items[3])")
-            return
+        // The model was sent the three application tools and the incognito instructions.
+        #expect(provider.requests.first?.tools.map(\.name) == BuiltInTools.incognitoNames)
+        #expect(provider.requests.first?.instructions == AgentInstructions.incognitoFixed)
+        // The episode is all in memory. History search and the shell are not there to call.
+        let results = await incognito.entries.compactMap { entry -> ThreadItem.ToolResult? in
+            if case .toolResult(let result) = entry.item { return result }
+            return nil
         }
-        #expect(found.output.contains("dark mode"))
+        #expect(results.map(\.callID) == ["s", "r", "o"])
+        #expect(results[0].output == "Error: there is no tool named search_history.")
+        #expect(results[1].output == "Error: there is no tool named run_shell_command.")
+        #expect(results[2].output.hasPrefix("Opened Maps (com.apple.Maps)."))
+        #expect(workspace.opened == [Self.maps.url])
 
         // On disk, only the usage log changed, and it holds counts without content.
         var after = try snapshot(of: folder)

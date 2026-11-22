@@ -46,7 +46,7 @@ struct HistoryView: View {
     }
 
     var body: some View {
-        let transcript = session.visibleTranscript
+        let transcript = session.transcript
         let rows = transcript.rows
         let pageStart = min(transcript.currentEpisodeStartRow ?? 0, rows.count)
         // Nothing in the current episode yet but its separator.
@@ -66,7 +66,8 @@ struct HistoryView: View {
                         }
                         FreshStartSlot(hint: FreshStartHint.text(
                             hasEarlierEpisodes: pageStart > 0,
-                            isEmptyThread: !session.isIncognito && rows.allSatisfy(\.isEpisodeStart)))
+                            isEmptyThread: rows.allSatisfy(\.isEpisodeStart),
+                            isIncognito: session.isIncognito))
                         {
                             FreshStartContent(session: session)
                         }
@@ -109,9 +110,9 @@ struct HistoryView: View {
         .onChange(of: rows.count) {
             if rows.last?.isUser == true { jumpToLatest(animated: false) }
         }
-        // A fresh page, from a timeout, `/new`, or incognito starting or ending, opens at its top.
+        // A fresh page, from a timeout, `/new`, or Clear in the incognito window, opens at its top.
         .onChange(of: transcript.currentEpisodeStartRow) { jumpToLatest(animated: false) }
-        .onChange(of: session.isIncognito) { jumpToLatest(animated: false) }
+        .onChange(of: session.conversation) { jumpToLatest(animated: false) }
         .overlay(alignment: .bottomTrailing) {
             if !followsLatest {
                 Button {
@@ -163,12 +164,15 @@ struct HistoryView: View {
 
 enum FreshStartHint {
     /// The line for an empty page: where the earlier episodes are on a fresh start, and where
-    /// everything goes in a new thread. An incognito page says nothing, since its indicator does.
-    static func text(hasEarlierEpisodes: Bool, isEmptyThread: Bool) -> String? {
+    /// everything goes in a new thread. An incognito page says what the window can do instead.
+    static func text(hasEarlierEpisodes: Bool, isEmptyThread: Bool, isIncognito: Bool = false) -> String? {
+        if isIncognito { return incognito }
         if hasEarlierEpisodes { return "\(Mark.up) Earlier episodes are above" }
         if isEmptyThread { return "Everything you ask stays in this one thread." }
         return nil
     }
+
+    static let incognito = "This window opens apps and answers questions. Anything else needs the main panel."
 }
 
 /// The empty space of a fresh episode. It holds an optional block of content, such as

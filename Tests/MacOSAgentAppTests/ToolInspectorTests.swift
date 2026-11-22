@@ -178,10 +178,10 @@ import Testing
 
     @Test func theInspectorReadsTheSelectedCallLive() throws {
         let session = try #require(PanelPreview.session(named: "inspector-running"))
-        let running = try #require(session.visibleTranscript.toolCall("call_running"))
+        let running = try #require(session.transcript.toolCall("call_running"))
         #expect(running.status == .running)
         #expect(running.output == nil)
-        let reminders = try #require(session.visibleTranscript.toolCall("call_fields"))
+        let reminders = try #require(session.transcript.toolCall("call_fields"))
         #expect(reminders.goAheadText?.hasPrefix("Asked, approved") == true)
         #expect(reminders.source(lookup: { session.toolSources[$0] }) == "Reminders")
     }
