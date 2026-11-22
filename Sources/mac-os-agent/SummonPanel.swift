@@ -42,6 +42,9 @@ final class SummonPanel: NSPanel {
 
     private let session: AgentSession
     let placement = PanelPlacement()
+    /// The tool call inspector beside the panel, and the call it shows.
+    let inspector = ToolInspector()
+    private(set) var inspectorWindow: ToolInspectorWindow!
     /// Where the dock state and the frame from before docking are kept. Nil keeps them in
     /// memory only, for previews and tests.
     private let defaults: UserDefaults?
@@ -92,9 +95,13 @@ final class SummonPanel: NSPanel {
 
         placement.recenter = { [weak self] in self?.recenter() }
         placement.toggleDock = { [weak self] edge in self?.toggleDock(edge) }
+        inspectorWindow = ToolInspectorWindow(inspector: inspector, session: session, defaults: defaults)
+        inspector.callIDs = { [weak session] in session?.visibleTranscript.toolCallIDs ?? [] }
+        inspector.onChange = { [weak self] in self?.updateInspector() }
+        inspectorWindow.onResize = { [weak self] in self?.placeInspector() }
         let controller = NSHostingController(rootView: SummonView(session: session, onDismiss: { [weak self] in
-            self?.dismiss()
-        }).environment(placement))
+            self?.escape()
+        }).environment(placement).environment(inspector))
         // The window's size is the owner's to choose, not the content's.
         controller.sizingOptions = []
         contentViewController = controller
@@ -126,7 +133,7 @@ final class SummonPanel: NSPanel {
     /// around that square. Clipping the content to the glass's rounded shape keeps the corners
     /// fully transparent, so the window's shape, and so its shadow, is the rounded glass.
     /// The clip lives on the layer, so it follows the window through every resize.
-    private static func giveRoundedShape(to view: NSView) {
+    static func giveRoundedShape(to view: NSView) {
         view.wantsLayer = true
         guard let layer = view.layer else { return }
         layer.backgroundColor = .clear
@@ -143,7 +150,8 @@ final class SummonPanel: NSPanel {
     /// The hotkey and the menu bar icon. A first press while another app has focus gives the
     /// panel focus, so the owner can type. A press while it has focus hides it.
     func toggle() {
-        switch ToggleAction.given(isVisible: isVisible, isKey: isKeyWindow) {
+        // The inspector is part of the panel: focus in it counts as focus in the panel.
+        switch ToggleAction.given(isVisible: isVisible, isKey: isKeyWindow || inspectorWindow.isKeyWindow) {
         case .show: summon()
         case .focus: focus()
         case .hide: dismiss()
@@ -158,6 +166,7 @@ final class SummonPanel: NSPanel {
         }
         makeKeyAndOrderFront(nil)
         invalidateShadow()
+        updateInspector()
         session.panelDidAppear()
     }
 
@@ -177,14 +186,27 @@ final class SummonPanel: NSPanel {
         }
         orderFrontRegardless()
         invalidateShadow()
+        updateInspector()
     }
 
+    /// Hides the panel and the inspector with it. The inspector keeps its call, so it comes
+    /// back with the panel.
     func dismiss() {
+        hideInspectorWindow()
         orderOut(nil)
     }
 
+    /// Escape closes the inspector first when it is open, and hides the panel on the next press.
+    func escape() {
+        if inspector.isOpen {
+            inspector.close()
+        } else {
+            dismiss()
+        }
+    }
+
     override func cancelOperation(_ sender: Any?) {
-        dismiss()
+        escape()
     }
 
     /// Command-W, from the Window menu. The panel has no close button, so AppKit would beep.
@@ -262,6 +284,7 @@ final class SummonPanel: NSPanel {
     /// A move or resize by the owner. Dragging a docked panel away undocks it. Resizing its
     /// free edge keeps it docked.
     @objc private func frameDidChange() {
+        defer { placeInspector() }
         guard !isPlacing, let dock = placement.dock, let visible = currentScreen()?.visible else { return }
         if !PanelGeometry.isDocked(frame, at: dock, in: visible) {
             undock(restoringFrame: false)
@@ -276,6 +299,40 @@ final class SummonPanel: NSPanel {
         } else if !isReachable, let visible = currentScreen()?.visible {
             place(PanelGeometry.clamped(frame, minimumSize: Self.minimumSize, in: visible))
         }
+        placeInspector()
+    }
+
+    // MARK: - The inspector
+
+    /// Shows the inspector beside the panel while it has a call and the panel is up, and hides
+    /// it otherwise. It is a child window, so AppKit moves it and orders it with the panel.
+    func updateInspector() {
+        guard inspector.isOpen, isVisible else {
+            hideInspectorWindow()
+            return
+        }
+        placeInspector()
+        if inspectorWindow.parent == nil {
+            addChildWindow(inspectorWindow, ordered: .above)
+        }
+        if !inspectorWindow.isVisible {
+            inspectorWindow.orderFront(nil)
+        }
+    }
+
+    private func hideInspectorWindow() {
+        if inspectorWindow.isKeyWindow, isVisible { makeKey() }
+        if inspectorWindow.parent != nil { removeChildWindow(inspectorWindow) }
+        inspectorWindow.orderOut(nil)
+    }
+
+    /// Beside the panel on the side with room, at the panel's height. See `PanelGeometry`.
+    func placeInspector() {
+        guard inspector.isOpen, let visible = currentScreen()?.visible else { return }
+        let placement = PanelGeometry.inspectorPlacement(
+            panel: frame, dock: self.placement.dock, width: inspectorWindow.preferredWidth, in: visible)
+        if inspector.side != placement.side { inspector.side = placement.side }
+        inspectorWindow.place(placement.frame)
     }
 
     /// The screen that holds most of the panel, or the one with the mouse when none does.

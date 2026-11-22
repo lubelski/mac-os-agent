@@ -225,11 +225,14 @@ public struct ToolOutputTrailer: Equatable, Sendable {
     public var omittedCharacters: Int?
 
     public init(_ output: String) {
-        var lines = output.split(separator: "\n", omittingEmptySubsequences: false)
+        // Only the last few lines can be notes, so the output is read from its end and the rest
+        // is never split, which keeps this cheap for a long output.
+        var end = output.endIndex
         var found = true
-        while found, let last = lines.last {
+        while found, end > output.startIndex {
             found = false
-            let line = last.trimmingCharacters(in: .whitespaces)
+            let lineStart = output[..<end].lastIndex(of: "\n").map { output.index(after: $0) } ?? output.startIndex
+            let line = output[lineStart..<end].trimmingCharacters(in: .whitespaces)
             if exitStatus == nil, let status = Self.number(in: line, prefix: "[exit status ", suffix: "]") {
                 exitStatus = Int32(clamping: status)
                 found = true
@@ -240,12 +243,14 @@ public struct ToolOutputTrailer: Equatable, Sendable {
                 stoppedWhileRunning = true
                 found = true
             }
-            if found { lines.removeLast() }
+            if found { end = lineStart > output.startIndex ? output.index(before: lineStart) : output.startIndex }
         }
-        var body = lines.joined(separator: "\n")
+        var body = String(output[..<end])
         if exitStatus != nil, body == "(no output)" { body = "" }
         self.body = body
-        if let match = body.firstMatch(of: /\n\[… (\d+) characters omitted …\]\n/) {
+        // The tool puts its omitted marker in the middle of output it shortened to 16,000
+        // characters, so only output about that long is searched for it.
+        if body.utf8.count < 200_000, let match = body.firstMatch(of: /\n\[… (\d+) characters omitted …\]\n/) {
             omittedCharacters = Int(match.1)
         }
     }

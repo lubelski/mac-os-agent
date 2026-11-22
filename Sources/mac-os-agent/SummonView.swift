@@ -8,6 +8,7 @@ import SwiftUI
 struct SummonView: View {
     @Bindable var session: AgentSession
     var onDismiss: () -> Void = {}
+    @Environment(ToolInspector.self) private var inspector: ToolInspector?
     /// Changes whenever the text field should take keyboard focus.
     @State private var focusRequest = 0
     /// The reference time for the history's time labels, refreshed on every summon.
@@ -41,6 +42,9 @@ struct SummonView: View {
             if !running { focusRequest += 1 }
         }
         .onExitCommand(perform: onDismiss)
+        // The inspector shows a call from the history in view. Starting or ending incognito
+        // changes that history, so the inspector closes.
+        .onChange(of: session.isIncognito) { inspector?.close() }
     }
 
     private var inputRow: some View {
@@ -57,7 +61,8 @@ struct SummonView: View {
                 isEnabled: !session.isRunning,
                 focusRequest: focusRequest,
                 onSubmit: session.submit,
-                onCancel: onDismiss)
+                onCancel: onDismiss,
+                onMove: { offset in inspector?.move(by: offset) ?? false })
                 .overlay(alignment: .topLeading) {
                     if session.draft.isEmpty {
                         Text(placeholder)
