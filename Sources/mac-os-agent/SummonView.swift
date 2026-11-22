@@ -229,7 +229,7 @@ private struct OwnerMessage: View {
                     .padding(.vertical, MessageStyle.verticalPadding)
                     // The system accent, which stays in color while the app is inactive. The
                     // panel never activates the app, so `Color.accentColor` would turn gray.
-                    .background(Color(nsColor: .controlAccentColor).opacity(0.2), in: .rect(cornerRadius: MessageStyle.cornerRadius))
+                    .background(Color(nsColor: .controlAccentColor).opacity(0.3), in: .rect(cornerRadius: MessageStyle.cornerRadius))
                     .help(TranscriptTimeLabel.fullText(for: date))
             }
         }
@@ -247,7 +247,8 @@ private struct AgentMessage: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, MessageStyle.horizontalPadding)
                 .padding(.vertical, MessageStyle.verticalPadding)
-                .background(.primary.opacity(0.06), in: .rect(cornerRadius: MessageStyle.cornerRadius))
+                .background(.primary.opacity(0.09), in: .rect(cornerRadius: MessageStyle.cornerRadius))
+                .overlay(RoundedRectangle(cornerRadius: MessageStyle.cornerRadius).strokeBorder(.primary.opacity(0.08), lineWidth: 1))
             Spacer(minLength: MessageStyle.farSideInset)
         }
     }
