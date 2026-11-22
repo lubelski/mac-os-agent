@@ -2,13 +2,18 @@ import AppKit
 import MacOSAgentCore
 import Observation
 
-/// The app's state while it works: the thread's history, the running task, and the sign-in.
-/// The task belongs to this object, not to the panel, so hiding the panel never stops it.
+/// The state of one conversation window while it works: its history, the running task, and
+/// the sign-in. The task belongs to this object, not to the window, so hiding the main panel
+/// never stops it.
 ///
-/// It also keeps track of episodes. When the panel comes up after the current episode has
-/// timed out, or after `/new`, it starts a fresh page, and the owner's next message starts a
-/// new episode. An incognito episode runs on a loop of its own over a store held in memory,
-/// with a transcript of its own, and both are dropped when it ends.
+/// There are two kinds, one per window:
+/// - The main panel's session runs on the kept thread. It keeps track of episodes: when the
+///   panel comes up after the current episode has timed out, or after `/new`, it starts a
+///   fresh page, and the owner's next message starts a new episode.
+/// - The incognito window's session runs on a loop of its own over a store held only in
+///   memory, with the incognito tools and instructions. It has no episode timeout. `/new` and
+///   Clear start its conversation over, and closing the window drops the session and
+///   everything in it.
 @MainActor
 @Observable
 final class AgentSession {
@@ -18,39 +23,62 @@ final class AgentSession {
         case signedIn
     }
 
-    /// The kept thread's history.
+    enum Kind: Equatable {
+        /// The main panel, on the kept thread.
+        case kept
+        /// The incognito window, held in memory only.
+        case incognito
+    }
+
+    /// What the owner asked to do with an incognito conversation.
+    enum Discard: Equatable {
+        /// Close the window, which discards the conversation.
+        case close
+        /// Discard the conversation and keep the window open on a fresh one.
+        case clear
+    }
+
+    let kind: Kind
+    /// The conversation's history.
     private(set) var transcript = Transcript()
-    /// The incognito episode's history while one is on.
-    private(set) var incognitoTranscript: Transcript?
     private(set) var streamingText = ""
     private(set) var isRunning = false
     private(set) var pendingConfirmation: ConfirmationRequest?
     private(set) var signInState: SignInState = .signedOut
-    /// Changes every time the panel is shown, so the text field takes focus again.
+    /// Changes every time the window is shown, so the text field takes focus again.
     private(set) var focusRequest = 0
+    /// Changes each time an incognito conversation is discarded and started over, so the
+    /// history and the inspector let go of the old one.
+    private(set) var conversation = 0
+    /// A close or clear asked for while a task runs, waiting for the owner to confirm it.
+    private(set) var pendingDiscard: Discard?
     var draft = "" {
         didSet { instantActions.draftChanged(draft) }
     }
     /// What Return does for the draft without the model, such as opening an app.
     @ObservationIgnored var instantActions = InstantActions()
-    /// Set by the panel: hides it the normal way, and shows it again.
+    /// Set by the window: hides it the normal way, and shows it again.
     @ObservationIgnored var hidePanel: (() -> Void)?
     @ObservationIgnored var showPanel: (() -> Void)?
+    /// Set by the app on the main panel's session: opens the incognito window, or brings it
+    /// forward when it is open. `/incognito` calls it.
+    @ObservationIgnored var openIncognito: (() -> Void)?
+    /// Set by the incognito window: takes the window away once its conversation is discarded.
+    @ObservationIgnored var closeWindow: (() -> Void)?
 
-    /// True while an incognito episode is on. Nothing from it is written anywhere.
-    var isIncognito: Bool { incognitoTranscript != nil }
-    /// The history the panel shows: the incognito episode while one is on, the kept thread otherwise.
-    var visibleTranscript: Transcript { incognitoTranscript ?? transcript }
+    /// True for the incognito window's session. Nothing from it is written anywhere.
+    var isIncognito: Bool { kind == .incognito }
 
     @ObservationIgnored var onStatusChange: (() -> Void)?
     /// Each tool's source group by name, for the inspector to show for calls stored before the
     /// group was kept with the result.
     @ObservationIgnored var toolSources: [String: String] = [:]
-    /// Errors since launch, for Settings > Debugging. Message content never goes here.
+    /// Errors since launch, for Settings > Debugging. Message content never goes here. The
+    /// incognito session has a log of its own, which nothing shows and which goes with it.
     @ObservationIgnored let problems = ProblemLog()
-    @ObservationIgnored private let loop: AgentLoop?
-    @ObservationIgnored private let makeIncognitoLoop: (() -> AgentLoop)?
-    @ObservationIgnored private var incognitoLoop: AgentLoop?
+    @ObservationIgnored private var loop: AgentLoop?
+    /// Makes the loop for a new incognito conversation, over a fresh `InMemoryThreadStore`.
+    @ObservationIgnored private let makeLoop: (() -> AgentLoop)?
     @ObservationIgnored private let authenticator: ChatGPTAuthenticator?
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var confirmation: CheckedContinuation<Bool, Never>?
@@ -64,43 +92,53 @@ final class AgentSession {
     @ObservationIgnored var previewRevealsControls = false
     /// True after a fresh start in the panel, until the next message starts the episode.
     @ObservationIgnored private var startsNewEpisode = false
-    @ObservationIgnored private var incognitoLastActivity = Date.distantPast
-    @ObservationIgnored private var incognitoTimer: Task<Void, Never>?
 
-    /// - Parameters:
-    ///   - makeIncognitoLoop: Makes the loop for a new incognito episode, over a fresh
-    ///     `InMemoryThreadStore`. Nil turns incognito off.
-    ///   - signedIn: For tests, which run without an authenticator.
+    /// The main panel's session, on the kept thread.
+    /// - Parameter signedIn: For tests, which run without an authenticator.
     init(
         loop: AgentLoop?, authenticator: ChatGPTAuthenticator?,
-        makeIncognitoLoop: (() -> AgentLoop)? = nil,
         episodeTimeout: @escaping () -> TimeInterval = { EpisodeTimeoutSetting.current() },
         signedIn: Bool = false
     ) {
+        kind = .kept
         self.loop = loop
+        makeLoop = nil
         self.authenticator = authenticator
-        self.makeIncognitoLoop = makeIncognitoLoop
         self.episodeTimeout = episodeTimeout
         if signedIn { signInState = .signedIn }
     }
 
-    /// Stand-in state for rendering the panel without a model.
+    /// An incognito window's session. It starts a conversation at once.
+    /// - Parameters:
+    ///   - makeLoop: Makes the loop for each conversation, over a fresh `InMemoryThreadStore`,
+    ///     with the incognito tools and instructions. Called again on `/new` and Clear.
+    ///   - signedIn: Whether the main panel's session is signed in. The app keeps it in step.
+    init(incognito makeLoop: @escaping () -> AgentLoop, signedIn: Bool) {
+        kind = .incognito
+        self.makeLoop = makeLoop
+        authenticator = nil
+        episodeTimeout = { .infinity }
+        if signedIn { signInState = .signedIn }
+        startConversation()
+    }
+
+    /// Stand-in state for rendering a window without a model.
     init(
         previewEntries: [ThreadEntry], streamingText: String = "", pendingConfirmation: ConfirmationRequest? = nil,
-        isRunning: Bool = false, runningCallIDs: [String] = [], freshStart: Bool = false, incognitoEntries: [ThreadEntry]? = nil
+        isRunning: Bool = false, runningCallIDs: [String] = [], freshStart: Bool = false, incognito: Bool = false
     ) {
+        kind = incognito ? .incognito : .kept
         loop = nil
-        makeIncognitoLoop = nil
+        makeLoop = nil
         authenticator = nil
         episodeTimeout = { EpisodeTimeoutSetting.current() }
-        transcript = Transcript(entries: previewEntries)
-        if freshStart { transcript.beginEpisode(at: Date()) }
-        if let incognitoEntries {
-            var incognito = Transcript()
-            incognito.beginEpisode(at: incognitoEntries.first?.date ?? Date())
-            for entry in incognitoEntries { incognito.apply(entry) }
-            incognitoTranscript = incognito
+        if incognito {
+            transcript.beginEpisode(at: previewEntries.first?.date ?? Date())
+            for entry in previewEntries { transcript.apply(entry) }
+        } else {
+            transcript = Transcript(entries: previewEntries)
         }
+        if freshStart { transcript.beginEpisode(at: Date()) }
         for callID in runningCallIDs { transcript.setToolStatus(callID, .running) }
         if let pendingConfirmation { transcript.setToolStatus(pendingConfirmation.callID, .waitingForConfirmation) }
         self.streamingText = streamingText
@@ -119,9 +157,14 @@ final class AgentSession {
         transcript.toolStarted(callID)
     }
 
+    /// For previews: shows the question asked when the owner closes or clears while a task runs.
+    func previewPendingDiscard(_ discard: Discard) {
+        pendingDiscard = discard
+    }
+
     /// Loads the whole thread as history and checks for a stored sign-in.
     func start() async {
-        if let loop {
+        if let loop, kind == .kept {
             transcript = Transcript(entries: await loop.thread.entries)
         }
         if let authenticator, await authenticator.isSignedIn() {
@@ -136,16 +179,12 @@ final class AgentSession {
         refreshEpisode()
     }
 
-    /// Starts a fresh page when the current episode has timed out, and ends an incognito
-    /// episode that has. Idleness counts from the last activity, not from when the panel was shown.
+    /// Starts a fresh page when the main panel's current episode has timed out. Idleness counts
+    /// from the last activity, not from when the panel was shown. An incognito conversation has
+    /// no timeout: it lasts until the owner clears it or closes its window.
     func refreshEpisode() {
-        guard !isRunning else { return }
-        let now = clock()
-        if isIncognito {
-            if incognitoHasTimedOut(now: now) { endIncognito() }
-            return
-        }
-        if transcript.currentEpisodeHasTimedOut(now: now, timeout: episodeTimeout()) {
+        guard kind == .kept, !isRunning else { return }
+        if transcript.currentEpisodeHasTimedOut(now: clock(), timeout: episodeTimeout()) {
             beginFreshEpisode()
         }
     }
@@ -154,86 +193,88 @@ final class AgentSession {
 
     func perform(_ command: SlashCommand) {
         guard !isRunning else { return }
-        switch command {
-        case .new:
-            if isIncognito { endIncognito() } else { beginFreshEpisode() }
-        case .incognito:
-            toggleIncognito()
+        switch (command, kind) {
+        case (.new, .kept):
+            beginFreshEpisode()
+        case (.new, .incognito):
+            performDiscard(.clear)
+        case (.incognito, .kept):
+            openIncognito?()
+        case (.incognito, .incognito):
+            transcript.appendNotice("This window is already incognito. Nothing from it is kept.")
         }
     }
-
-    func toggleIncognito() {
-        guard !isRunning else { return }
-        if isIncognito { endIncognito() } else { startIncognito() }
-    }
-
-    /// Whether the menu bar menu can offer incognito.
-    var canUseIncognito: Bool { makeIncognitoLoop != nil }
 
     private func beginFreshEpisode() {
         startsNewEpisode = true
         transcript.beginEpisode(at: clock())
     }
 
-    private func startIncognito() {
-        guard let makeIncognitoLoop else { return }
-        incognitoLoop = makeIncognitoLoop()
-        var incognito = Transcript()
-        incognito.beginEpisode(at: clock())
-        incognitoTranscript = incognito
-        incognitoLastActivity = clock()
-        streamingText = ""
-        watchIncognitoTimeout()
-        onStatusChange?()
-    }
+    // MARK: - Discarding an incognito conversation
 
-    /// Drops the incognito episode: its loop, its store, and its rows. The kept thread picks up
-    /// on a fresh page.
-    private func endIncognito() {
-        incognitoTimer?.cancel()
-        incognitoTimer = nil
-        incognitoLoop = nil
-        incognitoTranscript = nil
-        streamingText = ""
-        beginFreshEpisode()
-        onStatusChange?()
-    }
-
-    private func incognitoHasTimedOut(now: Date) -> Bool {
-        now.timeIntervalSince(incognitoLastActivity) >= episodeTimeout()
-    }
-
-    /// Ends the incognito episode once it has been idle for the timeout, even with the panel
-    /// open, so the indicator never shows an episode that is already over. It waits for a
-    /// running task to finish first.
-    private func watchIncognitoTimeout() {
-        incognitoTimer?.cancel()
-        incognitoTimer = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self, self.isIncognito else { return }
-                let remaining = self.incognitoLastActivity.addingTimeInterval(self.episodeTimeout()).timeIntervalSince(self.clock())
-                if remaining <= 0, !self.isRunning {
-                    self.endIncognito()
-                    return
-                }
-                // Look again at least every minute, since the timeout setting can change.
-                try? await Task.sleep(for: .seconds(min(max(remaining, 1), 60)))
-            }
+    /// The close button, Command-W, and Clear in the incognito window. With no task running it
+    /// happens at once. With one running, the window asks first, since the task stops and the
+    /// conversation is gone.
+    func requestDiscard(_ discard: Discard) {
+        guard kind == .incognito else { return }
+        if isRunning {
+            pendingDiscard = discard
+        } else {
+            performDiscard(discard)
         }
     }
 
-    // MARK: - Running instructions
-
-    private enum Target {
-        case kept
-        case incognito
+    /// The owner confirmed: stop the task and discard.
+    func confirmDiscard() {
+        guard let discard = pendingDiscard else { return }
+        performDiscard(discard)
     }
+
+    /// The owner chose to keep the conversation.
+    func cancelDiscard() {
+        pendingDiscard = nil
+    }
+
+    private func performDiscard(_ discard: Discard) {
+        endConversation()
+        switch discard {
+        case .clear:
+            startConversation()
+            focusRequest += 1
+        case .close:
+            closeWindow?()
+        }
+    }
+
+    /// Lets go of the incognito conversation: its task, its loop and store, its rows, and the draft.
+    private func endConversation() {
+        pendingDiscard = nil
+        resolveConfirmation(false)
+        task?.cancel()
+        task = nil
+        isRunning = false
+        streamingText = ""
+        loop = nil
+        transcript = Transcript()
+        draft = ""
+        conversation += 1
+        onStatusChange?()
+    }
+
+    private func startConversation() {
+        guard let makeLoop else { return }
+        loop = makeLoop()
+        transcript = Transcript()
+        transcript.beginEpisode(at: clock())
+    }
+
+    // MARK: - Running instructions
 
     /// Return. Takes the instant action the row offers when there is one, and otherwise sends
     /// the text to the agent.
     func submit() {
         guard !isRunning else { return }
-        if let candidate = instantActions.take(for: draft, learns: !isIncognito) {
+        if let candidate = instantActions.take(for: draft) {
             perform(candidate)
             return
         }
@@ -242,20 +283,23 @@ final class AgentSession {
 
     /// An instant action, such as opening an app. It is never sent to the model and never
     /// written to the thread, so the episode's request, and its prompt cache, stay as they were.
-    /// The panel hides the normal way. If the action fails, the panel comes back with the text
-    /// and a line saying why, which is shown only and never kept.
+    /// The main panel hides the normal way. The incognito window stays, since hiding it is
+    /// closing it. If the action fails, the window comes back with the text and a line saying
+    /// why, which is shown only and never kept.
     private func perform(_ candidate: InstantActionCandidate) {
         let text = draft
+        let conversation = conversation
         draft = ""
-        hidePanel?()
+        if kind == .kept { hidePanel?() }
         Task {
             do {
                 try await instantActions.perform(candidate)
             } catch {
                 let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 problems.record("Instant action", "Could not open \(candidate.title): \(message)")
+                guard conversation == self.conversation else { return }
                 if draft.isEmpty { draft = text }
-                update(isIncognito ? .incognito : .kept) { $0.appendNotice("Could not open \(candidate.title). \(message)") }
+                transcript.appendNotice("Could not open \(candidate.title). \(message)")
                 showPanel?()
             }
         }
@@ -271,40 +315,34 @@ final class AgentSession {
             perform(command)
             return
         }
-        if isIncognito, incognitoHasTimedOut(now: clock()) {
-            // The owner may still believe they are incognito. Keep the message instead of
-            // sending it into the kept thread.
-            endIncognito()
-            transcript.appendNotice("Incognito ended after \(EpisodeTimeoutSetting.describe(episodeTimeout())) without activity. Your message was not sent.")
-            return
-        }
-        let target: Target = isIncognito ? .incognito : .kept
-        guard let loop = target == .incognito ? incognitoLoop : loop else { return }
+        guard let loop else { return }
         guard signInState == .signedIn else {
-            update(target) { $0.appendError("Sign in with ChatGPT first, from the mac-os-agent menu in the menu bar.") }
+            transcript.appendError("Sign in with ChatGPT first, from the mac-os-agent menu in the menu bar.")
             return
         }
-        let startsNew = target == .kept && startsNewEpisode
-        if target == .kept { startsNewEpisode = false }
+        let startsNew = startsNewEpisode
+        startsNewEpisode = false
+        let conversation = conversation
         draft = ""
         streamingText = ""
         isRunning = true
         onStatusChange?()
 
-        // The session lives as long as the app, so the task holds it strongly.
+        // The task holds the session strongly until it ends. Discarding an incognito
+        // conversation cancels it, and anything it reports after that is dropped.
         task = Task {
             do {
                 try await loop.run(
                     text,
                     startsNewEpisode: startsNew,
-                    onEvent: { event in await self.handle(event, target: target) },
-                    confirm: { request in await self.requestConfirmation(request, target: target) })
+                    onEvent: { event in await self.handle(event, in: conversation) },
+                    confirm: { request in await self.requestConfirmation(request, in: conversation) })
             } catch is CancellationError {
-                update(target) { $0.appendNotice("Stopped.") }
+                update(conversation) { $0.appendNotice("Stopped.") }
             } catch {
-                appendError(error, target: target)
+                appendError(error, in: conversation)
             }
-            finishTask()
+            finishTask(conversation)
         }
     }
 
@@ -313,21 +351,13 @@ final class AgentSession {
         await task?.value
     }
 
-    /// Changes the transcript the running task writes to. Events for an incognito episode that
-    /// has already ended are dropped.
-    private func update(_ target: Target, _ change: (inout Transcript) -> Void) {
-        switch target {
-        case .kept:
-            change(&transcript)
-        case .incognito:
-            guard var incognito = incognitoTranscript else { return }
-            change(&incognito)
-            incognitoTranscript = incognito
-            incognitoLastActivity = clock()
-        }
+    /// Changes the history, unless the conversation the change belongs to has been discarded.
+    private func update(_ conversation: Int, _ change: (inout Transcript) -> Void) {
+        guard conversation == self.conversation else { return }
+        change(&transcript)
     }
 
-    /// Stops the running task. Hiding the panel does not call this.
+    /// Stops the running task. Hiding the main panel does not call this.
     func stop() {
         resolveConfirmation(false)
         task?.cancel()
@@ -338,25 +368,26 @@ final class AgentSession {
         self.confirmation = nil
         if let request = pendingConfirmation {
             let status: TranscriptRow.ToolStatus = approved ? .running : .finished
-            update(isIncognito ? .incognito : .kept) { $0.setToolStatus(request.callID, status) }
+            transcript.setToolStatus(request.callID, status)
         }
         pendingConfirmation = nil
         onStatusChange?()
         confirmation.resume(returning: approved)
     }
 
-    private func requestConfirmation(_ request: ConfirmationRequest, target: Target) async -> Bool {
-        if Task.isCancelled { return false }
+    private func requestConfirmation(_ request: ConfirmationRequest, in conversation: Int) async -> Bool {
+        if Task.isCancelled || conversation != self.conversation { return false }
         resolveConfirmation(false)
         pendingConfirmation = request
-        update(target) { $0.setToolStatus(request.callID, .waitingForConfirmation) }
+        transcript.setToolStatus(request.callID, .waitingForConfirmation)
         onStatusChange?()
         return await withCheckedContinuation { continuation in
             confirmation = continuation
         }
     }
 
-    private func finishTask() {
+    private func finishTask(_ conversation: Int) {
+        guard conversation == self.conversation else { return }
         task = nil
         isRunning = false
         streamingText = ""
@@ -364,29 +395,36 @@ final class AgentSession {
         onStatusChange?()
     }
 
-    private func handle(_ event: AgentEvent, target: Target) {
+    private func handle(_ event: AgentEvent, in conversation: Int) {
+        guard conversation == self.conversation else { return }
         switch event {
         case .entryAdded(let entry):
             switch entry.item {
             case .assistantMessage, .toolCall: streamingText = ""
             default: break
             }
-            update(target) { $0.apply(entry) }
+            transcript.apply(entry)
         case .textDelta(let text):
             streamingText += text
         case .toolCallStarted(let callID, _):
-            update(target) { $0.toolStarted(callID) }
+            transcript.toolStarted(callID)
         case .toolRunning(let callID, let summary):
-            update(target) { $0.toolRunning(callID, command: summary) }
+            transcript.toolRunning(callID, command: summary)
         case .toolFinished(let callID):
-            update(target) { $0.setToolStatus(callID, .finished) }
+            transcript.setToolStatus(callID, .finished)
         }
     }
 
-    private func appendError(_ error: Error, target: Target) {
+    private func appendError(_ error: Error, in conversation: Int) {
         let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        update(target) { $0.appendError(message) }
+        update(conversation) { $0.appendError(message) }
         problems.record("Request", message)
+    }
+
+    /// Keeps the incognito session's sign-in in step with the main panel's.
+    func followSignIn(_ state: SignInState) {
+        guard kind == .incognito, signInState != state else { return }
+        signInState = state
     }
 
     // MARK: - Sign-in

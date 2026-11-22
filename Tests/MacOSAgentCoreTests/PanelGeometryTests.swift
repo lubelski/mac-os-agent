@@ -134,3 +134,37 @@ import Testing
         #expect(PanelGeometry.screenIndex(containing: CGPoint(x: -5, y: 20), among: screens) == nil)
     }
 }
+
+@Suite struct BesideFrameTests {
+    private let visible = CGRect(x: 0, y: 0, width: 2560, height: 1415)
+    private let size = CGSize(width: 480, height: 500)
+
+    @Test func itGoesToTheRightOfThePanelWithItsTopLinedUp() {
+        let panel = CGRect(x: 600, y: 500, width: 640, height: 560)
+        let frame = PanelGeometry.besideFrame(size: size, beside: panel, in: visible)
+        #expect(frame == CGRect(x: 1256, y: 560, width: 480, height: 500))
+        #expect(!frame.intersects(panel))
+    }
+
+    @Test func itGoesToTheLeftWhenTheRightHasNoRoom() {
+        let panel = CGRect(x: 1900, y: 500, width: 640, height: 560)
+        let frame = PanelGeometry.besideFrame(size: size, beside: panel, in: visible)
+        #expect(frame.maxX == panel.minX - PanelGeometry.besideGap)
+        #expect(!frame.intersects(panel))
+    }
+
+    @Test func onANarrowScreenItTakesTheRoomierSideAndStaysOnScreen() {
+        let laptop = CGRect(x: 0, y: 0, width: 1512, height: 949)
+        let panel = CGRect(x: 380, y: 300, width: 640, height: 560)
+        let frame = PanelGeometry.besideFrame(size: size, beside: panel, in: laptop)
+        #expect(frame.maxX == laptop.maxX - PanelGeometry.screenMargin)
+        #expect(laptop.insetBy(dx: PanelGeometry.screenMargin, dy: PanelGeometry.screenMargin).contains(frame))
+    }
+
+    @Test func aSlideOverPanelAtTheLeftHasItBesideItsFreeEdge() {
+        let panel = PanelGeometry.slideOverFrame(.left, width: 640, minimumWidth: 440, in: visible)
+        let frame = PanelGeometry.besideFrame(size: size, beside: panel, in: visible)
+        #expect(frame.minX == panel.maxX + PanelGeometry.besideGap)
+        #expect(frame.maxY == visible.maxY - PanelGeometry.screenMargin)
+    }
+}

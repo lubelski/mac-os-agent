@@ -3,23 +3,35 @@ import MacOSAgentCore
 import Testing
 @testable import mac_os_agent
 
-/// Replies "ok" to every request and records what it was sent.
-private final class EchoProvider: ModelProvider, @unchecked Sendable {
+/// Replies "ok" to every request and records what it was sent. With `holds` set, each reply
+/// waits until the task is cancelled, as a slow request would.
+final class EchoProvider: ModelProvider, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [ModelRequest] = []
+    var holds = false
 
     var requests: [ModelRequest] { lock.withLock { recorded } }
 
     func streamReply(to request: ModelRequest) -> AsyncThrowingStream<ModelStreamEvent, Error> {
         lock.withLock { recorded.append(request) }
+        let holds = holds
         return AsyncThrowingStream { continuation in
-            continuation.yield(.item(.assistantMessage(.init(text: "ok", provider: "test", model: "test-model"))))
-            continuation.finish()
+            let task = Task {
+                if holds {
+                    while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(5)) }
+                    continuation.finish(throwing: CancellationError())
+                    return
+                }
+                continuation.yield(.item(.assistantMessage(.init(text: "ok", provider: "test", model: "test-model"))))
+                continuation.yield(.usage(TokenUsage(inputTokens: 10, cachedInputTokens: 0, outputTokens: 1), provider: "test", model: "test-model"))
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 }
 
-/// The session's episode and incognito behavior, against a kept thread in a temporary folder.
+/// The main panel session's episodes, against a kept thread in a temporary folder.
 @MainActor
 @Suite(.serialized) struct EpisodeSessionTests {
     private let folder = FileManager.default.temporaryDirectory
@@ -30,10 +42,7 @@ private final class EchoProvider: ModelProvider, @unchecked Sendable {
         let thread = try ThreadStore(fileURL: folder.appending(path: "thread.jsonl"), searchIndexURL: folder.appending(path: "history-index.sqlite"))
         let provider = provider
         let loop = AgentLoop(provider: provider, thread: thread, tools: [], episodeTimeout: { timeout })
-        let session = AgentSession(
-            loop: loop, authenticator: nil,
-            makeIncognitoLoop: { AgentLoop(provider: provider, thread: InMemoryThreadStore(), tools: [], episodeTimeout: { timeout }) },
-            episodeTimeout: { timeout }, signedIn: true)
+        let session = AgentSession(loop: loop, authenticator: nil, episodeTimeout: { timeout }, signedIn: true)
         return (session, thread)
     }
 
@@ -50,12 +59,12 @@ private final class EchoProvider: ModelProvider, @unchecked Sendable {
     @Test func slashNewStartsAFreshPageAndTheNextMessageANewEpisode() async throws {
         let (session, thread) = try makeSession()
         await send("first", in: session)
-        let rowsBefore = session.visibleTranscript.rows.count
+        let rowsBefore = session.transcript.rows.count
 
         await send("/new", in: session)
         #expect(session.draft.isEmpty)
-        #expect(session.visibleTranscript.hasPendingEpisode)
-        #expect(session.visibleTranscript.currentEpisodeStartRow == rowsBefore)
+        #expect(session.transcript.hasPendingEpisode)
+        #expect(session.transcript.currentEpisodeStartRow == rowsBefore)
         #expect(await thread.entries.count == 2)
 
         await send("second", in: session)
@@ -75,55 +84,27 @@ private final class EchoProvider: ModelProvider, @unchecked Sendable {
         let (session, _) = try makeSession()
         await send("first", in: session)
         session.panelDidAppear()
-        #expect(!session.visibleTranscript.hasPendingEpisode)
+        #expect(!session.transcript.hasPendingEpisode)
 
         session.clock = { Date().addingTimeInterval(31 * 60) }
         session.panelDidAppear()
-        #expect(session.visibleTranscript.hasPendingEpisode)
+        #expect(session.transcript.hasPendingEpisode)
     }
 
-    @Test func incognitoLeavesNoTraceAndEndsWithANewPage() async throws {
+    @Test func slashIncognitoOpensTheWindowAndLeavesThePanelAsItWas() async throws {
         let (session, thread) = try makeSession()
         await send("kept message", in: session)
-        let before = try threadBytes()
-        let indexBefore = try Data(contentsOf: folder.appending(path: "history-index.sqlite"))
+        let rows = session.transcript.rows
+        var opened = 0
+        session.openIncognito = { opened += 1 }
 
         await send("/incognito", in: session)
-        #expect(session.isIncognito)
-        await send("a secret plan", in: session)
-        // It started fresh: the model saw only the incognito message.
-        #expect(provider.requests.last?.entries.map(\.item) == [.userMessage(text: "a secret plan")])
-        #expect(session.visibleTranscript.rows.contains { $0.kind == .assistant("ok") })
-        #expect(!session.transcript.rows.contains { if case .user(let text, _, _) = $0.kind { text == "a secret plan" } else { false } })
-
-        await send("/new", in: session)
-        #expect(!session.isIncognito)
-        #expect(session.incognitoTranscript == nil)
-        #expect(session.transcript.hasPendingEpisode)
-
-        #expect(try threadBytes() == before)
-        #expect(try Data(contentsOf: folder.appending(path: "history-index.sqlite")) == indexBefore)
-        #expect(await thread.search("secret").isEmpty)
-    }
-
-    @Test func incognitoEndsByTheTimeoutWithoutSendingIntoTheKeptThread() async throws {
-        let (session, thread) = try makeSession()
-        await send("/incognito", in: session)
-        #expect(session.isIncognito)
-        session.clock = { Date().addingTimeInterval(31 * 60) }
-
-        await send("still secret", in: session)
-        #expect(!session.isIncognito)
-        #expect(session.draft == "still secret")
-        #expect(await thread.entries.isEmpty)
-        #expect(session.transcript.rows.contains { if case .notice(let text) = $0.kind { text.hasPrefix("Incognito ended after 30 minutes") } else { false } })
-    }
-
-    @Test func slashIncognitoTogglesIt() async throws {
-        let (session, _) = try makeSession()
-        await send("/incognito", in: session)
-        #expect(session.isIncognito)
-        await send("/incognito", in: session)
-        #expect(!session.isIncognito)
+        #expect(opened == 1)
+        #expect(session.kind == .kept)
+        #expect(session.transcript.rows == rows)
+        #expect(!session.transcript.hasPendingEpisode)
+        #expect(session.draft.isEmpty)
+        #expect(await thread.entries.count == 2)
+        #expect(provider.requests.count == 1)
     }
 }

@@ -11,7 +11,7 @@ struct ToolInspectorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let id = inspector.selectedCallID, let call = session.visibleTranscript.toolCall(id) {
+            if let id = inspector.selectedCallID, let call = session.transcript.toolCall(id) {
                 InspectorBar(title: call.name ?? "Tool call", callID: id)
                 GeometryReader { geometry in
                     VStack(alignment: .leading, spacing: 0) {

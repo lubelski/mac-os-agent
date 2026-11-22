@@ -78,6 +78,33 @@ public enum PanelGeometry {
             width: width, height: height)
     }
 
+    /// The gap between the main panel and a window placed beside it.
+    public static let besideGap: CGFloat = 16
+
+    /// Where a second window, such as the incognito window, goes beside the main panel:
+    /// to its right when it fits there inside the screen's margin, then to its left, and
+    /// otherwise against the screen's margin on the side with more room, overlapping the panel
+    /// as little as the screen allows. Its top lines up with the panel's top.
+    public static func besideFrame(size: CGSize, beside panel: CGRect, in visible: CGRect) -> CGRect {
+        let room = visible.insetBy(dx: screenMargin, dy: screenMargin)
+        let width = min(size.width, room.width)
+        let height = min(size.height, room.height)
+        let y = min(max(panel.maxY - height, room.minY), room.maxY - height)
+        let right = panel.maxX + besideGap
+        let left = panel.minX - besideGap - width
+        let x: CGFloat
+        if right + width <= room.maxX {
+            x = right
+        } else if left >= room.minX {
+            x = left
+        } else if room.maxX - panel.maxX >= panel.minX - room.minX {
+            x = room.maxX - width
+        } else {
+            x = room.minX
+        }
+        return CGRect(x: x.rounded(), y: y.rounded(), width: width, height: height)
+    }
+
     /// Whether enough of the frame is on a screen for the owner to see it and grab it.
     public static func isReachable(_ frame: CGRect, on visibleFrames: [CGRect]) -> Bool {
         visibleFrames.contains { $0.intersection(frame).height >= 60 && $0.intersection(frame).width >= 120 }

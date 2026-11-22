@@ -51,9 +51,8 @@ public enum BuiltInTools {
         ChangeThemeTool.name,
     ]
 
-    /// - Parameter history: The kept thread, which the history tools search and read. Incognito
-    ///   episodes use the same tools, so they can search the past without adding to it.
     /// - Parameters:
+    ///   - history: The kept thread, which the history tools search and read.
     ///   - reminders: Reminders, which the reminder tools read and change.
     ///   - calendar: Calendar, which the event tools read and change.
     ///   - system: Files, the clipboard, the desktop picture, and running apps, for the system tools.
@@ -93,6 +92,30 @@ public enum BuiltInTools {
             ChangeThemeTool(library: themes, preferences: themePreferences),
         ]
         assert(tools.map(\.definition.name) == names)
+        return tools
+    }
+
+    /// The tools an incognito window gets, in this order. It is only for opening apps and asking
+    /// questions, so it has the three application tools and nothing else: no shell, no personal
+    /// data, no system tools, no skills, no themes, and no history. The list is fixed, so its
+    /// requests keep one cached prefix of their own.
+    public static let incognitoNames = [
+        SearchApplicationsTool.name,
+        OpenApplicationTool.name,
+        ListRunningApplicationsTool.name,
+    ]
+
+    /// The incognito window's tools. Made fresh for each incognito conversation, and holding
+    /// nothing that writes a file.
+    public static func makeIncognito(
+        applicationWorkspace: any ApplicationWorkspace = SystemApplicationWorkspace()
+    ) -> [any AgentTool] {
+        let tools: [any AgentTool] = [
+            SearchApplicationsTool(workspace: applicationWorkspace),
+            OpenApplicationTool(workspace: applicationWorkspace),
+            ListRunningApplicationsTool(workspace: applicationWorkspace),
+        ]
+        assert(tools.map(\.definition.name) == incognitoNames)
         return tools
     }
 }

@@ -380,6 +380,25 @@ final class WindowRecorder {
         #expect(recorder.orderedAway == 0)
     }
 
+    @Test func theMenuItemFollowsThePresentedStateDuringASlideOut() throws {
+        let (panel, defaults) = try makePanel()
+        defer { cleanUp(defaults) }
+        panel.choose(.slideOverRight)
+        panel.toggleFromMenu()
+        panel.advanceSlide(by: 1)
+        #expect(panel.menuItemHides)
+        panel.toggleFromMenu()
+        panel.advanceSlide(by: PanelSlide.slideDuration * 0.4)
+        // Still on screen on its way out, but the menu already offers Show, and Show brings it back.
+        #expect(panel.isVisible || panel.isOrderedIn)
+        #expect(!panel.menuItemHides)
+        panel.toggleFromMenu()
+        #expect(panel.isPresented)
+        #expect(panel.menuItemHides)
+        panel.advanceSlide(by: 1)
+        #expect(recorder.orderedAway == 0)
+    }
+
     @Test func hidingDuringASlideInTurnsItBackOut() throws {
         let (panel, defaults) = try makePanel()
         defer { cleanUp(defaults) }

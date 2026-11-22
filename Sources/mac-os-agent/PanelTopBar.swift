@@ -11,8 +11,11 @@ final class PanelPlacement {
     var preset: PanelPreset = .centered
     /// Moves the panel to a preset.
     var choose: (PanelPreset) -> Void = { _ in }
-    /// Hides the panel, as Escape does. It never stops a running task.
+    /// The close button. The main panel hides, as Escape does, and its task keeps going. The
+    /// incognito window closes and discards its conversation.
     var close: () -> Void = {}
+    /// False for the incognito window, which has no layouts.
+    var offersLayouts = true
 
     /// The glass's frame when in place, in screen coordinates.
     var panelFrame: CGRect = .zero
@@ -39,9 +42,9 @@ final class PanelPlacement {
 /// The slim bar across the top of the glass. The whole bar moves the panel, apart from its
 /// controls. It has two areas, a leading one and a trailing one, each a row of small items:
 ///
-/// - `leading` starts with the close button. After it is room for a state label, such as the
-///   incognito one, a clear button, or an episode title. Plain text or a small mark, so the
-///   bar stays quiet.
+/// - `leading` starts with the close button. In the incognito window the incognito label and
+///   the Clear control follow it. Later this is room for an episode title. Plain text or a
+///   small mark, so the bar stays quiet.
 /// - `trailing` holds the layout menu. A new control is one more `TopBarButton` in that row,
 ///   before the layout menu.
 ///
@@ -49,9 +52,18 @@ final class PanelPlacement {
 /// panel. A control does not. Double-clicking the bar does nothing: the panel has no zoom and
 /// no minimize, and hiding it on a double click would be easy to do by accident.
 struct PanelTopBar: View {
+    /// What the incognito window's bar adds after the close button.
+    struct Incognito {
+        /// False while there is nothing to clear.
+        var canClear: Bool
+        var clear: () -> Void
+    }
+
     static let height: CGFloat = 30
     /// The space from the panel's side to the control at each end.
     static let sidePadding: CGFloat = 12
+    /// Set for the incognito window.
+    var incognito: Incognito?
     @Environment(PanelPlacement.self) private var placement: PanelPlacement?
 
     var body: some View {
@@ -75,20 +87,78 @@ struct PanelTopBar: View {
             HStack(spacing: 8) {
                 TopBarButton(
                     symbol: "xmark",
-                    label: "Close",
-                    help: "Hide the panel. A running task keeps going.",
+                    label: incognito == nil ? "Close" : "Close and Discard",
+                    help: incognito == nil
+                        ? "Hide the panel. A running task keeps going."
+                        : "Close this window. Everything in it is discarded.",
                     action: placement.close)
+                if let incognito {
+                    IncognitoLabel()
+                    TopBarTextButton(
+                        title: "Clear",
+                        help: "Discard this conversation and start a new one. The window stays open.",
+                        isEnabled: incognito.canClear,
+                        action: incognito.clear)
+                }
             }
         }
     }
 
     @ViewBuilder
     private var trailing: some View {
-        if let placement {
+        if let placement, placement.offersLayouts {
             HStack(spacing: 2) {
                 LayoutMenuButton(placement: placement)
             }
         }
+    }
+}
+
+/// The incognito window's label, there for the window's whole life, on the theme's incognito
+/// badge fill. Dragging it moves the window.
+struct IncognitoLabel: View {
+    static let text = "Incognito. Nothing here is kept."
+    @Environment(\.panelPalette) private var palette
+
+    var body: some View {
+        Text(Self.text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(palette.incognitoBadge, in: .capsule)
+            .allowsHitTesting(false)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// A small word in the top bar that acts, such as Clear, in the text color. It is faint until
+/// the pointer is over it, like `TopBarButton`, and its weight never changes.
+struct TopBarTextButton: View {
+    let title: String
+    let help: String
+    var isEnabled = true
+    let action: () -> Void
+    @State private var isHovered = false
+    @Environment(\.panelPalette) private var palette
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .opacity(!isEnabled ? 0.25 : isHovered ? 0.9 : 0.55)
+                .padding(.horizontal, 6)
+                .frame(height: TopBarButton.size)
+                .background(palette.textTint(isEnabled && isHovered ? 0.07 : 0), in: .rect(cornerRadius: 6))
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .onHover { isHovered = $0 }
+        .help(help)
+        .accessibilityLabel(title)
     }
 }
 

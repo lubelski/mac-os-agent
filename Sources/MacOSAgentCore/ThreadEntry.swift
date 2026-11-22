@@ -38,7 +38,7 @@ public enum ThreadItem: Sendable, Equatable, Codable {
         public enum Reason: String, Sendable, Equatable, Codable {
             /// The owner wrote after the previous episode had been idle longer than the timeout.
             case timeout
-            /// The owner asked for a fresh start, with `/new` or by leaving incognito.
+            /// The owner asked for a fresh start, with `/new`.
             case requested
         }
 

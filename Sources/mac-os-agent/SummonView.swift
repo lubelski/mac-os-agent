@@ -2,9 +2,13 @@ import AppKit
 import MacOSAgentCore
 import SwiftUI
 
-/// The panel's content on Liquid Glass: the bar along the top and its divider, the incognito
-/// indicator while one is on, the thread's history, the go-ahead card when one is pending, the
-/// instant action row or the command hint, and the text field at the bottom.
+/// A conversation window's content on Liquid Glass: the bar along the top and its divider, the
+/// history, the go-ahead card when one is pending, the instant action row or the command hint,
+/// and the text field at the bottom.
+///
+/// The main panel and the incognito window are both this view, over sessions of different
+/// kinds. The incognito window adds its label and Clear to the top bar, the theme's incognito
+/// tint for its whole life, and a question before closing or clearing while a task runs.
 struct SummonView: View {
     @Bindable var session: AgentSession
     var onDismiss: () -> Void = {}
@@ -16,24 +20,28 @@ struct SummonView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PanelTopBar()
+            PanelTopBar(incognito: session.isIncognito
+                ? .init(canClear: canClear, clear: { session.requestDiscard(.clear) })
+                : nil)
             PanelDivider()
-            if session.isIncognito {
-                IncognitoIndicator()
-            }
             HistoryView(session: session, now: now)
-            if let request = session.pendingConfirmation {
+            if let discard = session.pendingDiscard {
+                DiscardCard(discard: discard, session: session)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+            } else if let request = session.pendingConfirmation {
                 ConfirmationCard(request: request, session: session)
                     .padding(.horizontal, 12)
                     .padding(.bottom, 10)
             }
             InstantActionRow(actions: session.instantActions)
-            CommandHint(suggestions: SlashCommand.suggestions(for: session.draft))
+            CommandHint(suggestions: SlashCommand.suggestions(for: session.draft), incognito: session.isIncognito)
             PanelDivider()
             inputRow
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // A faint tint on the surface, with the indicator, keeps incognito in sight the whole time.
+        // A faint tint on the surface, with the label in the top bar, keeps the incognito window
+        // apart from the main panel for its whole life.
         .themedPanel(incognito: session.isIncognito)
         .onChange(of: session.focusRequest, initial: true) {
             now = Date()
@@ -45,9 +53,15 @@ struct SummonView: View {
             if !running { focusRequest += 1 }
         }
         .onExitCommand(perform: onDismiss)
-        // The inspector shows a call from the history in view. Starting or ending incognito
-        // changes that history, so the inspector closes.
-        .onChange(of: session.isIncognito) { inspector?.close() }
+        // The inspector shows a call from the history in view. Clearing an incognito
+        // conversation drops that history, so the inspector closes.
+        .onChange(of: session.conversation) { inspector?.close() }
+    }
+
+    /// Whether the incognito window has anything to clear: a row past the opening separator,
+    /// a reply on its way, or a draft.
+    private var canClear: Bool {
+        session.transcript.rows.contains { !$0.isEpisodeStart } || session.isRunning || !session.draft.isEmpty
     }
 
     private var inputRow: some View {
@@ -92,33 +106,48 @@ struct SummonView: View {
         .padding(.vertical, 12)
     }
 
-    /// An incognito episode says so where the owner types, too.
+    /// The incognito window says what it is for where the owner types, too.
     private var placeholder: String {
-        session.isIncognito ? "Incognito. Tell your Mac what to do" : "Tell your Mac what to do"
+        session.isIncognito ? "Open an app or ask a question" : "Tell your Mac what to do"
     }
 }
 
-/// Shows for as long as an incognito episode is on, above the history.
-private struct IncognitoIndicator: View {
+/// Asks before closing or clearing the incognito window while a task runs, since the task
+/// stops and the conversation is gone. Escape, or Keep, answers no.
+private struct DiscardCard: View {
+    let discard: AgentSession.Discard
+    let session: AgentSession
     @Environment(\.panelPalette) private var palette
 
     var body: some View {
-        Text("Incognito. Nothing from this episode is kept.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(palette.incognitoBadge, in: .capsule)
-            .padding(.bottom, 6)
-            .frame(maxWidth: .infinity)
-            .accessibilityAddTraits(.isHeader)
+        VStack(alignment: .leading, spacing: 10) {
+            Text(discard == .close
+                 ? "A task is still running. Stop it and close this window? Everything in it is discarded."
+                 : "A task is still running. Stop it and clear this conversation? Everything in it is discarded.")
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button(discard == .close ? "Keep Open" : "Keep") { session.cancelDiscard() }
+                    .buttonStyle(.glass)
+                    .keyboardShortcut(.cancelAction)
+                Button(discard == .close ? "Stop and Close" : "Stop and Clear") { session.confirmDiscard() }
+                    .buttonStyle(.glassProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(14)
+        .background(palette.goAheadFill, in: .rect(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(palette.goAheadEdge, lineWidth: 1))
     }
 }
 
 /// The commands that match what the owner is typing, such as `/new` after a slash. It shows
-/// nothing until the text starts with a slash.
+/// nothing until the text starts with a slash. The incognito window describes them as they
+/// act there.
 private struct CommandHint: View {
     let suggestions: [SlashCommand]
+    let incognito: Bool
 
     var body: some View {
         if !suggestions.isEmpty {
@@ -129,7 +158,7 @@ private struct CommandHint: View {
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .frame(minWidth: 80, alignment: .leading)
-                        Text(command.summary)
+                        Text(incognito ? command.incognitoSummary : command.summary)
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     }

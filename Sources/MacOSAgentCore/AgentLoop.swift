@@ -27,7 +27,7 @@ public enum AgentLoopError: Error, Equatable, LocalizedError {
 /// The agent loop: send the current episode to the model, stream the reply, run the tools it
 /// asks for, add the results, and repeat until the model replies without asking for a tool.
 ///
-/// The loop runs the same against the kept thread and an incognito episode held in memory.
+/// The loop runs the same against the kept thread and an incognito conversation held in memory.
 public final class AgentLoop: Sendable {
     public let provider: any ModelProvider
     public let thread: any ThreadStorage

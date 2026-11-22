@@ -57,7 +57,7 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("Episodes")
             } footer: {
-                Text("A message sent after this long without activity starts a new episode, and the panel opens on a fresh page. The agent sees only the current episode and searches earlier ones when it needs them. Type /new to start one sooner, or /incognito for one that is not kept. An incognito episode ends after the same time.")
+                Text("A message sent after this long without activity starts a new episode, and the panel opens on a fresh page. The agent sees only the current episode and searches earlier ones when it needs them. Type /new to start one sooner. Type /incognito to open an incognito window beside the panel. It keeps nothing, only opens apps and answers questions, and has no timeout. It lasts until you clear it or close it.")
                     .foregroundStyle(.secondary)
             }
             Section {
