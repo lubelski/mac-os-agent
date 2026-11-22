@@ -39,12 +39,16 @@ private struct GoAheadTool: AgentTool {
         #expect(ToolParameter.list(from: ["type": "object"]).isEmpty)
     }
 
-    @Test func theBuiltInToolsAreOneGroupInRegistryOrder() {
-        let registry = ToolRegistry(builtIn: BuiltInTools.make(applicationWorkspace: FakeApplicationWorkspace(installed: [])))
+    @Test func theBuiltInToolsAreGroupedBySourceInRegistryOrder() {
+        let store = FakePersonalDataStore()
+        let registry = ToolRegistry(builtIn: BuiltInTools.make(
+            applicationWorkspace: FakeApplicationWorkspace(installed: []), reminders: store, calendar: store))
         let groups = registry.groups
-        #expect(groups.count == 1)
-        #expect(groups[0].source == .builtIn)
-        #expect(groups[0].tools.map(\.name) == BuiltInTools.names)
+        #expect(groups.map(\.source) == [.builtIn, .reminders, .calendar])
+        #expect(groups.flatMap(\.tools).map(\.name) == BuiltInTools.names)
+        #expect(groups[1].tools.map(\.name) == ["read_reminders", "change_reminders"])
+        #expect(groups[2].tools.map(\.name) == ["read_events", "change_events"])
+        #expect(groups.map(\.source.privacyAccess) == [nil, .reminders, .calendars])
     }
 
     @Test func theSummaryKeepsTheDescriptionAsSentAndTheGoAhead() throws {
@@ -54,6 +58,9 @@ private struct GoAheadTool: AgentTool {
         #expect(shell.parameters.map(\.name) == ["command", "destructive"])
         if case .sometimes = shell.goAhead {} else { Issue.record("The shell tool asks for some commands") }
         #expect(registry.groups[0].tools.dropFirst().allSatisfy { $0.goAhead == .never })
+        let changeTools = registry.groups.dropFirst().flatMap(\.tools).filter { $0.name.hasPrefix("change_") }
+        #expect(changeTools.count == 2)
+        #expect(changeTools.allSatisfy { if case .sometimes = $0.goAhead { true } else { false } })
         #expect(shell.schemaText.contains("\n"))
         #expect(JSONValue.parse(shell.schemaText) == ShellCommandTool().definition.parameters)
     }

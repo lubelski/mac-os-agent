@@ -1,3 +1,4 @@
+import AppKit
 import MacOSAgentCore
 import Observation
 import SwiftUI
@@ -12,10 +13,28 @@ import SwiftUI
 final class ToolsSettingsModel {
     let groups: [ToolGroup]
     var selection: ToolSummary.ID?
+    /// The app's access to each kind of personal data the tools use, read again whenever the
+    /// window comes forward, since the owner changes it in System Settings.
+    private(set) var access: [PrivacyAccessKind: PrivacyAccessStatus] = [:]
+    @ObservationIgnored private let gate: any PrivacyAccessGate
 
-    init(registry: ToolRegistry) {
+    init(registry: ToolRegistry, access gate: any PrivacyAccessGate) {
         groups = registry.groups
         selection = groups.first?.tools.first?.id
+        self.gate = gate
+        reloadAccess()
+    }
+
+    func reloadAccess() {
+        for kind in PrivacyAccessKind.allCases {
+            access[kind] = gate.status(kind)
+        }
+    }
+
+    func requestAccess(_ kind: PrivacyAccessKind) {
+        Task {
+            access[kind] = await gate.requestAccess(kind)
+        }
     }
 
     var selectedTool: ToolSummary? {
@@ -43,7 +62,7 @@ struct ToolsSettingsView: View {
             Divider()
             Group {
                 if let tool = model.selectedTool {
-                    ToolDetailView(tool: tool)
+                    ToolDetailView(tool: tool, model: model)
                 } else {
                     ContentUnavailableView("No Tool Selected", systemImage: "wrench.and.screwdriver")
                 }
@@ -79,6 +98,7 @@ struct ToolRow: View {
 
 struct ToolDetailView: View {
     let tool: ToolSummary
+    let model: ToolsSettingsModel
     @State private var showingSchema = false
 
     var body: some View {
@@ -89,6 +109,11 @@ struct ToolDetailView: View {
                     Text(tool.source.title)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+                if let kind = tool.source.privacyAccess {
+                    PrivacyAccessView(kind: kind, status: model.access[kind] ?? .notDetermined) {
+                        model.requestAccess(kind)
+                    }
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Asks for a go-ahead").font(.headline)
@@ -156,6 +181,47 @@ struct ParameterRow: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+}
+
+/// Whether the app may use the personal data a group of tools needs, with a way to change it.
+struct PrivacyAccessView: View {
+    let kind: PrivacyAccessKind
+    let status: PrivacyAccessStatus
+    let request: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Access to \(kind.title)").font(.headline)
+            Label(status.label, systemImage: status == .fullAccess ? "checkmark.circle" : "exclamationmark.circle")
+                .foregroundStyle(status == .fullAccess ? Color.secondary : Color.orange)
+            Text(explanation)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                if status == .notDetermined {
+                    Button("Ask for Access…", action: request)
+                }
+                Button("Open Privacy Settings") {
+                    NSWorkspace.shared.open(kind.systemSettingsURL)
+                }
+            }
+        }
+    }
+
+    private var explanation: String {
+        switch status {
+        case .fullAccess:
+            "These tools can read and change \(kind.title.lowercased()). You can turn this off in Privacy & Security."
+        case .notDetermined:
+            "macOS asks the first time the agent uses one of these tools. You can also ask now."
+        case .denied:
+            "The agent cannot use these tools until you allow mac-os-agent in Privacy & Security, under \(kind.title)."
+        case .writeOnly:
+            "The agent can add items but not read them. Allow full access in Privacy & Security, under \(kind.title)."
+        case .restricted:
+            "Something other than you, such as a management profile, does not allow this on this Mac."
         }
     }
 }

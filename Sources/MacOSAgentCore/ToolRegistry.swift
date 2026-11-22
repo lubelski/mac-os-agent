@@ -37,15 +37,26 @@ public enum BuiltInTools {
         LoadSkillTool.name,
         SearchHistoryTool.name,
         ReadEpisodeTool.name,
+        ReadRemindersTool.name,
+        ChangeRemindersTool.name,
+        ReadEventsTool.name,
+        ChangeEventsTool.name,
     ]
 
     /// - Parameter history: The kept thread, which the history tools search and read. Incognito
     ///   episodes use the same tools, so they can search the past without adding to it.
+    /// - Parameters:
+    ///   - reminders: Reminders, which the reminder tools read and change.
+    ///   - calendar: Calendar, which the event tools read and change.
     public static func make(
         applicationWorkspace: any ApplicationWorkspace = SystemApplicationWorkspace(),
         skills: SkillLibrary = SkillLibrary(),
-        history: ThreadStore? = nil
+        history: ThreadStore? = nil,
+        reminders: any ReminderStore = EventKitStore.shared,
+        calendar: any CalendarStore = EventKitStore.shared
     ) -> [any AgentTool] {
+        let reminderIDs = ShortIdentifierTable()
+        let eventIDs = ShortIdentifierTable()
         let tools: [any AgentTool] = [
             ShellCommandTool(),
             SearchApplicationsTool(workspace: applicationWorkspace),
@@ -54,6 +65,10 @@ public enum BuiltInTools {
             LoadSkillTool(library: skills),
             SearchHistoryTool(history: history),
             ReadEpisodeTool(history: history),
+            ReadRemindersTool(store: reminders, identifiers: reminderIDs),
+            ChangeRemindersTool(store: reminders, identifiers: reminderIDs),
+            ReadEventsTool(store: calendar, identifiers: eventIDs),
+            ChangeEventsTool(store: calendar, identifiers: eventIDs),
         ]
         assert(tools.map(\.definition.name) == names)
         return tools
