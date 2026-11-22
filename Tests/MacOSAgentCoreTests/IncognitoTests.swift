@@ -34,6 +34,8 @@ func snapshot(of folder: URL) throws -> [String: Data] {
         let folder = file.deletingLastPathComponent()
         let history = try ThreadStore(fileURL: file, searchIndexURL: folder.appending(path: "history-index.sqlite"))
         let usageLog = UsageLog(fileURL: folder.appending(path: "usage.jsonl"))
+        // The index is built in the background. Let it finish so the folder holds still.
+        #expect(await history.waitForSearchIndex())
         let before = try snapshot(of: folder)
 
         let incognito = InMemoryThreadStore()

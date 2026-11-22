@@ -18,6 +18,7 @@ When a decision changes, move it between the lists here in the same pull request
 - Search over past episodes
   - `search_history` finds the owner's messages, the agent's replies, and the commands that ran, by words, and returns the best matches with their dates, their episode, and the messages around them. It leaves out the episode the agent already sees. `read_episode` reads one episode in order, a page at a time, with the start of each command's output.
   - The search runs on a full text index, `history-index.sqlite` in Application Support. It is a copy of the thread that is brought up to date on launch and rebuilt from the thread whenever it is missing or does not match, so deleting it is always safe. Without it, search reads the entries directly.
+  - The index is brought up to date or rebuilt in the background, off the main thread, so launch and the first summon never wait on it. Until it is ready, search reads the entries directly. Entries added meanwhile go into the index when it is ready, each once.
 - Incognito
   - Incognito is a window of its own, separate from the main panel. `/incognito` in the main panel, or Open Incognito Window in the menu bar menu, opens it. When it is already open, both bring it forward with its text field focused. There is one at a time. The main panel does not change: it keeps its thread, its episode, and its focus rules, and both windows can be on screen and used at once.
   - Both windows are the same panel and the same content view with different configuration: the same top bar and close button, history, rows, text field, inspector, and theme.
@@ -212,7 +213,6 @@ Ideas the owner has raised that nobody has designed or built yet.
 - Suggestions in the empty space of a fresh episode. What they contain is not decided. The slot for them exists: `FreshStartContent` in `Sources/mac-os-agent/HistoryView.swift` is shown at the bottom of a fresh page and is empty for now.
 - MCP servers, managed from a Settings section above Debugging, with each server's tools as a group in Tools.
 - Summoning by double-tapping Option. Shelved in favor of a key chord for now. The stored trigger has room for it as another kind.
-- Building the history index off the main thread on first launch, before the thread gets large.
 - More native system tools, each left out of the first set for the reason given:
   - Volume, mute, and brightness. Volume needs CoreAudio device code and brightness has no public API for built-in displays.
   - Dark mode, Focus, Night Shift, and other appearance settings. There is no public API to change them, only AppleScript through System Events, which needs Automation permission.
