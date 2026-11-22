@@ -2,8 +2,8 @@ import AppKit
 import MacOSAgentCore
 import SwiftUI
 
-/// The panel's content on Liquid Glass: the bar along the top, the incognito indicator while
-/// one is on, the thread's history, the go-ahead card when one is pending, the command hint,
+/// The panel's content on Liquid Glass: the bar along the top and its divider, the incognito
+/// indicator while one is on, the thread's history, the go-ahead card when one is pending, the command hint,
 /// and the text field at the bottom.
 struct SummonView: View {
     @Bindable var session: AgentSession
@@ -17,6 +17,7 @@ struct SummonView: View {
     var body: some View {
         VStack(spacing: 0) {
             PanelTopBar()
+            PanelDivider()
             if session.isIncognito {
                 IncognitoIndicator()
             }
@@ -27,7 +28,7 @@ struct SummonView: View {
                     .padding(.bottom, 10)
             }
             CommandHint(suggestions: SlashCommand.suggestions(for: session.draft))
-            Divider().opacity(0.5)
+            PanelDivider()
             inputRow
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

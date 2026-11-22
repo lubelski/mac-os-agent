@@ -34,16 +34,31 @@ MainActor.assumeIsolated {
             app.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         }
         let panel = SummonPanel(session: session, remembersFrame: false)
+        // `--preview-reduce-motion` fades instead of sliding, as with Reduce Motion on.
+        if arguments.contains("--preview-reduce-motion") {
+            panel.reduceMotion = { true }
+        }
         // `--panel-size 480x360` shows the panel as if the owner had resized it.
         if let index = arguments.firstIndex(of: "--panel-size"), index + 1 < arguments.count {
             let parts = arguments[index + 1].split(separator: "x").compactMap { Double($0) }
             if parts.count == 2 { panel.setContentSize(NSSize(width: parts[0], height: parts[1])) }
         }
-        // `--preview-dock left` shows the panel docked to that edge of the screen.
-        if let index = arguments.firstIndex(of: "--preview-dock"), index + 1 < arguments.count,
-           let dock = PanelDock(rawValue: arguments[index + 1])
+        // `--preview-preset slideOverRight` shows the panel in that layout. A slide over
+        // panel slides in from its edge. `--preview-slide-scale 4` slows each slide down by
+        // that factor, and `--preview-slide-cycle` slides it out and back in a few times, with
+        // one summon during a slide out, to show the motion and its interruption.
+        if let index = arguments.firstIndex(of: "--preview-preset"), index + 1 < arguments.count,
+           let preset = PanelPreset(rawValue: arguments[index + 1])
         {
-            panel.toggleDock(dock)
+            panel.choose(preset)
+        }
+        if let index = arguments.firstIndex(of: "--preview-slide-scale"), index + 1 < arguments.count,
+           let value = Double(arguments[index + 1])
+        {
+            panel.slideTimeScale = value
+        }
+        if arguments.contains("--preview-slide-cycle") {
+            PanelPreview.cycleSlides(of: panel)
         }
         // The preview never takes keyboard focus from the app the owner is using, and it quits
         // on its own after a few seconds, so a failed capture script cannot leave it on screen.

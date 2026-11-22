@@ -31,61 +31,61 @@ import Testing
         #expect(frame.midX == external.midX)
     }
 
-    @Test(arguments: PanelDock.allCases)
-    func aDockedPanelIsFullHeightAgainstItsEdgeWithAMargin(_ dock: PanelDock) {
-        let frame = PanelGeometry.dockedFrame(dock, width: 640, minimumWidth: minimum.width, in: laptop)
-        let margin = PanelGeometry.dockMargin
+    @Test(arguments: PanelEdge.allCases)
+    func aSlideOverPanelIsFullHeightAgainstItsEdgeWithAMargin(_ edge: PanelEdge) {
+        let frame = PanelGeometry.slideOverFrame(edge, width: 640, minimumWidth: minimum.width, in: laptop)
+        let margin = PanelGeometry.slideOverMargin
         #expect(frame.width == 640)
         #expect(frame.minY == laptop.minY + margin)
         #expect(frame.maxY == laptop.maxY - margin)
-        if dock == .left {
+        if edge == .left {
             #expect(frame.minX == laptop.minX + margin)
         } else {
             #expect(frame.maxX == laptop.maxX - margin)
         }
-        #expect(PanelGeometry.isDocked(frame, at: dock, in: laptop))
-        #expect(!PanelGeometry.isDocked(frame, at: dock == .left ? .right : .left, in: laptop))
+        #expect(PanelGeometry.isInSlideOver(frame, at: edge, in: laptop))
+        #expect(!PanelGeometry.isInSlideOver(frame, at: edge.opposite, in: laptop))
     }
 
-    @Test func aDockedPanelIsAtMostHalfTheScreenAndAtLeastTheMinimum() {
-        let wide = PanelGeometry.dockedFrame(.left, width: 1200, minimumWidth: minimum.width, in: laptop)
+    @Test func aSlideOverPanelIsAtMostHalfTheScreenAndAtLeastTheMinimum() {
+        let wide = PanelGeometry.slideOverFrame(.left, width: 1200, minimumWidth: minimum.width, in: laptop)
         #expect(wide.width == 756)
-        let narrow = PanelGeometry.dockedFrame(.right, width: 200, minimumWidth: minimum.width, in: laptop)
+        let narrow = PanelGeometry.slideOverFrame(.right, width: 200, minimumWidth: minimum.width, in: laptop)
         #expect(narrow.width == 440)
     }
 
-    @Test func aDockedPanelNeverOverflowsAScreenNarrowerThanTheMinimum() {
+    @Test func aSlideOverPanelNeverOverflowsAScreenNarrowerThanTheMinimum() {
         let tiny = CGRect(x: 0, y: 0, width: 400, height: 300)
-        let frame = PanelGeometry.dockedFrame(.right, width: 640, minimumWidth: minimum.width, in: tiny)
+        let frame = PanelGeometry.slideOverFrame(.right, width: 640, minimumWidth: minimum.width, in: tiny)
         #expect(frame.width == 380)
         #expect(tiny.contains(frame))
     }
 
-    @Test func dockingUsesTheScreensOwnOrigin() {
-        let frame = PanelGeometry.dockedFrame(.left, width: 640, minimumWidth: minimum.width, in: external)
-        #expect(frame.minX == external.minX + PanelGeometry.dockMargin)
-        #expect(frame.minY == external.minY + PanelGeometry.dockMargin)
+    @Test func slideOverUsesTheScreensOwnOrigin() {
+        let frame = PanelGeometry.slideOverFrame(.left, width: 640, minimumWidth: minimum.width, in: external)
+        #expect(frame.minX == external.minX + PanelGeometry.slideOverMargin)
+        #expect(frame.minY == external.minY + PanelGeometry.slideOverMargin)
     }
 
-    @Test func changingTheFreeEdgeKeepsThePanelDocked() {
-        let left = PanelGeometry.dockedFrame(.left, width: 640, minimumWidth: minimum.width, in: laptop)
+    @Test func changingTheFreeEdgeKeepsThePanelEdgeed() {
+        let left = PanelGeometry.slideOverFrame(.left, width: 640, minimumWidth: minimum.width, in: laptop)
         var wider = left
         wider.size.width += 80
-        #expect(PanelGeometry.isDocked(wider, at: .left, in: laptop))
+        #expect(PanelGeometry.isInSlideOver(wider, at: .left, in: laptop))
 
-        let right = PanelGeometry.dockedFrame(.right, width: 640, minimumWidth: minimum.width, in: laptop)
+        let right = PanelGeometry.slideOverFrame(.right, width: 640, minimumWidth: minimum.width, in: laptop)
         // Resizing from the left edge moves the origin and keeps the right edge.
         let resized = CGRect(x: right.minX - 80, y: right.minY, width: right.width + 80, height: right.height)
-        #expect(PanelGeometry.isDocked(resized, at: .right, in: laptop))
+        #expect(PanelGeometry.isInSlideOver(resized, at: .right, in: laptop))
     }
 
-    @Test func movingThePanelUndocksIt() {
-        let docked = PanelGeometry.dockedFrame(.left, width: 640, minimumWidth: minimum.width, in: laptop)
-        #expect(!PanelGeometry.isDocked(docked.offsetBy(dx: 30, dy: 0), at: .left, in: laptop))
-        #expect(!PanelGeometry.isDocked(docked.offsetBy(dx: 0, dy: -30), at: .left, in: laptop))
-        // The same frame on a screen that changed size is no longer docked there.
+    @Test func movingThePanelTakesItOutOfSlideOver() {
+        let inPlace = PanelGeometry.slideOverFrame(.left, width: 640, minimumWidth: minimum.width, in: laptop)
+        #expect(!PanelGeometry.isInSlideOver(inPlace.offsetBy(dx: 30, dy: 0), at: .left, in: laptop))
+        #expect(!PanelGeometry.isInSlideOver(inPlace.offsetBy(dx: 0, dy: -30), at: .left, in: laptop))
+        // The same frame on a screen that changed size is no longer in slide over there.
         let smaller = CGRect(x: 0, y: 0, width: 1280, height: 767)
-        #expect(!PanelGeometry.isDocked(docked, at: .left, in: smaller))
+        #expect(!PanelGeometry.isInSlideOver(inPlace, at: .left, in: smaller))
     }
 
     @Test func aFrameThatFitsIsNotMoved() {

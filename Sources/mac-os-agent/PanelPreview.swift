@@ -335,6 +335,26 @@ enum PanelPreview {
         }
     }
 
+    /// Slides the panel out and back in on a schedule, for a recording of the motion: out, in,
+    /// then out again with a summon halfway, which turns it around, and out once more.
+    static func cycleSlides(of panel: SummonPanel) {
+        let slide = PanelSlide.slideDuration * panel.slideTimeScale
+        var time = slide + 0.7
+        func at(_ delay: Double, _ action: @escaping @MainActor (SummonPanel) -> Void) {
+            time += delay
+            Timer.scheduledTimer(withTimeInterval: time, repeats: false) { [weak panel] _ in
+                MainActor.assumeIsolated {
+                    if let panel { action(panel) }
+                }
+            }
+        }
+        at(0) { $0.dismiss() }
+        at(slide + 0.4) { $0.showForPreview() }
+        at(slide + 0.7) { $0.dismiss() }
+        at(slide * 0.5) { $0.showForPreview() }
+        at(slide + 0.7) { $0.dismiss() }
+    }
+
     /// For checking the glass's edges: shows a busy page behind the panel and prints the rect to
     /// capture, in screen coordinates with the origin at the top left, as
     /// `capture-rect x,y,width,height`.

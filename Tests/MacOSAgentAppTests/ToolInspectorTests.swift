@@ -79,17 +79,72 @@ import Testing
         #expect(!panel.inspector.isOpen)
     }
 
-    @Test func dockedRightPutsTheInspectorOnTheLeft() throws {
+    @Test func eachPresetPutsTheInspectorOnTheInwardSide() throws {
         let (panel, defaults) = try makePanel()
         defer { defaults.removePersistentDomain(forName: suiteName) }
         panel.inspector.open("call_json")
-        panel.toggleDock(.right)
+        panel.choose(.slideOverRight)
         #expect(panel.inspector.side == .left)
-        #expect(panel.inspectorWindow.frame.maxX == panel.frame.minX - PanelGeometry.inspectorGap)
-        #expect(panel.inspectorWindow.frame.height == panel.frame.height)
-        panel.toggleDock(.left)
+        #expect(panel.inspectorWindow.frame.maxX == panel.panelFrame.minX - PanelGeometry.inspectorGap)
+        #expect(panel.inspectorWindow.frame.height == panel.panelFrame.height)
+        #expect(panel.inspectorWindow.frame.minY == panel.panelFrame.minY)
+        panel.choose(.slideOverLeft)
+        #expect(panel.inspector.side == .right)
+        #expect(panel.inspectorWindow.frame.minX == panel.panelFrame.maxX + PanelGeometry.inspectorGap)
+        #expect(panel.inspectorWindow.frame.height == panel.panelFrame.height)
+        panel.choose(.centered)
         #expect(panel.inspector.side == .right)
         #expect(panel.inspectorWindow.frame.minX == panel.frame.maxX + PanelGeometry.inspectorGap)
+        #expect(panel.inspectorWindow.frame.height == panel.frame.height)
+    }
+
+    /// In slide over the inspector slides with the panel's glass as one unit, and is cut off
+    /// at the same screen edge, even with a display beside that edge.
+    @Test(arguments: PanelEdge.allCases)
+    func theInspectorSlidesWithThePanelAndIsCutOffAtTheEdge(_ edge: PanelEdge) throws {
+        standIn.screens = [StandInScreens.laptop, StandInScreens.leftOfLaptop, StandInScreens.external]
+        let (panel, defaults) = try makePanel()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        panel.orderIn = { _, _ in }
+        panel.orderAway = { _ in }
+        panel.drivesSlidesWithTheDisplay = false
+        panel.reduceMotion = { false }
+        panel.inspector.open("call_json")
+        panel.choose(PanelPreset(slideOver: edge))
+        let resting = panel.inspectorWindow.glassFrameOnScreen
+        let gap = PanelGeometry.inspectorGap
+        panel.summon()
+        for step in 0..<8 {
+            if step > 0 { panel.advanceSlide(by: PanelSlide.slideDuration / 7) }
+            let glass = panel.glassFrameOnScreen
+            let inspector = panel.inspectorWindow.glassFrameOnScreen
+            // One unit: the same offset from rest, the same gap, the same size.
+            #expect(inspector.minX - resting.minX == glass.minX - panel.panelFrame.minX)
+            #expect(inspector.size == resting.size)
+            if edge == .left {
+                #expect(inspector.minX == glass.maxX + gap)
+            } else {
+                #expect(inspector.maxX == glass.minX - gap)
+            }
+            // The window never reaches past the laptop's visible area, onto another display.
+            let window = panel.inspectorWindow.frame
+            #expect(window.minX >= laptop.minX && window.maxX <= laptop.maxX)
+        }
+        // Nearly out, almost nothing of either is left on the laptop's screen.
+        panel.dismiss()
+        panel.advanceSlide(by: PanelSlide.slideDuration * 0.999)
+        let outPanel = panel.glassFrameOnScreen
+        let outInspector = panel.inspectorWindow.glassFrameOnScreen
+        if edge == .left {
+            #expect(outPanel.maxX <= laptop.minX + 5 && outInspector.maxX <= laptop.minX + 5)
+        } else {
+            #expect(outPanel.minX >= laptop.maxX - 5 && outInspector.minX >= laptop.maxX - 5)
+        }
+        panel.summon()
+        panel.advanceSlide(by: 1)
+        #expect(panel.inspectorWindow.glassFrameOnScreen == resting)
+        #expect(panel.inspectorWindow.frame == resting)
+        #expect(panel.inspectorWindow.alphaValue == 1)
     }
 
     @Test func theInspectorFollowsThePanelWhenItMovesOrResizes() throws {

@@ -6,14 +6,14 @@
 #   scripts/capture-panel-previews.sh --backdrop [out-dir]  the panel over a busy page, which
 #                                                           shows the glass and its edges
 #   scripts/capture-panel-previews.sh --states "a b" [out-dir]  only the states named
-#   scripts/capture-panel-previews.sh --dock right [out-dir]    docked to that edge of the screen
+#   scripts/capture-panel-previews.sh --preset slideOverRight [out-dir]  in that layout preset
 #   scripts/capture-panel-previews.sh --states inspector [out-dir]  the tool call inspector beside
 #                                                           the panel, one state per kind of output
 #
 # An inspector state is always captured over the busy page, since it is two windows: the panel
 # and the inspector attached to it.
 #
-# The options go in the order shown: --backdrop, then --dock, then --states.
+# The options go in the order shown: --backdrop, then --preset, then --states.
 #
 # Preview runs never register the hotkey, open the thread, read the Keychain, or touch the
 # panel's saved frame.
@@ -28,9 +28,9 @@ fi
 
 DOCK=()
 SUFFIX=""
-if [[ "${1:-}" == "--dock" ]]; then
-  DOCK=(--preview-dock "$2")
-  SUFFIX="-docked-$2"
+if [[ "${1:-}" == "--preset" ]]; then
+  DOCK=(--preview-preset "$2")
+  SUFFIX="-$2"
   shift 2
 fi
 
