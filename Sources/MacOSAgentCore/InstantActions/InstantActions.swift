@@ -109,7 +109,7 @@ public protocol InstantActionProvider: Sendable {
 ///   the input means to them. It never lifts the shape rule or the function word rule.
 public enum InstantActionRule {
     public static let clearLead = 10
-    public static let choiceWindow = 12
+    public static let choiceWindow = 5
     public static let maximumChoices = 3
 
     public static func choices(for phrase: InstantPhrase, candidates: [InstantActionCandidate]) -> [InstantActionCandidate] {

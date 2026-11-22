@@ -9,6 +9,13 @@ public struct ApplicationInstantActions: InstantActionProvider {
     public static let launchVerbs: Set<String> = ["open", "launch", "start", "switch to", "go to", "bring up"]
     /// A running app ranks this much above the same match that is not running.
     static let runningBonus = 2
+    /// The score each strength starts from. The gaps are what `InstantActionRule.clearLead`
+    /// measures against.
+    static let baseScore: [InstantMatchStrength: Int] = [
+        .exact: 100, .prefix: 90, .wordExact: 85, .wordPrefix: 80, .initials: 70,
+    ]
+    /// A match on a name other than the one Finder shows ranks this much lower.
+    static let otherNamePenalty = 4
 
     public var verbs: Set<String> { Self.launchVerbs }
 
@@ -35,7 +42,11 @@ public struct ApplicationInstantActions: InstantActionProvider {
             let name = ApplicationMatcher.normalized(application.name)
             guard !name.isEmpty, seenPaths.insert(application.path).inserted, seenNames.insert(name).inserted else { continue }
             var fields = [application.name] + application.alternateNames
-            if let last = application.bundleIdentifier?.split(separator: ".").last { fields.append(String(last)) }
+            // The end of a bundle identifier is often a short name, as in com.microsoft.VSCode. One
+            // or two letters, as in com.pixelmatorteam.pixelmator.x, say nothing.
+            if let last = application.bundleIdentifier?.split(separator: ".").last, last.count >= 3 {
+                fields.append(String(last))
+            }
             var names: [(String, [String])] = []
             for field in fields {
                 let whole = ApplicationMatcher.normalized(field)
@@ -59,18 +70,24 @@ public struct ApplicationInstantActions: InstantActionProvider {
         guard !query.isEmpty else { return [] }
         var result: [InstantActionCandidate] = []
         for entry in prepared {
-            var best: InstantMatchStrength?
-            for name in entry.names {
-                if let strength = Self.strength(query: query, queryWords: queryWords, name: name.whole, words: name.words) {
-                    best = max(best ?? strength, strength)
-                }
+            var best: (strength: InstantMatchStrength, score: Int)?
+            for (index, name) in entry.names.enumerated() {
+                guard var strength = Self.strength(query: query, queryWords: queryWords, name: name.whole, words: name.words)
+                else { continue }
+                // Only the name Finder shows is a whole name. Another Info.plist name or the end
+                // of the bundle identifier, such as "Code" for Visual Studio Code or "Word" for
+                // Microsoft Word, counts as one word of it, and ranks a little lower.
+                if index > 0, strength == .exact { strength = .wordExact }
+                let score = Self.baseScore[strength]! - (index > 0 ? Self.otherNamePenalty : 0)
+                if best == nil || score > best!.score { best = (strength, score) }
             }
-            guard let strength = best else { continue }
+            guard let best else { continue }
             let application = entry.application
-            var score = ApplicationMatcher.score(phrase.subject, application) ?? 0
+            var score = best.score
+            if application.isSystemComponent { score -= ApplicationMatcher.systemComponentPenalty }
             if runningPaths.contains(application.path) { score += Self.runningBonus }
             result.append(InstantActionCandidate(
-                id: Self.id(for: application), title: application.name, strength: strength, score: score,
+                id: Self.id(for: application), title: application.name, strength: best.strength, score: score,
                 target: .application(application)))
         }
         // Best first, then the shorter name, then the catalog's order, which the sort keeps.

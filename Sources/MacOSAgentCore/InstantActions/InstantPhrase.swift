@@ -124,7 +124,7 @@ public enum InstantWords {
         "pass", "press", "click", "tap", "drag", "drop", "speak", "say", "talk", "listen",
         "draw", "paint", "note", "track", "time", "wait", "hide", "unhide", "mute", "unmute",
         // Everyday nouns that start app names.
-        "photo", "picture", "image", "screen", "screenshot", "window", "desktop", "file", "files",
+        "photo", "pic", "pics", "picture", "image", "screen", "screenshot", "window", "desktop", "file", "files",
         "folder", "document", "doc", "docs", "page", "app", "apps", "application", "system",
         "activity", "font", "voice", "audio", "sound", "video", "movie", "image", "camera", "home",
         "work", "school", "day", "week", "month", "year", "today", "tomorrow", "yesterday",

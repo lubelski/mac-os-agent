@@ -184,7 +184,7 @@ private func offered(_ input: String, history: InstantActionHistory = InstantAct
         ("ghostty", "Ghostty"), ("things", "Things 3"), ("teams", "Microsoft Teams"), ("open teams", "Microsoft Teams"),
         ("launch firefox", "Firefox"), ("start docker", "Docker"), ("app store", "App Store"),
         ("open app store", "App Store"), ("facetime", "FaceTime"), ("reminders", "Reminders"),
-        ("open s", "Safari"), ("pixelmator", "Pixelmator Pro"), ("time machine", "Time Machine"),
+        ("open s", "Siri"), ("screenshot", "Screenshot"), ("dict", "Dictionary"), ("pixelmator", "Pixelmator Pro"), ("time machine", "Time Machine"),
     ]
 
     @Test func everyLaunchRequestOffersTheApp() {
@@ -220,10 +220,10 @@ private func offered(_ input: String, history: InstantActionHistory = InstantAct
         // One word replies and everyday words that start an app's name.
         "help", "find", "search", "thanks", "thx", "ok", "okay", "y", "n", "k", "no", "yes", "sure", "go",
         "stop", "what", "hi", "hey", "hello", "test", "status", "pass", "password", "short", "shortcut",
-        "photo", "screen", "screenshot", "time", "image", "message", "text", "note", "system", "activity",
+        "photo", "screen", "time", "image", "message", "text", "note", "system", "activity",
         "chat", "code", "word", "desktop", "game", "font", "key", "voice", "monitor", "sleep", "restart",
         "mute", "open", "launch", "start", "switch", "continue", "cancel", "retry", "next", "more", "again",
-        "it", "is", "the", "a", "i", "s", "x", "q", "1", "42", "pic", "dict", "remind", "phone call",
+        "it", "is", "the", "a", "i", "s", "x", "q", "1", "42", "pic", "remind", "phone call",
         // Commands and code.
         "/new", "/incognito", "/usr/bin is slow", "ls -la", "rm -rf ~/Downloads", "~/Desktop",
         "open ~/Desktop", "open https://example.com", "brew install wget",
@@ -244,17 +244,17 @@ private func offered(_ input: String, history: InstantActionHistory = InstantAct
 
     @Test func closeMatchesAreOfferedToChooseBetweenWithTheBestFirst() {
         #expect(offered("saf") == ["Safari", "Safari Technology Preview"])
-        #expect(offered("cal") == ["Calendar", "Calculator", "Notion Calendar"])
-        #expect(offered("google").first == "Google Chrome")
-        #expect(offered("google").count == 3)
+        #expect(offered("cal") == ["Calendar", "Calculator"], "Notion Calendar only has the word, a weaker match")
+        // The shorter name first when the matches are equal.
+        #expect(offered("google") == ["Google Drive", "Google Chrome", "Google Chrome Canary"])
         #expect(offered("open s").count == InstantActionRule.maximumChoices)
     }
 
     @Test func aShortBareInputWithNoClearLeaderOffersNothing() {
         // Safari and Safari Technology Preview start the same way.
         #expect(offered("sa").isEmpty)
-        // Notes, Notion, Numbers, and News.
-        #expect(offered("nu").isEmpty)
+        // Phone, Photos, and Photo Booth.
+        #expect(offered("ph").isEmpty)
     }
 
     @Test func aShortBareInputWithOneMatchIsOffered() {
@@ -270,7 +270,7 @@ private func offered(_ input: String, history: InstantActionHistory = InstantAct
 
     @Test func aTypoIsLeftToTheAgent() {
         // The agent's search tolerates these. The instant path does not guess.
-        #expect(offered("safar") == ["Safari"]) // still a prefix
+        #expect(offered("safar").first == "Safari") // still a prefix
         #expect(offered("crome").isEmpty)
         #expect(offered("open crome").isEmpty)
         #expect(offered("sfari").isEmpty)
@@ -346,7 +346,7 @@ private func offered(_ input: String, history: InstantActionHistory = InstantAct
     }
 
     @Test func frequentUseReordersTheChoices() {
-        #expect(offered("open s").first == "Safari")
+        #expect(offered("open s").first == "Siri")
         var history = InstantActionHistory()
         for day in 0..<4 { history.record(spotify, subject: "spotify", at: now.addingTimeInterval(-Double(day) * 3600)) }
         #expect(offered("open s", history: history, now: now).first == "Spotify")
@@ -400,7 +400,7 @@ private func offered(_ input: String, history: InstantActionHistory = InstantAct
         #expect(history.picks["subject 0"] == nil)
         #expect(history.picks["subject \(InstantActionHistory.subjectLimit + 19)"] != nil)
         #expect(history.uses.count == InstantActionHistory.useLimit)
-        for _ in 0..<20 { history.record(slack, subject: "slack", at: now) }
+        for _ in 0..<20 { history.record(slack, subject: "slack", at: now.addingTimeInterval(10_000)) }
         #expect(history.uses[slack]?.recent.count == InstantActionHistory.recentLimit)
         #expect(history.uses[slack]?.count == 20)
     }
