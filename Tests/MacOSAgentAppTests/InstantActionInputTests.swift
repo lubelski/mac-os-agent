@@ -316,3 +316,38 @@ import Testing
         #expect(elapsed < .milliseconds(200))
     }
 }
+
+/// Renders the row offscreen for a pull request, when screen capture is not available. Run with
+/// MAC_OS_AGENT_RENDER_ROW set to a folder. The Liquid Glass behind it is not drawn offscreen.
+@MainActor
+@Suite(.enabled(if: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_ROW"] != nil))
+struct InstantActionRowRenders {
+    @Test func rendersTheRowWithOneMatchAndWithSeveral() throws {
+        let folder = URL(filePath: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_ROW"]!, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for name in InstantActionPreview.names {
+            let session = try #require(InstantActionPreview.session(named: name))
+            if name == "instant-several" { _ = session.instantActions.move(by: 1) }
+            for scheme in [ColorScheme.light, .dark] {
+                let view = VStack(spacing: 0) {
+                    InstantActionRow(actions: session.instantActions)
+                    PanelDivider()
+                    HStack(spacing: 10) {
+                        Text(verbatim: Mark.prompt).font(.system(size: 17, design: .monospaced)).foregroundStyle(.secondary)
+                        Text(verbatim: session.draft).font(.system(size: 15))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                }
+                .frame(width: 640)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .environment(\.colorScheme, scheme)
+                let renderer = ImageRenderer(content: view)
+                renderer.scale = 2
+                let image = try #require(renderer.nsImage)
+                let data = try #require(NSBitmapImageRep(data: image.tiffRepresentation!)?.representation(using: .png, properties: [:]))
+                try data.write(to: folder.appending(path: "\(name)-\(scheme == .dark ? "dark" : "light").png"))
+            }
+        }
+    }
+}
