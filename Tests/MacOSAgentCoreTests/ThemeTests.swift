@@ -397,8 +397,8 @@ private func darkThemeFile(name: String = "Night Swim", primary: String = "#F2F4
     @Test func theToolsAreLastInTheirOwnGroupWithSmallStrictSchemas() {
         let sandbox = ThemeSandbox()
         let tools = BuiltInTools.make(applicationWorkspace: FakeApplicationWorkspace(installed: []), system: FakeSystemControl(), themes: sandbox.library, themePreferences: sandbox.preferences)
-        // The appearance tools come just before the action tools, which were added after them.
-        let appearance = Array(tools.dropLast(2).suffix(2))
+        // The appearance tools come just before the action and memory tools, which were added after them.
+        let appearance = Array(tools.dropLast(4).suffix(2))
         #expect(appearance.map(\.definition.name) == [ReadThemesTool.name, ChangeThemeTool.name])
         #expect(appearance.allSatisfy { $0.source == .appearance })
         var characters = 0

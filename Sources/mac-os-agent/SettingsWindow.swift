@@ -12,6 +12,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case general
     case appearance
     case instructions
+    case memory
     case skills
     case actions
     case tools
@@ -27,6 +28,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .general: "General"
         case .appearance: "Appearance"
         case .instructions: "Instructions"
+        case .memory: "Memory"
         case .skills: "Skills"
         case .actions: "Quick Actions"
         case .tools: "Tools"
@@ -42,6 +44,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .general: "gearshape"
         case .appearance: "paintpalette"
         case .instructions: "text.quote"
+        case .memory: "brain"
         case .skills: "puzzlepiece.extension"
         case .actions: "bolt"
         case .tools: "wrench.and.screwdriver"
@@ -84,6 +87,7 @@ struct SettingsModels {
     let shortcut: ShortcutRecorderModel
     let navigation: SettingsNavigation
     let instructions: InstructionsSettingsModel
+    let memory: MemorySettingsModel
     let skills: SkillsSettingsModel
     let actions: ActionsSettingsModel
     let tools: ToolsSettingsModel
@@ -139,6 +143,8 @@ struct SettingsRootView: View {
             AppearanceSettingsView(model: ThemeModel.shared)
         case .instructions:
             InstructionsSettingsView(model: models.instructions)
+        case .memory:
+            MemorySettingsView(model: models.memory)
         case .skills:
             SkillsSettingsView(model: models.skills)
         case .actions:
@@ -186,6 +192,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             shortcut: ShortcutRecorderModel(controller: summonTrigger),
             navigation: SettingsNavigation(defaults: defaults),
             instructions: InstructionsSettingsModel(prompt: prompt),
+            memory: MemorySettingsModel(prompt: prompt),
             skills: SkillsSettingsModel(library: prompt.skills),
             actions: ActionsSettingsModel(library: actions, tools: tools.definitions, summaries: tools.summaries),
             tools: ToolsSettingsModel(registry: tools, access: privacyAccess),
@@ -265,6 +272,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         models.skills.reload()
         models.actions.reload()
         models.instructions.reloadIfUnchanged()
+        models.memory.reload()
         models.debugging.reload()
         models.history.reload()
         models.tools.reloadAccess()
@@ -325,7 +333,7 @@ enum SettingsPreview {
         // The default instructions take the agent's name from the same preferences.
         let prompt = AgentPrompt(instructions: InstructionsStore(agentName: {
             AgentNameSetting.current(UserDefaults(suiteName: "dev.lubelski.mac-os-agent.preview") ?? .standard)
-        }))
+        }), memories: MemoryLibrary())
         let problems = ProblemLog()
         problems.record(
             "Request", "OpenAI API error (429): The usage limit for this plan was reached. Try again in 12 minutes.",

@@ -45,14 +45,16 @@ public final class AgentLoop: Sendable {
     public let tools: [any AgentTool]
     /// Read once at the start of each instruction from the person, so an edit in Settings or a
     /// new skill applies from the next instruction and the text stays the same while one runs.
-    public let instructions: @Sendable () async -> String
+    /// It is given the id of the episode the instruction is in, so a part that has to stay the
+    /// same for a whole episode, such as the memory block, can be kept per episode.
+    public let instructions: @Sendable (UUID?) async -> String
     public let maximumModelReplies: Int
     /// Where each request's token counts go. Nil keeps no record.
     public let usageLog: UsageLog?
     /// How long an episode can sit idle before the owner's next message starts a new one.
     public let episodeTimeout: @Sendable () -> TimeInterval
 
-    public init(
+    public convenience init(
         provider: any ModelProvider,
         thread: any ThreadStorage,
         tools: [any AgentTool],
@@ -61,10 +63,26 @@ public final class AgentLoop: Sendable {
         usageLog: UsageLog? = nil,
         episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) }
     ) {
+        self.init(
+            provider: provider, thread: thread, tools: tools, instructionsForEpisode: { _ in await instructions() },
+            maximumModelReplies: maximumModelReplies, usageLog: usageLog, episodeTimeout: episodeTimeout)
+    }
+
+    /// - Parameter instructionsForEpisode: The instructions for a request in the episode with
+    ///   this id.
+    public init(
+        provider: any ModelProvider,
+        thread: any ThreadStorage,
+        tools: [any AgentTool],
+        instructionsForEpisode: @escaping @Sendable (UUID?) async -> String,
+        maximumModelReplies: Int = 40,
+        usageLog: UsageLog? = nil,
+        episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) }
+    ) {
         self.provider = provider
         self.thread = thread
         self.tools = tools
-        self.instructions = instructions
+        self.instructions = instructionsForEpisode
         self.maximumModelReplies = maximumModelReplies
         self.usageLog = usageLog
         self.episodeTimeout = episodeTimeout
@@ -102,9 +120,9 @@ public final class AgentLoop: Sendable {
         try await prepareForOwnerEntry(startsNewEpisode: startsNewEpisode, now: now, onEvent: onEvent)
         await onEvent(.entryAdded(try await thread.append(.userMessage(text: userText, skill: skill), date: now)))
         let definitions = tools.map(\.definition)
-        let instructions = await self.instructions()
-        let fingerprint = PromptFingerprint.make(instructions: instructions, tools: definitions)
         let episodeID = await thread.currentEpisode?.id
+        let instructions = await self.instructions(episodeID)
+        let fingerprint = PromptFingerprint.make(instructions: instructions, tools: definitions)
 
         do {
             try await replyAndRunTools(

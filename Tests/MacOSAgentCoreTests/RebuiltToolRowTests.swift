@@ -32,6 +32,9 @@ import Testing
         (ReadActionsTool.name, ["action_id": nil], "List the quick actions"),
         (ChangeActionTool.name, ["operation": "save", "action_id": nil, "file": #"{"format": 1, "name": "Start Screensaver"}"#],
          "Save the quick action Start Screensaver"),
+        (ReadMemoryTool.name, ["file": "travel-plans"], "Read memory: travel-plans"),
+        (ChangeMemoryTool.name, ["operation": "append", "file": "core", "old_text": nil, "text": "- Likes tea.", "description": nil, "new_name": nil],
+         "Remember in core"),
     ]
 
     private func thread() -> [ThreadEntry] {

@@ -109,6 +109,20 @@ public enum AgentInstructions {
             - When the person runs a quick action, their message holds an <action_run> record of what ran \
             and what came of it, instead of text for you to answer. If they refer to it later, such \
             as "undo that", it is what they mean.
+            - Your memory, shown at the end of these instructions, is yours to manage with \
+            \(ReadMemoryTool.name) and \(ChangeMemoryTool.name). Save to it when the person asks you to \
+            remember something, or states a lasting fact about themselves or how they want things done. \
+            Do not save what only matters to the current task.
+            - Core is for what you need in most episodes, and for every standing rule or prohibition, \
+            since you only see a topic file when you read it. Topic files are for long or \
+            subject-specific material. Give each a description that says when to read it.
+            - Read a topic file when its description matches the request. Check what exists before you \
+            write, and update a memory rather than add one that duplicates or contradicts it. When core \
+            nears its cap, move its least general items to topic files.
+            - Never store passwords, card numbers, or other secrets, even when asked, and say why: \
+            memory is a plain file sent with every request.
+            - When the person says to forget something, remove it. Say briefly in your reply what you \
+            remembered, changed, or forgot.
 
             \(list)
             """
@@ -126,8 +140,9 @@ public enum AgentInstructions {
         - Here you can only open apps and answer questions. Your only tools are \
         \(SearchApplicationsTool.name), \(OpenApplicationTool.name), and \
         \(ListRunningApplicationsTool.name). You cannot run shell commands, read or change files, \
-        reminders, calendar events, the clipboard, or settings, load skills, change themes, or \
-        search or read earlier conversations, even when the text above mentions tools for them.
+        reminders, calendar events, the clipboard, or settings, load skills, change themes, \
+        search or read earlier conversations, or read or change memory, even when the text above \
+        mentions tools for them.
         - Answer questions from what you know. When a request needs something you cannot do \
         here, say so plainly in a sentence and suggest asking in the main panel instead. Never \
         say you did something you could not do.
@@ -135,9 +150,15 @@ public enum AgentInstructions {
         brackets. The time is not part of what they typed.
         """
 
-    /// The instructions for one request: the editable text, then the fixed part.
-    public static func assemble(editable: String, skills: [SkillSummary], skillsFolder: URL) -> String {
-        join(editable: editable, fixed: fixed(skills: skills, skillsFolder: skillsFolder))
+    /// The instructions for one request: the editable text, then the fixed part, then the
+    /// memory block when there is one. The block is last so that everything before it stays a
+    /// cached prefix when only memory changes.
+    public static func assemble(
+        editable: String, skills: [SkillSummary], skillsFolder: URL, memoryBlock: String? = nil
+    ) -> String {
+        let text = join(editable: editable, fixed: fixed(skills: skills, skillsFolder: skillsFolder))
+        guard let memoryBlock else { return text }
+        return text + "\n\n" + memoryBlock
     }
 
     /// The instructions for an incognito window: the owner's editable text, as in the main
@@ -214,19 +235,67 @@ public struct InstructionsStore: Sendable {
 public struct AgentPrompt: Sendable {
     public var instructions: InstructionsStore
     public var skills: SkillLibrary
+    /// The memory folder, whose block ends the main panel's instructions. Nil sends no block,
+    /// as in tests that do not need one. The incognito window never gets one.
+    public var memories: MemoryLibrary?
+    /// The block as the current episode's first request read it. Shared by copies of this
+    /// prompt, so Settings sees the block the panel sent.
+    public let memorySnapshot: MemorySnapshot
 
-    public init(instructions: InstructionsStore = InstructionsStore(), skills: SkillLibrary = SkillLibrary()) {
+    public init(
+        instructions: InstructionsStore = InstructionsStore(), skills: SkillLibrary = SkillLibrary(),
+        memories: MemoryLibrary? = nil, memorySnapshot: MemorySnapshot = MemorySnapshot()
+    ) {
         self.instructions = instructions
         self.skills = skills
+        self.memories = memories
+        self.memorySnapshot = memorySnapshot
     }
 
-    /// The full instructions as they stand now. Read once per request, so the name and the
-    /// skills in them stay the same through the request's tool calls.
+    /// The instructions without the memory block, as they stand now.
     public func current() -> String {
+        assemble(memoryBlock: nil)
+    }
+
+    /// The full instructions for a request in this episode. Read once per request, so the name
+    /// and the skills in them stay the same through the request's tool calls. The memory block
+    /// at the end is taken at the episode's first request and kept for the rest of it.
+    public func current(episodeID: UUID?) -> String {
+        assemble(memoryBlock: memoryContents(episodeID: episodeID)?.text)
+    }
+
+    /// The episode's memory block: the one its first request took, or a fresh one for a new
+    /// episode. Nil when this prompt has no memory.
+    public func memoryContents(episodeID: UUID?) -> MemoryBlock.Contents? {
+        guard let memories else { return nil }
+        return memorySnapshot.contents(for: episodeID) { MemoryBlock.contents(memories) }
+    }
+
+    /// The block the next request in the current episode would send, without taking a
+    /// snapshot: the one already taken, or the folder as it is now before any request.
+    public func latestMemoryContents() -> MemoryBlock.Contents? {
+        guard let memories else { return nil }
+        return memorySnapshot.latest?.contents ?? MemoryBlock.contents(memories)
+    }
+
+    /// The instructions the next request in the current episode would send, for the
+    /// fingerprint and length Debugging shows. Never shown as text.
+    public func currentAsNextSent() -> String {
+        assemble(memoryBlock: latestMemoryContents()?.text)
+    }
+
+    /// The instructions as Debugging shows them: the block replaced by its size.
+    public func currentForDisplay() -> String {
+        guard let contents = latestMemoryContents() else { return current() }
+        return assemble(memoryBlock: MemoryBlock.placeholder(contents))
+    }
+
+    private func assemble(memoryBlock: String?) -> String {
         AgentInstructions.assemble(
             editable: instructions.load(),
             skills: skills.skills().filter(\.isAvailable).map { .init(name: $0.name, description: $0.description) },
-            skillsFolder: skills.folder)
+            skillsFolder: skills.folder,
+            memoryBlock: memoryBlock)
     }
 
     /// The instructions for an incognito window as they stand now. The window reads them once
