@@ -25,6 +25,9 @@ struct SummonView: View {
         .frame(width: Self.width)
         .glassEffect(.regular, in: .rect(cornerRadius: 26))
         .onChange(of: session.focusRequest, initial: true) { fieldFocused = true }
+        .onChange(of: session.isRunning) { _, running in
+            if !running { fieldFocused = true }
+        }
         .onExitCommand(perform: onDismiss)
     }
 
