@@ -447,7 +447,8 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
     @Test func theActionToolsAreSmallStrictAndTheInstructionsSayWhatAnActionIs() {
         let tools = BuiltInTools.make(applicationWorkspace: FakeApplicationWorkspace(installed: []), system: FakeSystemControl())
         var characters = 0
-        for tool in tools.suffix(2) {
+        // The memory tools come after them.
+        for tool in tools.dropLast(2).suffix(2) {
             let definition = tool.definition
             #expect(tool.source == .actions)
             #expect(definition.parameters["additionalProperties"] == false)

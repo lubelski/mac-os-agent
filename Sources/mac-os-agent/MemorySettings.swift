@@ -360,7 +360,7 @@ struct MemoryFileDetail: View {
                 }
                 if let revision = model.revision {
                     HStack(alignment: .firstTextBaseline) {
-                        Text("Revision of \(revision.date.formatted(date: .abbreviated, time: .shortened)): \(MemoryHistoryList.operation(revision)), from \(revision.memoryCause.title).")
+                        Text("Revision of \(revision.date.formatted(date: .abbreviated, time: .shortened)): \(MemoryHistoryList.operation(revision)), \(Self.cause(revision.memoryCause)).")
                             .font(.callout)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer()
@@ -412,6 +412,16 @@ struct MemoryFileDetail: View {
             Button("Archive") { model.archive() }
         } message: {
             Text("It moves to the archive folder and out of the memory block. The journal keeps every revision.")
+        }
+    }
+}
+
+extension MemoryFileDetail {
+    static func cause(_ cause: MemoryCause) -> String {
+        switch cause {
+        case .episode: "by the agent"
+        case .settings: "in Settings"
+        case .outside: "outside the app"
         }
     }
 }

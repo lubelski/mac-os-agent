@@ -30,7 +30,8 @@ struct SettingsWindowHarness {
         defaults.set(section.rawValue, forKey: SettingsNavigation.key)
         let prompt = AgentPrompt(
             instructions: InstructionsStore(fileURL: folder.appending(path: "instructions.md")),
-            skills: SkillLibrary(folder: folder.appending(path: "skills"), settingsFile: folder.appending(path: "skill-settings.json")))
+            skills: SkillLibrary(folder: folder.appending(path: "skills"), settingsFile: folder.appending(path: "skill-settings.json")),
+            memories: MemoryLibrary(folder: folder.appending(path: "memory", directoryHint: .isDirectory)))
         let history = try ThreadStore(fileURL: folder.appending(path: "thread.jsonl"))
         let summonTrigger = SummonTriggerController(registrar: StandInHotKey(), defaults: defaults, systemShortcuts: { [] })
         controller = SettingsWindowController(
@@ -63,7 +64,7 @@ struct SettingsWindowHarness {
 @MainActor
 @Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_SETTINGS"] != nil))
 struct SettingsWindowRenders {
-    @Test(arguments: [SettingsSection.general, .instructions, .skills, .behaviors, .experiments])
+    @Test(arguments: [SettingsSection.general, .instructions, .memory, .skills, .behaviors, .experiments])
     func rendersTheWindow(section: SettingsSection) throws {
         let out = URL(filePath: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_SETTINGS"]!, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)

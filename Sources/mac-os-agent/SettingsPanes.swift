@@ -204,8 +204,7 @@ struct InstructionsSettingsView: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
             Text("""
                 The app always adds its own rules after this text: how the go-ahead for destructive \
-                commands works, the time at the start of each message, the list of skills, and \
-                last, the memory block from Settings, Memory.
+                commands works, the time, the list of skills, and memory.
                 """)
                 .font(.callout)
                 .foregroundStyle(.secondary)

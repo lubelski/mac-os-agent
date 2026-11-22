@@ -6,6 +6,8 @@ What is not built yet: proposals waiting for agreement, open questions, and work
 
 - Make the skills folder a local git repo with no remote, so every self-edit is a commit that can be reverted.
 - Self-modification comes after a week of real use of the first slice.
+- Memory that tidies itself: between episodes, the agent reviews its memory on its own, merging duplicates, moving items out of a full core, and archiving what is stale. Not built. Memory today changes only when the agent acts in an episode.
+- Memories proposed at the end of an episode: when an episode ends, the agent suggests what from it is worth keeping, for the owner to accept. Not built. Related to the [open question](#open) about starting a new episode with a short summary of the recent ones.
 - More habits from terminal coding agents, as switches in Settings, Behaviors:
   - Control-R searches the owner's earlier messages backward as they type, as in a shell.
   - Escape twice clears the field. Escape today dismisses a suggestion, then closes the inspector, then hides the panel, so the second press would need to change meaning only when the field has text.

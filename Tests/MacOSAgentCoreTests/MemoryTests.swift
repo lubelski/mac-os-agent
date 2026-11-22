@@ -408,9 +408,20 @@ private func write(_ text: String, _ path: String, in library: MemoryLibrary) th
         #expect(!names.contains(ChangeMemoryTool.name))
     }
 
-    @Test func memoryToolsAreTheLastBuiltInTools() {
+    @Test func memoryToolsAreTheLastBuiltInToolsWithSmallStrictSchemas() {
         #expect(BuiltInTools.names.suffix(2) == [ReadMemoryTool.name, ChangeMemoryTool.name])
         #expect(Array(BuiltInTools.names.dropLast(2).suffix(2)) == [ReadActionsTool.name, ChangeActionTool.name])
+        var characters = 0
+        for tool in BuiltInTools.make().suffix(2) {
+            let definition = tool.definition
+            #expect(tool.source == .memory)
+            #expect(tool.goAhead == .never)
+            #expect(definition.parameters["additionalProperties"] == false)
+            let encoded: JSONValue = ["type": "function", "name": .string(definition.name), "description": .string(definition.description), "parameters": definition.parameters, "strict": true]
+            characters += encoded.encodedString().count
+        }
+        print("memory tools add \(characters) characters to each request")
+        #expect(characters < 1700)
     }
 }
 
