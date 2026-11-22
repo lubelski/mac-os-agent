@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 
 BIN="${BIN:-build/mac-os-agent.app/Contents/MacOS/mac-os-agent}"
 OUT="${1:-docs/screenshots}"
-SECTIONS="${SECTIONS:-general instructions skills skills:half-written tools debugging debugging:sign-in}"
+SECTIONS="${SECTIONS:-general instructions skills skills:half-written tools history history:receipts debugging debugging:sign-in}"
 mkdir -p "$OUT"
 
 WORK="$(mktemp -d)"

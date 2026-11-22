@@ -9,6 +9,7 @@ struct GeneralSettingsView: View {
     let session: AgentSession
     let shortcutAvailable: Bool
     @AppStorage(ModelSetting.key) private var model = OpenAIModel.defaultID
+    @AppStorage(EpisodeTimeoutSetting.key) private var episodeTimeout = EpisodeTimeoutSetting.defaultMinutes
 
     var body: some View {
         Form {
@@ -42,6 +43,21 @@ struct GeneralSettingsView: View {
                 Text("ChatGPT")
             } footer: {
                 Text("A new model applies from the next reply. The model is also in the menu bar menu.")
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                Picker("Start a new episode after", selection: $episodeTimeout) {
+                    ForEach(EpisodeTimeoutSetting.choices, id: \.self) { minutes in
+                        Text(EpisodeTimeoutSetting.describe(TimeInterval(minutes * 60))).tag(minutes)
+                    }
+                    if !EpisodeTimeoutSetting.choices.contains(episodeTimeout) {
+                        Text(EpisodeTimeoutSetting.describe(TimeInterval(episodeTimeout * 60))).tag(episodeTimeout)
+                    }
+                }
+            } header: {
+                Text("Episodes")
+            } footer: {
+                Text("A message sent after this long without activity starts a new episode, and the panel opens on a fresh page. The agent sees only the current episode and searches earlier ones when it needs them. Type /new to start one sooner, or /incognito for one that is not kept. An incognito episode ends after the same time.")
                     .foregroundStyle(.secondary)
             }
             Section {

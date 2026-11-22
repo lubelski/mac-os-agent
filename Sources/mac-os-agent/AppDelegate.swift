@@ -71,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             session.problems.record("Startup", "Could not open the thread: \(startupError.localizedDescription)")
         }
         settings = SettingsWindowController(
-            session: session, prompt: prompt, usageLog: usageLog, tools: tools, problems: session.problems,
+            session: session, prompt: prompt, usageLog: usageLog, tools: tools, history: thread, problems: session.problems,
             signInStatus: { await authenticator.status() },
             shortcutAvailable: hotKeyRegistered)
         log.notice("Hotkey \(SummonShortcut.displayName, privacy: .public) registered: \(self.hotKeyRegistered, privacy: .public). Status item button: \(self.statusItem.button != nil, privacy: .public)")

@@ -210,3 +210,66 @@ struct HistoryText {
         return flat.count > limit ? String(flat.prefix(limit)) + "…" : flat
     }
 }
+
+/// One line of a past episode as the History section in Settings shows it: the owner's
+/// messages, the agent's replies, and the commands that ran, in order.
+public struct EpisodeLine: Sendable, Equatable, Identifiable {
+    public enum Kind: Sendable, Equatable {
+        case owner
+        case agent
+        /// A command, and how it ended once its result is in.
+        case command(TranscriptRow.ToolOutcome)
+    }
+
+    public var id: UUID
+    public var date: Date
+    public var kind: Kind
+    public var text: String
+
+    /// The lines of an episode. Reasoning, results, and the marker are left out, and each
+    /// command takes its outcome from its result.
+    public static func lines(of episode: Episode, in contents: ThreadContents) -> [EpisodeLine] {
+        var outcomes: [String: TranscriptRow.ToolOutcome] = [:]
+        for entry in contents.entries[episode.range] {
+            if case .toolResult(let result) = entry.item {
+                outcomes[result.callID] = TranscriptRow.outcome(ofOutput: result.output)
+            }
+        }
+        return contents.entries[episode.range].compactMap { entry in
+            switch entry.item {
+            case .userMessage(let text):
+                EpisodeLine(id: entry.id, date: entry.date, kind: .owner, text: text)
+            case .assistantMessage(let message) where !message.text.isEmpty:
+                EpisodeLine(id: entry.id, date: entry.date, kind: .agent, text: message.text)
+            case .toolCall(let call):
+                EpisodeLine(id: entry.id, date: entry.date, kind: .command(outcomes[call.callID] ?? .unknown),
+                            text: HistorySearchText.command(of: call))
+            default:
+                nil
+            }
+        }
+    }
+}
+
+/// An episode as a list of past episodes shows it, with the line that matched a search.
+public struct EpisodeListItem: Sendable, Equatable, Identifiable {
+    public var episode: Episode
+    /// The text of the best match in the episode, when the list is a search.
+    public var match: String?
+    public var id: UUID { episode.id }
+
+    /// Every episode with something in it, newest first.
+    public static func all(in contents: ThreadContents) -> [EpisodeListItem] {
+        contents.episodes.reversed().filter(\.hasActivity).map { EpisodeListItem(episode: $0) }
+    }
+
+    /// The episodes that match a search, best first, each once, with its best match.
+    public static func matching(_ matches: [HistoryMatch]) -> [EpisodeListItem] {
+        var seen = Set<UUID>()
+        return matches.compactMap { match in
+            guard seen.insert(match.episode.id).inserted else { return nil }
+            let text = HistorySearchText.of(match.entry.item)?.text ?? ""
+            return EpisodeListItem(episode: match.episode, match: HistoryText.clipped(text, limit: 200))
+        }
+    }
+}

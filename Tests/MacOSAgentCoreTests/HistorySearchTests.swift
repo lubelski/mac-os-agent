@@ -126,3 +126,22 @@ import Testing
         #expect(await store.search("2999").first?.position == 2_999)
     }
 }
+
+@Suite struct EpisodeListTests {
+    @Test func theListIsNewestFirstAndSearchGroupsByEpisode() async throws {
+        let store = try ThreadStore(fileURL: try writeLegacyThread())
+        let contents = await store.contents
+        #expect(EpisodeListItem.all(in: contents).map(\.episode.number) == [3, 2, 1])
+        let found = EpisodeListItem.matching(await store.search("downloads", limit: 50))
+        #expect(found.map(\.episode.number) == [1])
+        #expect(found[0].match == "and Downloads?" || found[0].match == "Downloads is 12 GB.")
+    }
+
+    @Test func linesShowMessagesCommandsAndReplies() async throws {
+        let store = try ThreadStore(fileURL: try writeLegacyThread())
+        let contents = await store.contents
+        let lines = EpisodeLine.lines(of: try #require(contents.episode(numbered: 1)), in: contents)
+        #expect(lines.map(\.kind) == [.owner, .command(.succeeded), .agent, .owner, .agent])
+        #expect(lines[1].text == "du -sh ~/Movies")
+    }
+}
