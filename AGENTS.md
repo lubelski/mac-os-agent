@@ -14,7 +14,8 @@ Read `README.md` first. It records what the product is and which decisions are s
 ## Working here
 
 - Work in a numbered worktree under `.wt/` (for example `.wt/wt-01`), on a branch. Keep the primary checkout on `main`.
-- Commit and push as you work, and open a pull request early. Do not merge to `main` without the owner's say.
+- Commit and push as you work, and open a pull request early.
+- Merge your own pull requests as needed, squashed. Hold a pull request for the owner only when it needs a discussion: a product decision that is not already in `README.md`, or something you could not verify that the owner has to try.
 - A pull request that changes anything visible includes evidence of how it looks: a screenshot, a recording, or a rendered image. For a change to something that exists, show before and after.
 - Screen capture from an agent session often shows only the wallpaper, because the terminal lacks Screen Recording permission. If you could not see a change on screen, say so in the pull request.
 - When a decision in `README.md` changes, move it between Decided, Proposed, and Open in the same pull request.
