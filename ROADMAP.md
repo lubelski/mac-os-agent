@@ -26,6 +26,21 @@ When a decision changes, move it between the lists here in the same pull request
 - Commands in the panel
   - A message that is exactly a known command, such as `/new`, is handled by the app. It is never sent to the model or written to the thread. Any other text that starts with a slash is sent as a normal message.
   - The commands are `/new` and `/incognito`. Typing a slash lists the commands that match, under the history.
+- Instant actions
+  - A short input that is confidently an action is answered on the spot with no model request. Applications are the only kind so far: "saf", "safari", "open safari", and "switch to slack" open the app. Anything else goes to the agent exactly as before, so the model is the fallback and never a second guess.
+  - The check runs on every keystroke against the installed apps, read ahead of time from the standard folders and never from Spotlight. It takes well under a millisecond, so it runs in step with the text and never shows a suggestion for text that has since changed.
+  - The rule is strict, because opening an app when the owner meant to send a message is worse than being slow.
+    - The whole input is a few words at most, with no line breaks and no sentence punctuation, optionally after a launch verb: open, launch, start, switch to, go to, or bring up.
+    - A word such as "the", "is", "it", or "and" makes it a sentence, unless the input is exactly an app's name, such as Find My.
+    - Without a verb, a match has to be the app's name, a prefix of it, a whole word of it, a word prefix, or initials from three letters. Typos and letters found inside a word are left to the agent.
+    - A single everyday word, such as "find", "help", "word", or "what", opens only an app with exactly that name, or with a verb an app with it as a whole word ("open word").
+    - A single character opens only what the owner took for that character before.
+    - The best match has to lead the next clearly to be offered alone. Otherwise the few close ones are offered to choose between, but only with a verb or three or more characters.
+  - A quiet row above the text field, where the command hint shows, says what Return will do. Return opens the app, clears the field, and hides the panel the normal way. Command-Return sends the text to the agent instead. Up, Down, Tab, and Shift-Tab choose between several matches. Escape dismisses the suggestion for this input, and the next Escape closes the inspector or hides the panel as before. The suggestion stays dismissed while the owner keeps typing after it.
+  - Nothing about an instant action is sent to the model or written to the thread, and the panel shows no line for it, so the episode's request and its prompt cache stay as they were. If the app fails to open, the panel comes back with the text and a line saying why, which is shown only.
+  - What the owner opens this way is learned, in `instant-actions.json` in Application Support: which app they took for which typed text, and how often and how recently each was taken. It ranks the matches, so "s" can come to mean Safari for one owner and Slack for another. An incognito episode learns nothing and writes nothing.
+  - The model's `search_applications` and `open_application` tools are unchanged.
+  - Providers for other kinds, such as System Settings panes, recent files, web addresses, or skills, can be added behind the same rule and row later.
 - Its own harness
   - The agent loop is ours: a while loop and tool calls, talking to the model API directly.
   - No dependency on pi or any other coding agent. Pi is an influence on the design, not a component.
@@ -115,7 +130,7 @@ When a decision changes, move it between the lists here in the same pull request
     - A command that needs words gets one more line starting with `└`, beneath the start of the command: why it failed, that it is running, that it is waiting for a go-ahead, or that it never ran because the owner declined or the task stopped. A command that never ran is struck through.
     - Code and command text is held by an open bracket: `┌──` above, a rule down its left side, and `└──` below. The go-ahead card and the inspector's input use it.
     - The text field starts with a `›` prompt mark. Arrows are the characters `↑` and `↓`.
-  - It stays light: a floating Liquid Glass panel with no title bar, sidebar, or conversation list. The text field has focus when it appears, Return sends, and Escape hides it.
+  - It stays light: a floating Liquid Glass panel with no title bar, sidebar, or conversation list. The text field has focus when it appears, Return sends or takes the instant action the row offers, and Escape hides it.
   - A slim bar across the top of the glass moves the panel. It is set apart from the history by the same hairline that sets the text field apart, from one shared definition, `PanelDivider`. Double-clicking the bar does nothing.
   - The bar's left end has a close button, a quiet `xmark` in the text color, which hides the panel as Escape does and never stops a task. After it is room for a state label, a clear button, or an episode title later.
   - The bar's right end has one quiet control, showing the current layout's symbol, that opens a standard Mac menu of layout presets: Centered, Slide Over Left, and Slide Over Right, with a check on the current one. The items have no keyboard shortcuts, because the standard ones for placing a window, Fn-Control with an arrow, belong to the system's window tiling. A new preset is one more case of `PanelPreset`, and the menu lists it on its own. The menu leaves the panel key with the text field focused when it closes.
@@ -184,7 +199,7 @@ When a decision changes, move it between the lists here in the same pull request
 
 Ideas the owner has raised that nobody has designed or built yet.
 
-- A fast path for simple requests such as opening an app: a cheap model or a rule-based matcher answers first, and the request escalates only when there is no confident answer.
+- A cheap model as a second step before the main one, for simple requests the instant action rule does not cover. Instant actions for apps are built. Other kinds, such as System Settings panes, recent files, web addresses, and skills, are not.
 - Limits on incognito: fewer tools available, and it stays on until the owner clears it instead of ending on the timeout.
 - Interfaces the agent builds itself: a small markup language for forms and other inputs shown in the panel, with the go-ahead card as the first case, and later visualizations such as maps.
 - Suggestions in the empty space of a fresh episode. What they contain is not decided. The slot for them exists: `FreshStartContent` in `Sources/mac-os-agent/HistoryView.swift` is shown at the bottom of a fresh page and is empty for now.

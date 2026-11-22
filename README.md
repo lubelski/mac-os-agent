@@ -9,6 +9,7 @@ It is like Siri in shape, without being slow or locked down, and it keeps a visi
 - `scripts/bundle.sh --install` builds the app, moves it to `~/Applications`, and launches it.
 - Choose "Sign in with ChatGPT" in the menu bar menu or in Settings.
 - Press the summon shortcut, Option-Shift-Space unless you change it in Settings, General, or click the menu bar icon, to show or hide the panel, and type what you want done. Right-click or Control-click the icon for its menu.
+- Typing an app's name, or part of it, and pressing Return opens the app at once, without the model. Command-Return sends the text to the agent instead.
 - Settings opens from the menu bar menu, or with Command-comma while the panel is in front.
 
 Settings > Appearance picks the panel's theme. Everything the agent keeps (the thread, skills, instructions, themes, usage log) is in `~/Library/Application Support/mac-os-agent/`.
