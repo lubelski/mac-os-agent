@@ -101,7 +101,7 @@ public struct ThreadContents: Sendable, Equatable {
         switch entry.item {
         case .episodeStart:
             break
-        case .userMessage(let text, _):
+        case .userMessage(let text, _, _):
             episode.messageCount += 1
             episode.activityCount += 1
             if episode.preview.isEmpty { episode.preview = Self.firstLine(text) }

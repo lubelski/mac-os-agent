@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.."
 
 BIN="${BIN:-build/mac-os-agent.app/Contents/MacOS/mac-os-agent}"
 OUT="${1:-docs/screenshots}"
-SECTIONS="${SECTIONS:-general general:recording general:conflict instructions skills skills:half-written tools history history:receipts debugging debugging:sign-in}"
+SECTIONS="${SECTIONS:-general general:recording general:conflict instructions skills skills:half-written actions actions:empty-downloads tools history history:receipts debugging debugging:sign-in}"
 mkdir -p "$OUT"
 
 WORK="$(mktemp -d)"
@@ -53,6 +53,37 @@ skill update-apps "Check for app and Homebrew updates and install them after a g
 skill wallpaper-of-the-day "Set the desktop picture to the Bing image of the day."
 skill zoom-cleanup "Quit Zoom and remove its leftover launch agents."
 printf '{"disabled":["wallpaper-of-the-day","night-shift"]}\n' > "$DATA/skill-settings.json"
+
+# A few saved actions, one of them off and one that no longer fits its tool.
+mkdir -p "$DATA/actions"
+cat > "$DATA/actions/start-screensaver.json" <<'JSON'
+{
+  "format": 1,
+  "name": "Start Screensaver",
+  "description": "Starts the screen saver.",
+  "phrases": ["screensaver", "screen saver"],
+  "enabled": true,
+  "steps": [
+    { "tool": "open_application", "arguments": { "bundle_identifier_or_path": "/System/Library/CoreServices/ScreenSaverEngine.app" } }
+  ]
+}
+JSON
+cat > "$DATA/actions/empty-downloads.json" <<'JSON'
+{
+  "format": 1,
+  "name": "Empty Downloads",
+  "description": "Moves everything in Downloads older than a week to the Trash.",
+  "phrases": ["clean downloads"],
+  "steps": [
+    { "tool": "run_shell_command", "arguments": { "command": "find ~/Downloads -mindepth 1 -maxdepth 1 -mtime +7 -exec trash {} +", "destructive": true } },
+    { "tool": "open_item", "arguments": { "target": "~/Downloads", "application": null, "reveal": false } }
+  ]
+}
+JSON
+cat > "$DATA/actions/focus-music.json" <<'JSON'
+{ "format": 1, "name": "Focus Music", "description": "Opens Music for a work session.", "enabled": false,
+  "steps": [ { "tool": "open_application", "arguments": { "bundle_identifier_or_path": "com.apple.Music" } } ] }
+JSON
 
 # Usage lines from the last hour, and a thread file with a few entries that hold no real content.
 for minutes in 52 47 31 30 12 3; do

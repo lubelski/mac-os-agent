@@ -171,7 +171,7 @@ private final class SkillWritingProvider: ModelProvider, @unchecked Sendable {
             if case .user(let text, _, _) = $0.kind { text == "/rename-photos the trip folder" } else { false }
         })
         let stored = try #require(await thread.entries.first)
-        guard case .userMessage(let text, let skill) = stored.item else {
+        guard case .userMessage(let text, let skill, _) = stored.item else {
             Issue.record("not a message")
             return
         }

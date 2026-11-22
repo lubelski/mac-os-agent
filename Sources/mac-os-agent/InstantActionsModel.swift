@@ -11,6 +11,10 @@ import Observation
 /// step with the draft, a suggestion can never be left over from text that has since changed.
 /// The list of apps is read off the main thread at launch and again each time the panel
 /// shows, and the catalog re-reads only folders that changed.
+///
+/// The owner's saved actions are offered beside the apps, ranked by the same rule and learned
+/// use. They are read from the actions folder, which is watched, so an action the agent saves
+/// or the owner edits shows at once. The incognito window offers none, as it has no skills.
 @MainActor
 @Observable
 final class InstantActions {
@@ -35,6 +39,13 @@ final class InstantActions {
     @ObservationIgnored var openApplication: @MainActor (InstalledApplication) async throws -> Void
     @ObservationIgnored var clock: () -> Date = { Date() }
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    /// Where saved actions are read from. Nil offers none, as in the incognito window.
+    @ObservationIgnored let actionLibrary: SavedActionLibrary?
+    /// The saved actions that are on, as last read.
+    @ObservationIgnored private(set) var actions: [SavedAction] = []
+    @ObservationIgnored private var actionWatcher: FolderWatcher?
+    @ObservationIgnored private var actionObserver: NSObjectProtocol?
+    @ObservationIgnored private let summaries: ToolCallSummaries
 
     /// - Parameters:
     ///   - applications: the apps to match before the catalog has been read, or for good when
@@ -44,6 +55,8 @@ final class InstantActions {
     ///   - open: opens an app and brings it to the front.
     ///   - learns: false to learn nothing, for the incognito window.
     ///   - history: what was learned before, for a copy that ranks the same without a store.
+    ///   - actionLibrary: where saved actions are read from. Nil offers none.
+    ///   - watchesActions: false to read the actions only when asked, for previews and tests.
     init(
         applications: [InstalledApplication] = [],
         catalog: ApplicationCatalog? = nil,
@@ -51,9 +64,14 @@ final class InstantActions {
         runningPaths: @escaping @MainActor () -> Set<String> = { [] },
         open: @escaping @MainActor (InstalledApplication) async throws -> Void = { _ in },
         learns: Bool = true,
-        history: InstantActionHistory = InstantActionHistory()
+        history: InstantActionHistory = InstantActionHistory(),
+        actionLibrary: SavedActionLibrary? = nil,
+        watchesActions: Bool = false,
+        summaries: ToolCallSummaries = .builtIn
     ) {
         engine = InstantActionEngine(providers: [ApplicationInstantActions(applications: applications)])
+        self.actionLibrary = actionLibrary
+        self.summaries = summaries
         self.catalog = catalog
         self.store = store
         self.runningPaths = runningPaths
@@ -61,11 +79,56 @@ final class InstantActions {
         self.learns = learns
         memoryHistory = history
         self.applications = applications
+        guard let actionLibrary else { return }
+        actions = actionLibrary.availableActions()
+        rebuildEngine()
+        guard watchesActions else { return }
+        actionWatcher = FolderWatcher(folder: actionLibrary.folder) { [weak self] in self?.reloadActions() }
+        actionObserver = NotificationCenter.default.addObserver(
+            forName: SavedActionLibrary.didChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reloadActions() }
+        }
+    }
+
+    isolated deinit {
+        if let actionObserver { NotificationCenter.default.removeObserver(actionObserver) }
+    }
+
+    /// Reads the saved actions again. The suggestion follows at once.
+    func reloadActions() {
+        guard let actionLibrary else { return }
+        // The folder may have been made since the last look, by the agent or in Settings.
+        if actionWatcher?.isWatching == false { actionWatcher?.rearm() }
+        let fresh = actionLibrary.availableActions()
+        guard fresh != actions else { return }
+        actions = fresh
+        rebuildEngine()
+        evaluate()
+    }
+
+    /// A fixed list of saved actions, for previews and tests, read from no folder.
+    func setActions(_ actions: [SavedAction]) {
+        offersFixedActions = true
+        self.actions = actions
+        rebuildEngine()
+        evaluate()
+    }
+
+    @ObservationIgnored private var offersFixedActions = false
+
+    /// Saved actions first, so an action the owner made wins a tie with an app.
+    private func rebuildEngine() {
+        var providers: [any InstantActionProvider] = []
+        if actionLibrary != nil || offersFixedActions { providers.append(ActionInstantActions(actions: actions, summaries: summaries)) }
+        providers.append(ApplicationInstantActions(applications: applications, runningPaths: runningPaths()))
+        engine = InstantActionEngine(providers: providers)
     }
 
     /// The incognito window's instant actions: the same apps, ranked by what the main panel has
     /// learned as it stands now, with no store at all and learning turned off. Nothing taken
-    /// here can reach `instant-actions.json`, or even this copy's memory.
+    /// here can reach `instant-actions.json`, or even this copy's memory. It offers no saved
+    /// actions, since the window has no skills either.
     func incognitoCopy() -> InstantActions {
         let copy = InstantActions(
             applications: applications, catalog: catalog, store: nil, runningPaths: runningPaths,
@@ -76,7 +139,7 @@ final class InstantActions {
     }
 
     /// The real thing: the installed apps, learned use in Application Support, and Launch Services.
-    static func live() -> InstantActions {
+    static func live(summaries: ToolCallSummaries = .builtIn) -> InstantActions {
         let catalog = ApplicationCatalog()
         let workspace = SystemApplicationWorkspace(catalog: catalog)
         let actions = InstantActions(
@@ -86,16 +149,18 @@ final class InstantActions {
                 Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleURL?.standardizedFileURL.path(percentEncoded: false) }
                     .map { $0.hasSuffix("/") ? String($0.dropLast()) : $0 })
             },
-            open: { application in _ = try await workspace.openApplication(at: application.url) })
+            open: { application in _ = try await workspace.openApplication(at: application.url) },
+            actionLibrary: SavedActionLibrary(), watchesActions: true, summaries: summaries)
         actions.refresh()
         return actions
     }
 
     var history: InstantActionHistory { store?.history ?? memoryHistory }
 
-    /// Reads the installed apps again, off the main thread. The catalog keeps each folder until
-    /// it changes, so this is cheap after the first time.
+    /// Reads the installed apps again, off the main thread, and the saved actions. The catalog
+    /// keeps each folder until it changes, so this is cheap after the first time.
     func refresh() {
+        reloadActions()
         guard let catalog, refreshTask == nil else { return }
         refreshTask = Task {
             let applications = await Task.detached(priority: .userInitiated) { catalog.applications() }.value
@@ -112,7 +177,7 @@ final class InstantActions {
 
     func setApplications(_ applications: [InstalledApplication]) {
         self.applications = applications
-        engine = InstantActionEngine(providers: [ApplicationInstantActions(applications: applications, runningPaths: runningPaths())])
+        rebuildEngine()
         evaluate()
     }
 
@@ -169,10 +234,13 @@ final class InstantActions {
         return candidate
     }
 
+    /// Opens an app. A saved action is run by the session, which keeps its record in the thread.
     func perform(_ candidate: InstantActionCandidate) async throws {
         switch candidate.target {
         case .application(let application):
             try await openApplication(application)
+        case .action:
+            break
         }
     }
 }

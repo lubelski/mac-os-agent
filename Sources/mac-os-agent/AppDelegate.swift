@@ -57,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         session = AgentSession(loop: loop, authenticator: authenticator)
         session.onStatusChange = { [weak self] in self?.statusDidChange() }
         session.toolSources = tools.sourceTitles
-        session.instantActions = .live()
+        session.instantActions = .live(summaries: tools.summaries)
         // The skills the owner can invoke with a slash, kept live as the folder changes.
         session.skillCommands = SkillCommandsModel(library: prompt.skills)
         panel = SummonPanel(session: session)

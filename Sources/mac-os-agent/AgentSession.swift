@@ -69,6 +69,9 @@ final class AgentSession {
     /// The skill commands as they were when the running task started, to tell afterwards which
     /// ones it added or changed.
     @ObservationIgnored private var menuAtTaskStart: SlashCommandMenu?
+    /// The saved actions as they were when the running task started, to tell afterwards which
+    /// ones it added or changed.
+    @ObservationIgnored private var actionsAtTaskStart: [SavedActionEntry]?
     /// What Return does for the draft without the model, such as opening an app.
     @ObservationIgnored var instantActions = InstantActions()
     /// Set by the window: hides it the normal way, and shows it again.
@@ -371,6 +374,10 @@ final class AgentSession {
     /// closing it. If the action fails, the window comes back with the text and a line saying
     /// why, which is shown only and never kept.
     private func perform(_ candidate: InstantActionCandidate) {
+        if case .action(let id) = candidate.target {
+            runSavedAction(id: id, title: candidate.title)
+            return
+        }
         let text = draft
         let conversation = conversation
         draft = ""
@@ -386,6 +393,55 @@ final class AgentSession {
                 transcript.appendNotice("Could not open \(candidate.title). \(message)")
                 showPanel?()
             }
+        }
+    }
+
+    /// A saved action, from the instant row. It runs with no model request, through the same
+    /// tools the agent's calls use, and with every go-ahead given, since the owner chose it from
+    /// a list. Unlike opening an app it is kept: the owner's typed text and a record of each
+    /// step go into the thread as their message, so the agent sees what happened next time.
+    /// The main panel hides the normal way and comes back when a step fails, with the text in
+    /// the field and the failure in the history.
+    private func runSavedAction(id: String, title: String) {
+        guard kind == .kept, let loop else { return }
+        let text = draft
+        // Read as it is now, so the action runs as its file says, or not at all.
+        guard let entry = instantActions.actionLibrary?.entry(id: id), let action = entry.action, entry.isAvailable else {
+            instantActions.reloadActions()
+            transcript.appendError("\(title) cannot be run. " + (instantActions.actionLibrary?.entry(id: id)?.problem
+                ?? "It was turned off or removed from the actions folder."))
+            return
+        }
+        let startsNew = startsNewEpisode
+        startsNewEpisode = false
+        let conversation = conversation
+        draft = ""
+        streamingText = ""
+        isRunning = true
+        onStatusChange?()
+        hidePanel?()
+        if let skillCommands {
+            skillCommands.reload()
+            menuAtTaskStart = skillCommands.menu
+        }
+        actionsAtTaskStart = instantActions.actionLibrary?.entries()
+        task = Task {
+            do {
+                let entry = try await loop.runAction(
+                    action, typed: text, startsNewEpisode: startsNew, now: clock(),
+                    onEvent: { event in await self.handle(event, in: conversation) })
+                if case .userMessage(_, _, let record?) = entry.item, let failed = record.failedStep {
+                    let output = record.steps[failed].output
+                    problems.record("Action", "\(action.name) stopped at step \(failed + 1): \(output.prefix(200))")
+                    if draft.isEmpty { draft = text }
+                    showPanel?()
+                }
+            } catch {
+                appendError(error, in: conversation)
+                if draft.isEmpty { draft = text }
+                showPanel?()
+            }
+            finishTask(conversation)
         }
     }
 
@@ -431,6 +487,7 @@ final class AgentSession {
             skillCommands.reload()
             menuAtTaskStart = skillCommands.menu
         }
+        if !isIncognito { actionsAtTaskStart = instantActions.actionLibrary?.entries() }
 
         // The task holds the session strongly until it ends. Discarding an incognito
         // conversation cancels it, and anything it reports after that is dropped.
@@ -502,6 +559,7 @@ final class AgentSession {
         streamingText = ""
         resolveConfirmation(false)
         announceSkillCommandChanges()
+        announceActionChanges()
         onStatusChange?()
     }
 
@@ -512,6 +570,17 @@ final class AgentSession {
         menuAtTaskStart = nil
         skillCommands.reload()
         if let notice = SlashCommandMenu.changes(from: before, to: skillCommands.menu).notice {
+            transcript.appendNotice(notice)
+        }
+    }
+
+    /// After a task in which a saved action was added or changed, such as one the agent just
+    /// saved, the instant row already offers it, and a quiet line by the text field says so.
+    private func announceActionChanges() {
+        guard let before = actionsAtTaskStart, let library = instantActions.actionLibrary else { return }
+        actionsAtTaskStart = nil
+        instantActions.reloadActions()
+        if let notice = SavedActionLibrary.changeNotice(from: before, to: library.entries()) {
             transcript.appendNotice(notice)
         }
     }
@@ -541,8 +610,11 @@ final class AgentSession {
             transcript.toolRunning(callID, command: summary)
         case .toolFinished(let callID):
             transcript.setToolStatus(callID, .finished)
-            // A command may have written a skill. The list follows at once.
+            // A command may have written a skill or an action. The lists follow at once.
             skillCommands?.reload()
+            if !isIncognito { instantActions.reloadActions() }
+        case .actionStarted(let start):
+            transcript.beginActionRun(start)
         }
     }
 

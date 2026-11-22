@@ -81,6 +81,8 @@ public enum BuiltInTools {
         QuitOrHideApplicationTool.name,
         ReadThemesTool.name,
         ChangeThemeTool.name,
+        ReadActionsTool.name,
+        ChangeActionTool.name,
     ]
 
     /// - Parameters:
@@ -90,6 +92,7 @@ public enum BuiltInTools {
     ///   - system: Files, the clipboard, the desktop picture, and running apps, for the system tools.
     ///   - themes: The panel's themes, which the appearance tools read and write.
     ///   - themePreferences: Where the active theme is kept.
+    ///   - actions: The saved actions, which the action tools read and write.
     public static func make(
         applicationWorkspace: any ApplicationWorkspace = SystemApplicationWorkspace(),
         skills: SkillLibrary = SkillLibrary(),
@@ -98,11 +101,12 @@ public enum BuiltInTools {
         calendar: any CalendarStore = EventKitStore.shared,
         system: any SystemControl = SystemControlOnMac(),
         themes: ThemeLibrary = ThemeLibrary(),
-        themePreferences: ThemePreferences = ThemePreferences()
+        themePreferences: ThemePreferences = ThemePreferences(),
+        actions: SavedActionLibrary = SavedActionLibrary()
     ) -> [any AgentTool] {
         let reminderIDs = ShortIdentifierTable()
         let eventIDs = ShortIdentifierTable()
-        let tools: [any AgentTool] = [
+        var tools: [any AgentTool] = [
             ShellCommandTool(),
             SearchApplicationsTool(workspace: applicationWorkspace),
             OpenApplicationTool(workspace: applicationWorkspace),
@@ -122,6 +126,13 @@ public enum BuiltInTools {
             QuitOrHideApplicationTool(system: system, applications: applicationWorkspace),
             ReadThemesTool(library: themes, preferences: themePreferences),
             ChangeThemeTool(library: themes, preferences: themePreferences),
+        ]
+        // A saved action's steps may call any tool before these two, so a save is checked
+        // against their definitions.
+        let stepTools = tools.map(\.definition)
+        tools += [
+            ReadActionsTool(library: actions),
+            ChangeActionTool(library: actions, tools: { stepTools }),
         ]
         assert(tools.map(\.definition.name) == names)
         return tools

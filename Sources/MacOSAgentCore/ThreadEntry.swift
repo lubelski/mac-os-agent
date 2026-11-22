@@ -21,8 +21,10 @@ public struct ThreadEntry: Sendable, Equatable, Codable, Identifiable {
 public enum ThreadItem: Sendable, Equatable, Codable {
     /// What the person typed into the panel. When they invoked a skill with a slash, such as
     /// `/rename-photos the trip folder`, `text` is the line as typed, which is what the panel and
-    /// search show, and `skill` holds the message the model was sent for it.
-    case userMessage(text: String, skill: SkillInvocation? = nil)
+    /// search show, and `skill` holds the message the model was sent for it. When they ran a
+    /// saved action from the instant row, `text` is what they typed for it and `action` is the
+    /// record of the run, with the note the model is sent in place of the typed text.
+    case userMessage(text: String, skill: SkillInvocation? = nil, action: ActionRun? = nil)
     /// Text the model wrote.
     case assistantMessage(AssistantMessage)
     /// Model output that only the provider understands, such as an encrypted reasoning item.
@@ -52,10 +54,10 @@ public enum ThreadItem: Sendable, Equatable, Codable {
         }
     }
 
-    /// The text the model is sent for an owner's message: the skill's expanded message when
-    /// they invoked one, and otherwise what they typed.
-    public static func modelText(text: String, skill: SkillInvocation?) -> String {
-        skill?.message ?? text
+    /// The text the model is sent for an owner's message: the record of an action they ran,
+    /// the skill's expanded message when they invoked one, and otherwise what they typed.
+    public static func modelText(text: String, skill: SkillInvocation?, action: ActionRun? = nil) -> String {
+        action?.message ?? skill?.message ?? text
     }
 
     public struct EpisodeStart: Sendable, Equatable, Codable {
@@ -147,11 +149,13 @@ public enum ThreadItem: Sendable, Equatable, Codable {
         case episodeStart = "episode_start"
     }
 
-    /// A user message's value. `skill` is left out when there is none, so a plain message's
-    /// line is the same as before invocations existed, and older lines load unchanged.
+    /// A user message's value. `skill` and `action` are left out when there is none, so a plain
+    /// message's line is the same as before they existed, and older lines load unchanged. An
+    /// older build reads an action's line as a plain message of the typed text.
     private struct UserText: Codable {
         var text: String
         var skill: SkillInvocation?
+        var action: ActionRun?
     }
 
     public init(from decoder: Decoder) throws {
@@ -159,7 +163,7 @@ public enum ThreadItem: Sendable, Equatable, Codable {
         switch try container.decode(Kind.self, forKey: .type) {
         case .userMessage:
             let value = try container.decode(UserText.self, forKey: .value)
-            self = .userMessage(text: value.text, skill: value.skill)
+            self = .userMessage(text: value.text, skill: value.skill, action: value.action)
         case .assistantMessage: self = .assistantMessage(try container.decode(AssistantMessage.self, forKey: .value))
         case .providerItem: self = .providerItem(try container.decode(ProviderItem.self, forKey: .value))
         case .toolCall: self = .toolCall(try container.decode(ToolCall.self, forKey: .value))
@@ -171,9 +175,9 @@ public enum ThreadItem: Sendable, Equatable, Codable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case .userMessage(let text, let skill):
+        case .userMessage(let text, let skill, let action):
             try container.encode(Kind.userMessage, forKey: .type)
-            try container.encode(UserText(text: text, skill: skill), forKey: .value)
+            try container.encode(UserText(text: text, skill: skill, action: action), forKey: .value)
         case .assistantMessage(let value):
             try container.encode(Kind.assistantMessage, forKey: .type)
             try container.encode(value, forKey: .value)

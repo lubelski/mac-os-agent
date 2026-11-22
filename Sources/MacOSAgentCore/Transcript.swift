@@ -189,7 +189,11 @@ public struct Transcript: Equatable, Sendable {
         switch entry.item {
         case .episodeStart:
             break
-        case .userMessage(let text, _):
+        case .userMessage(let text, _, let action):
+            if let action {
+                applyActionRun(action, text: text, entry: entry)
+                break
+            }
             let showsTime = lastUserDate != nil
                 && Self.startsNewStretch(previous: lastUserDate, current: entry.date, calendar: calendar)
             lastUserDate = entry.date
@@ -218,6 +222,55 @@ public struct Transcript: Equatable, Sendable {
             }
         case .providerItem:
             break
+        }
+    }
+
+    /// A saved action began running: the owner's typed text shows as their message at once, and
+    /// each step adds its row as it starts, under the call ids the run gives it. The run's entry
+    /// fills them in when it ends, through `apply`.
+    public mutating func beginActionRun(_ start: ActionRunStart) {
+        let id = start.entryID.uuidString
+        guard indexByID[id] == nil else { return }
+        // The very first entry of a thread starts an episode. Its separator has to come first.
+        if tracker.lastActivity == nil, pendingSeparator == nil, rows.isEmpty { beginEpisode(at: start.date) }
+        let showsTime = lastUserDate != nil
+            && Self.startsNewStretch(previous: lastUserDate, current: start.date, calendar: calendar)
+        append(TranscriptRow(id: id, kind: .user(text: start.text, date: start.date, showsTime: showsTime)))
+    }
+
+    /// The rows of an action's run: the typed text, a row per step that ran with its output, and
+    /// a line saying where it stopped when a step failed. Rows the run already showed while it
+    /// ran are filled in where they are.
+    private mutating func applyActionRun(_ action: ThreadItem.ActionRun, text: String, entry: ThreadEntry) {
+        let id = entry.id.uuidString
+        if indexByID[id] == nil {
+            let showsTime = lastUserDate != nil
+                && Self.startsNewStretch(previous: lastUserDate, current: entry.date, calendar: calendar)
+            append(TranscriptRow(id: id, kind: .user(text: text, date: entry.date, showsTime: showsTime)))
+        }
+        lastUserDate = entry.date
+        for step in action.steps {
+            let call = step.call
+            toolFacts[call.callID, default: ToolCallFacts()].call = call
+            toolFacts[call.callID]?.calledAt = step.details?.started ?? entry.date
+            toolFacts[call.callID]?.details = step.details
+            if let started = step.details?.started, let seconds = step.details?.seconds {
+                toolFacts[call.callID]?.finishedAt = started.addingTimeInterval(seconds)
+            }
+            let command = summaries.summary(of: call)
+            if indexByID[call.callID] == nil {
+                append(TranscriptRow(id: call.callID, kind: .tool(command: command, status: .finished, output: step.output)))
+            } else {
+                updateTool(call.callID) { existing, status, output in
+                    existing = command
+                    status = .finished
+                    output = step.output
+                }
+            }
+        }
+        if let notice = action.outcomeNotice {
+            let noticeID = "\(id)-outcome"
+            if indexByID[noticeID] == nil { append(TranscriptRow(id: noticeID, kind: .error(notice))) }
         }
     }
 

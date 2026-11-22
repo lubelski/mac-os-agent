@@ -13,6 +13,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case appearance
     case instructions
     case skills
+    case actions
     case tools
     case history
     case debugging
@@ -25,6 +26,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .appearance: "Appearance"
         case .instructions: "Instructions"
         case .skills: "Skills"
+        case .actions: "Actions"
         case .tools: "Tools"
         case .history: "History"
         case .debugging: "Debugging"
@@ -37,6 +39,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .appearance: "paintpalette"
         case .instructions: "text.quote"
         case .skills: "puzzlepiece.extension"
+        case .actions: "bolt"
         case .tools: "wrench.and.screwdriver"
         case .history: "clock.arrow.circlepath"
         case .debugging: "ladybug"
@@ -76,6 +79,7 @@ struct SettingsModels {
     let navigation: SettingsNavigation
     let instructions: InstructionsSettingsModel
     let skills: SkillsSettingsModel
+    let actions: ActionsSettingsModel
     let tools: ToolsSettingsModel
     let history: HistorySettingsModel
     let debugging: DebuggingSettingsModel
@@ -130,6 +134,8 @@ struct SettingsRootView: View {
             InstructionsSettingsView(model: models.instructions)
         case .skills:
             SkillsSettingsView(model: models.skills)
+        case .actions:
+            ActionsSettingsView(model: models.actions)
         case .tools:
             ToolsSettingsView(model: models.tools)
         case .history:
@@ -160,7 +166,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         session: AgentSession, prompt: AgentPrompt, usageLog: UsageLog, tools: ToolRegistry,
         history: ThreadStore?, problems: ProblemLog, signInStatus: @escaping @Sendable () async -> SignInStatus?,
         summonTrigger: SummonTriggerController, defaults: UserDefaults = .standard, remembersFrame: Bool = true,
-        privacyAccess: any PrivacyAccessGate = EventKitStore.shared
+        privacyAccess: any PrivacyAccessGate = EventKitStore.shared,
+        actions: SavedActionLibrary = SavedActionLibrary()
     ) {
         models = SettingsModels(
             session: session,
@@ -168,6 +175,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             navigation: SettingsNavigation(defaults: defaults),
             instructions: InstructionsSettingsModel(prompt: prompt),
             skills: SkillsSettingsModel(library: prompt.skills),
+            actions: ActionsSettingsModel(library: actions, tools: tools.definitions, summaries: tools.summaries),
             tools: ToolsSettingsModel(registry: tools, access: privacyAccess),
             history: HistorySettingsModel(history: history),
             debugging: DebuggingSettingsModel(
@@ -242,6 +250,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         // The agent can write skills and the person can edit files in Finder while the window
         // is closed, so read them again whenever it comes forward.
         models.skills.reload()
+        models.actions.reload()
         models.instructions.reloadIfUnchanged()
         models.debugging.reload()
         models.history.reload()
@@ -330,6 +339,7 @@ enum SettingsPreview {
         } else if let item {
             controller.models.history.query = section == .history ? item : ""
             controller.models.skills.selection = item
+            if section == .actions { controller.models.actions.selection = item }
             controller.models.tools.selection = item
             controller.models.debugging.scrollTarget = item
         }

@@ -43,6 +43,11 @@ public enum AgentPaths {
         applicationSupport.appending(path: "themes", directoryHint: .isDirectory)
     }
 
+    /// One JSON file per saved action: a stored tool call, or a few, that the instant row runs.
+    public static var actionsFolder: URL {
+        applicationSupport.appending(path: "actions", directoryHint: .isDirectory)
+    }
+
     /// Token counts for each model request, one JSON line per request. No message content.
     public static var usageLogFile: URL {
         applicationSupport.appending(path: "usage.jsonl")
