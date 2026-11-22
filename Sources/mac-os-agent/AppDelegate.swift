@@ -24,7 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Before anything reads the quick actions folder, which used to be `actions/`.
         let quickActionsMove = QuickActionLibrary.moveFolderFromOldName()
         let installationID = AgentPaths.installationID()
-        let authenticator = ChatGPTAuthenticator(secrets: AgentPaths.secretStore(), installationID: installationID)
+        // A release build moves the sign-in from secrets.json to the Keychain here, once.
+        let secretStorage = SecretStorage.forThisRun()
+        let authenticator = ChatGPTAuthenticator(secrets: secretStorage.store, installationID: installationID)
         var loop: AgentLoop?
         var startupError: Error?
         var thread: ThreadStore?
@@ -118,6 +120,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             log.notice("\(problem, privacy: .public)")
             session.problems.record("Quick actions", problem)
         }
+        log.notice("Sign-in kept in \(secretStorage.status.place, privacy: .public). \(secretStorage.status.explanation, privacy: .public)")
+        if case .failed = secretStorage.status.migration {
+            session.problems.record("Sign-in", secretStorage.status.explanation)
+        }
         if let startupError {
             session.problems.record("Startup", "Could not open the thread: \(startupError.localizedDescription)")
         }
@@ -125,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings = SettingsWindowController(
             session: session, prompt: prompt, usageLog: usageLog, tools: tools, history: thread, problems: session.problems,
             signInStatus: { await authenticator.status() },
+            secretStorage: secretStorage.status,
             summonTrigger: summonTrigger, updater: updater)
         log.notice("Hotkey \(self.summonTrigger.displayName ?? "none", privacy: .public) registered: \(self.summonTrigger.isRegistered, privacy: .public). Status item button: \(self.statusItem.button != nil, privacy: .public)")
 

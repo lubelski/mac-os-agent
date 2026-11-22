@@ -184,6 +184,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     init(
         session: AgentSession, prompt: AgentPrompt, usageLog: UsageLog, tools: ToolRegistry,
         history: ThreadStore?, problems: ProblemLog, signInStatus: @escaping @Sendable () async -> SignInStatus?,
+        secretStorage: SecretStorage.Status? = nil,
         summonTrigger: SummonTriggerController, defaults: UserDefaults = .standard, remembersFrame: Bool = true,
         privacyAccess: any PrivacyAccessGate = EventKitStore.shared,
         quickActions: QuickActionLibrary = QuickActionLibrary(),
@@ -201,7 +202,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             history: HistorySettingsModel(history: history),
             debugging: DebuggingSettingsModel(
                 prompt: prompt, usageLog: usageLog, tools: tools, problems: problems,
-                signInStatus: signInStatus, defaults: defaults),
+                signInStatus: signInStatus, secretStorage: secretStorage, defaults: defaults),
             updater: updater)
 
         let root = SettingsRootView(models: models, navigation: models.navigation)
@@ -354,6 +355,8 @@ enum SettingsPreview {
                     isSignedIn: true, accessTokenExpires: Date().addingTimeInterval(52 * 60),
                     lastTokenDate: Date().addingTimeInterval(-8 * 60))
             },
+            // A stand-in. A preview decides nothing about the real store and never opens the Keychain.
+            secretStorage: SecretStorage.Status(location: .file, reason: .anotherDataFolder, migration: nil),
             summonTrigger: summonTrigger, defaults: defaults, remembersFrame: false,
             privacyAccess: StandInPrivacyAccess())
         self.controller = controller

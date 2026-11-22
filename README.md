@@ -39,6 +39,7 @@ scripts/release.sh 1.2.0 --dry-run  # build the files into build/release and pub
 - A release is a GitHub Release with the zipped app and `appcast.xml`, the feed. Installed copies read the feed from the latest release. The one-time setup is at the top of the script.
 - The version is the release tag. The build number is the commit count, which Sparkle compares, so releases are built from `main`.
 - A build from `bundle.sh` alone has no feed and never updates itself.
+- A release build keeps the sign-in in the login Keychain. A build from `bundle.sh` alone keeps it in `secrets.json` in the data folder.
 - The notarization login and the Sparkle signing key are shared with AI Meter and Claude FM. The public key is in `scripts/sparkle-public-key.txt`.
 
 ## License
