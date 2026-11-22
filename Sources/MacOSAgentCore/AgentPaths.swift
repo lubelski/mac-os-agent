@@ -53,6 +53,12 @@ public enum AgentPaths {
         applicationSupport.appending(path: "skill-settings.json")
     }
 
+    /// What the owner has opened through instant actions, for ranking. Never written while
+    /// an incognito episode is on.
+    public static var instantActionHistoryFile: URL {
+        applicationSupport.appending(path: "instant-actions.json")
+    }
+
     public static var installationIDFile: URL {
         applicationSupport.appending(path: "installation-id")
     }
