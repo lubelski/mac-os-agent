@@ -27,6 +27,20 @@ Settings > Appearance picks the panel's theme. Everything the agent keeps (the t
 - [planning/](planning/README.md) records what has been decided, what is planned, and ideas to try later.
 - [AGENTS.md](AGENTS.md) has the rules for changing this repo, including how to preview and capture the interface.
 
+## Releases and updates
+
+A release build updates itself with [Sparkle](https://sparkle-project.org). It checks about once a day, downloads a newer build, checks its signature, and relaunches into it. The relaunch waits while a task runs or waits for a go-ahead, while messages are queued, and while the incognito window holds a conversation. Settings, General has Update automatically and Check for Updates, and the menu bar menu has Check for Updates.
+
+```sh
+scripts/release.sh 1.2.0            # build, sign, notarize, and publish v1.2.0 from main
+scripts/release.sh 1.2.0 --dry-run  # build the files into build/release and publish nothing
+```
+
+- A release is a GitHub Release with the zipped app and `appcast.xml`, the feed. Installed copies read the feed from the latest release. The one-time setup is at the top of the script.
+- The version is the release tag. The build number is the commit count, which Sparkle compares, so releases are built from `main`.
+- A build from `bundle.sh` alone has no feed and never updates itself.
+- The notarization login and the Sparkle signing key are shared with AI Meter and Claude FM. The public key is in `scripts/sparkle-public-key.txt`.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
