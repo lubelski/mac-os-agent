@@ -12,6 +12,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case instructions
     case skills
     case tools
+    case history
     case debugging
 
     var id: String { rawValue }
@@ -22,6 +23,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .instructions: "Instructions"
         case .skills: "Skills"
         case .tools: "Tools"
+        case .history: "History"
         case .debugging: "Debugging"
         }
     }
@@ -32,6 +34,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .instructions: "text.quote"
         case .skills: "puzzlepiece.extension"
         case .tools: "wrench.and.screwdriver"
+        case .history: "clock.arrow.circlepath"
         case .debugging: "ladybug"
         }
     }
@@ -64,6 +67,7 @@ struct SettingsModels {
     let instructions: InstructionsSettingsModel
     let skills: SkillsSettingsModel
     let tools: ToolsSettingsModel
+    let history: HistorySettingsModel
     let debugging: DebuggingSettingsModel
 }
 
@@ -112,6 +116,8 @@ struct SettingsRootView: View {
             SkillsSettingsView(model: models.skills)
         case .tools:
             ToolsSettingsView(model: models.tools)
+        case .history:
+            HistorySettingsView(model: models.history)
         case .debugging:
             DebuggingSettingsView(model: models.debugging, instructions: models.instructions)
         }
@@ -135,7 +141,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// - Parameter remembersFrame: False for previews, so they never write the owner's saved frame.
     init(
         session: AgentSession, prompt: AgentPrompt, usageLog: UsageLog, tools: ToolRegistry,
-        problems: ProblemLog, signInStatus: @escaping @Sendable () async -> SignInStatus?,
+        history: ThreadStore?, problems: ProblemLog, signInStatus: @escaping @Sendable () async -> SignInStatus?,
         shortcutAvailable: Bool, defaults: UserDefaults = .standard, remembersFrame: Bool = true
     ) {
         models = SettingsModels(
@@ -145,6 +151,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             instructions: InstructionsSettingsModel(prompt: prompt),
             skills: SkillsSettingsModel(library: prompt.skills),
             tools: ToolsSettingsModel(registry: tools),
+            history: HistorySettingsModel(history: history),
             debugging: DebuggingSettingsModel(
                 prompt: prompt, usageLog: usageLog, tools: tools, problems: problems,
                 signInStatus: signInStatus, defaults: defaults))
@@ -203,6 +210,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         models.skills.reload()
         models.instructions.reloadIfUnchanged()
         models.debugging.reload()
+        models.history.reload()
     }
 }
 
@@ -221,9 +229,11 @@ enum SettingsPreview {
         problems.record(
             "Request", "OpenAI API error (429): The usage limit for this plan was reached. Try again in 12 minutes.",
             date: Date().addingTimeInterval(-40 * 60))
+        let history = standInHistory()
         let controller = SettingsWindowController(
             session: session, prompt: prompt, usageLog: UsageLog(),
-            tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills)),
+            tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: history)),
+            history: history,
             problems: problems,
             signInStatus: {
                 SignInStatus(
@@ -233,6 +243,7 @@ enum SettingsPreview {
             shortcutAvailable: true, defaults: defaults, remembersFrame: false)
         self.controller = controller
         if let item {
+            controller.models.history.query = section == .history ? item : ""
             controller.models.skills.selection = item
             controller.models.tools.selection = item
             controller.models.debugging.scrollTarget = item
@@ -242,5 +253,41 @@ enum SettingsPreview {
         // Quits on its own, so a failed capture script cannot leave it on screen.
         Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { _ in exit(0) }
     }
-}
 
+    /// A few episodes of stand-in conversation in a temporary folder, never the real thread.
+    private static func standInHistory() -> ThreadStore? {
+        let folder = FileManager.default.temporaryDirectory
+            .appending(path: "mac-os-agent-preview-\(UUID().uuidString)", directoryHint: .isDirectory)
+        guard let store = try? ThreadStore(fileURL: folder.appending(path: "thread.jsonl")) else { return nil }
+        let now = Date()
+        let episodes: [(Double, [(String, String?, String)])] = [
+            (6 * 24 * 60, [("what's eating my disk space", "du -sh ~/Library/Caches ~/Downloads ~/Movies 2>/dev/null | sort -hr", "Movies is the big one at 38 GB, then Downloads at 12 GB.")]),
+            (3 * 24 * 60, [("turn on dark mode", "osascript -e 'tell application \"System Events\" to tell appearance preferences to set dark mode to true'", "Dark mode is on."),
+                           ("and set the accent color to purple", "defaults write -g AppleAccentColor -int 5", "The accent color is purple now. Some apps pick it up after a restart.")]),
+            (26 * 60, [("open notion", "open -a Notion", "Notion is open.")]),
+            (95, [("how long until my battery is full", "pmset -g batt", "About 42 minutes. It’s at 81% and charging.")]),
+            (12, [("move every PDF from Downloads with receipt in its name into a Receipts folder", "mkdir -p ~/Desktop/Receipts && mv ~/Downloads/*receipt*.pdf ~/Desktop/Receipts/", "Moved 7 receipts into Receipts on the desktop."),
+                  ("how many are from this year", "ls ~/Desktop/Receipts | grep -c 2026", "Five of the seven are from 2026.")]),
+        ]
+        var call = 0
+        Task {
+            for (index, (minutesAgo, exchanges)) in episodes.enumerated() {
+                var clock = now.addingTimeInterval(-minutesAgo * 60)
+                func tick() -> Date { clock = clock.addingTimeInterval(20); return clock }
+                if index > 0 { try? await store.append(.episodeStart(.init(reason: .timeout)), date: clock) }
+                for (message, command, reply) in exchanges {
+                    try? await store.append(.userMessage(text: message), date: tick())
+                    if let command {
+                        call += 1
+                        let arguments: JSONValue = ["command": .string(command), "destructive": false]
+                        try? await store.append(.toolCall(.init(callID: "call_\(call)", name: "run_shell_command", arguments: arguments.encodedString(), provider: "openai", model: "gpt-6-luna")), date: tick())
+                        try? await store.append(.toolResult(.init(callID: "call_\(call)", output: "[exit status 0]")), date: tick())
+                    }
+                    try? await store.append(.assistantMessage(.init(text: reply, provider: "openai", model: "gpt-6-luna")), date: tick())
+                }
+            }
+            controller?.models.history.reload()
+        }
+        return store
+    }
+}
