@@ -90,6 +90,8 @@ public enum BuiltInTools {
         ChangeThemeTool.name,
         ReadActionsTool.name,
         ChangeActionTool.name,
+        ReadMemoriesTool.name,
+        ChangeMemoryTool.name,
     ]
 
     /// - Parameters:
@@ -100,6 +102,7 @@ public enum BuiltInTools {
     ///   - themes: The panel's themes, which the appearance tools read and write.
     ///   - themePreferences: Where the active theme is kept.
     ///   - actions: The saved actions, which the action tools read and write.
+    ///   - memories: The memory file, which the memory tools read and write.
     public static func make(
         applicationWorkspace: any ApplicationWorkspace = SystemApplicationWorkspace(),
         skills: SkillLibrary = SkillLibrary(),
@@ -109,7 +112,8 @@ public enum BuiltInTools {
         system: any SystemControl = SystemControlOnMac(),
         themes: ThemeLibrary = ThemeLibrary(),
         themePreferences: ThemePreferences = ThemePreferences(),
-        actions: SavedActionLibrary = SavedActionLibrary()
+        actions: SavedActionLibrary = SavedActionLibrary(),
+        memories: MemoryLibrary = MemoryLibrary()
     ) -> [any AgentTool] {
         let reminderIDs = ShortIdentifierTable()
         let eventIDs = ShortIdentifierTable()
@@ -140,6 +144,8 @@ public enum BuiltInTools {
         tools += [
             ReadActionsTool(library: actions),
             ChangeActionTool(library: actions, tools: { stepTools }),
+            ReadMemoriesTool(library: memories),
+            ChangeMemoryTool(library: memories),
         ]
         assert(tools.map(\.definition.name) == names)
         return tools

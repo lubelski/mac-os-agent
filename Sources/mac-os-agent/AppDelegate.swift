@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var incognito: IncognitoWindowController!
     private var summonTrigger: SummonTriggerController!
     private var settings: SettingsWindowController!
-    private let prompt = AgentPrompt()
+    private let prompt = AgentPrompt(memories: MemoryLibrary())
     private let usageLog = UsageLog()
     /// Created at launch, so it checks on its own schedule. In a build with no feed it does nothing.
     private var updater: AppUpdater!
@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             startupError = error
         }
         // Built once, so the tool list stays the same for the whole run, and shared with Settings.
-        let tools = ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: thread))
+        let tools = ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: thread, memories: prompt.memories ?? MemoryLibrary()))
         if let thread {
             let provider = OpenAIResponsesProvider(
                 authenticator: authenticator,
@@ -44,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             loop = AgentLoop(
                 provider: provider, thread: thread,
                 tools: tools.tools,
-                instructions: { prompt.current() },
+                instructionsForEpisode: { episodeID in prompt.current(episodeID: episodeID) },
                 usageLog: usageLog,
                 episodeTimeout: timeout)
         }
