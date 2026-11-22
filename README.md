@@ -4,7 +4,7 @@ An agent for this Mac that lives in the menu bar. You summon it with a hotkey, t
 
 It is like Siri in shape, without being slow or locked down, and it keeps a visible conversation like an agent chat. It is not a coding tool.
 
-The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, and a shell tool. This file records what has been decided so far.
+The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a shell tool, and tools for finding and opening apps. This file records what has been decided so far.
 
 ## Building and running
 
@@ -34,7 +34,13 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
   - The default model is `gpt-6-luna`, the fastest GPT-6 model, with low reasoning effort. The model is a setting in the menu bar menu.
 - Its own tools
   - The agent runs with a set of tools that it can modify itself.
-  - The tool list sent to the model stays fixed within a conversation, because a list that changes breaks prompt caching. For now it holds one tool, a shell command.
+  - The tool list sent to the model stays fixed within a conversation, because a list that changes breaks prompt caching.
+  - Built-in tools are a fixed, ordered list. New built-in tools go at the end. Tools from other sources will go after the built-ins, sorted by name.
+  - The built-in tools are a shell command and three app tools: search the installed apps by a loose name, open an app or bring it to the front, and list the running apps.
+- Apps through native tools
+  - The app tools use Launch Services, NSWorkspace, and Spotlight directly instead of the shell, because shell lookups with `mdfind` were slow and missed apps.
+  - A search reads the standard app folders, caches each folder until it changes, and asks Spotlight only when nothing matches closely.
+  - Opening, searching, and listing apps need no go-ahead. Quitting an app still goes through the shell tool and its confirmation step.
 - Ask before destructive actions
   - A shell command waits for a go-ahead in the panel when the model marks it destructive, or when it matches a broad local pattern list for deleting, overwriting, uninstalling, quitting, killing processes, `sudo`, and system settings.
   - Either one is enough. The model cannot talk its way past the pattern list.

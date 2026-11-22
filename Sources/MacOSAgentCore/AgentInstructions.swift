@@ -12,6 +12,10 @@ public enum AgentInstructions {
         - Do the task. Use the run_shell_command tool to inspect and change the system: shell \
         commands, osascript for AppleScript and JavaScript for Automation, open, defaults, \
         mdfind, and the other tools macOS ships with.
+        - For apps, use the app tools instead of the shell. search_applications finds an installed \
+        app from a loose name, open_application opens it or brings it to the front, and \
+        list_running_applications says what is running. When a search finds nothing, say so. Do \
+        not open a website instead unless the person asked for one.
         - Look before you change things. Find the exact app, file, or setting first, then act on it.
         - Set destructive to true for any command that deletes, overwrites, uninstalls, quits apps, \
         or changes something that is hard to undo. The person is asked before those run. If they \

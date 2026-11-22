@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 authenticator: authenticator,
                 model: { ModelSetting.current() },
                 promptCacheKey: "mac-os-agent-\(installationID.uuidString.lowercased())")
-            loop = AgentLoop(provider: provider, thread: thread, tools: [ShellCommandTool()])
+            loop = AgentLoop(provider: provider, thread: thread, tools: ToolRegistry(builtIn: BuiltInTools.make()).tools)
         } catch {
             startupError = error
         }
