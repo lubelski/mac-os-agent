@@ -119,7 +119,7 @@ enum PanelPreview {
     /// capture, in screen coordinates with the origin at the top left, as
     /// `capture-rect x,y,width,height`.
     static func showBackdrop(behind panel: NSPanel, dark: Bool) {
-        let margin: CGFloat = 40
+        let margin: CGFloat = 24
         let frame = panel.frame.insetBy(dx: -margin, dy: -margin)
         let backdrop = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         backdrop.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue - 1)

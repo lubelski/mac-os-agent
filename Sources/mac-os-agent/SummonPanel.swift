@@ -84,6 +84,14 @@ final class SummonPanel: NSPanel {
         session.panelDidAppear()
     }
 
+    /// Shows the panel for a screenshot without making it key, so the frontmost app keeps
+    /// keyboard focus.
+    func showForPreview() {
+        if !hasBeenPlaced { placeOnActiveScreen() }
+        orderFrontRegardless()
+        invalidateShadow()
+    }
+
     func dismiss() {
         orderOut(nil)
     }

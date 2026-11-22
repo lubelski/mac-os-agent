@@ -21,10 +21,19 @@ MainActor.assumeIsolated {
             let parts = arguments[index + 1].split(separator: "x").compactMap { Double($0) }
             if parts.count == 2 { panel.setContentSize(NSSize(width: parts[0], height: parts[1])) }
         }
-        panel.summon()
+        // The preview never takes keyboard focus from the app the owner is using, and it quits
+        // on its own after a few seconds, so a failed capture script cannot leave it on screen.
+        panel.showForPreview()
         if arguments.contains("--backdrop") {
             PanelPreview.showBackdrop(behind: panel, dark: dark)
         }
+        var seconds = 4.0
+        if let index = arguments.firstIndex(of: "--preview-seconds"), index + 1 < arguments.count,
+           let value = Double(arguments[index + 1])
+        {
+            seconds = value
+        }
+        Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { _ in exit(0) }
         app.run()
         return
     }

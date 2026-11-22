@@ -69,3 +69,8 @@ for appearance in dark light; do
     rm -f "$LOG"
   done
 done
+
+# Each preview also quits on its own after a few seconds. Report any that did not.
+if pgrep -fl "mac-os-agent --preview-panel"; then
+  echo "warning: preview processes are still running" >&2
+fi

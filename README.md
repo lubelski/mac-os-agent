@@ -2,7 +2,7 @@
 
 An agent for this Mac that lives in the menu bar. You summon it with a hotkey, tell it what you want ("change the wallpaper to a sunset", "delete zoom"), and it acts on the system.
 
-It is like Siri in shape, without being slow or locked down. It is not a chat app and not a coding tool.
+It is like Siri in shape, without being slow or locked down, and it keeps a visible conversation like an agent chat. It is not a coding tool.
 
 The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, and a shell tool. This file records what has been decided so far.
 
@@ -13,7 +13,7 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
 - Run only the bundle, not `swift run`. The bundle has the `Info.plist` that keeps the app out of the Dock.
 - Press Option-Shift-Space to show or hide the panel. The chord is set in `Sources/mac-os-agent/SummonHotKey.swift`.
 - Use "Sign in with ChatGPT" in the menu bar menu before the first instruction.
-- `scripts/capture-panel-previews.sh` shows the panel in a few stand-in states and captures each one, for pull request screenshots.
+- `scripts/capture-panel-previews.sh` shows the panel in a few stand-in states and captures each one, for pull request screenshots. `--backdrop` captures it over a busy page instead, which shows the glass and its edges. Each preview quits on its own after a few seconds and never takes keyboard focus.
 
 ## Decided
 
@@ -38,8 +38,14 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
 - Ask before destructive actions
   - A shell command waits for a go-ahead in the panel when the model marks it destructive, or when it matches a broad local pattern list for deleting, overwriting, uninstalling, quitting, killing processes, `sudo`, and system settings.
   - Either one is enough. The model cannot talk its way past the pattern list.
+- A conversation you summon
+  - The panel is a small chat window, not a launcher bar. It opens at 640 by 560 points, the owner can move and resize it, and it comes back where it was left, across summons and launches.
+  - The whole thread is scrollable history above the text field. It opens at the latest message and follows new output unless the owner has scrolled up.
+  - The owner's messages and the agent's replies sit in quiet boxes on opposite sides. Commands are small secondary lines between them, with their output behind a disclosure. A time label marks the first message of a new day or after a pause of 30 minutes or more.
+  - It stays light: a floating Liquid Glass panel with no title bar, sidebar, or conversation list. The text field has focus when it appears, Return sends, and Escape hides it.
 - Progress and dismissal
-  - The panel shows the current exchange: the instruction, each command as it runs with its output, and the reply.
+  - Each command shows as it runs, and the reply streams into place.
+  - The go-ahead card and the Stop button sit by the text field, outside the scrolling history.
   - Hiding the panel never stops a task. The menu bar icon shows when a task is running or waiting for a go-ahead. A Stop button and a menu item end it.
 - State lives where Mac apps keep theirs
   - Thread records, tool definitions, and everything else the agent owns go in `~/Library/Application Support/mac-os-agent/`.
@@ -58,4 +64,5 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
 ## Open
 
 - Which ChatGPT plans and models the sign-in token covers, and what OpenAI's terms say about third-party apps using it. Neither has been checked.
+- How far back the panel's history reaches once the thread is chunked by topic. For now it shows the whole file, with rows built lazily as they scroll into view.
 - Code signing. This machine has no signing identity, and without one macOS forgets Accessibility and Automation grants on every rebuild. The Keychain may also ask again for the stored sign-in after a rebuild.
