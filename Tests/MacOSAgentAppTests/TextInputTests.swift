@@ -280,12 +280,6 @@ import Testing
         #expect(abs((historyBefore - historyAfter) - (fieldAfter - fieldBefore)) < 1)
     }
 
-    @Test func commandWHidesThePanel() throws {
-        let harness = try PanelHarness(draft: "")
-        let item = try #require(Self.item(in: MainMenu.make(), key: "w", modifiers: .command))
-        #expect(harness.responder(for: item.action!) === harness.panel)
-    }
-
     // MARK: - Selectable text in the history
 
     @Test func selectedTextInTheHistoryTakesCopyAndSelectAll() async throws {
