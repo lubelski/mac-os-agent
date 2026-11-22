@@ -17,6 +17,10 @@ Nothing is built yet. This file records what has been decided so far.
   - The agent loop is ours: a while loop and tool calls, talking to the model API directly.
   - No dependency on pi or any other coding agent. Pi is an influence on the design, not a component.
   - The agent has no working directory, project, or session directory. Those are coding tool concepts.
+- OpenAI first, behind a seam
+  - The loop talks to models through a small provider interface, with one implementation per provider.
+  - The first and only provider for now is OpenAI, using "Sign in with ChatGPT" and the Responses API. There is no API key to manage.
+  - The app registers as its own client at sign-in. It does not reuse the Codex CLI's client or the ChatGPT backend.
 - Its own tools
   - The agent runs with a set of tools that it can modify itself.
 - State lives where Mac apps keep theirs
@@ -37,6 +41,7 @@ Nothing is built yet. This file records what has been decided so far.
 
 ## Open
 
-- Which model, and where the API key comes from.
+- Which OpenAI model is the default. Speed matters more than depth here.
+- Which ChatGPT plans and models the sign-in token covers, and what OpenAI's terms say about third-party apps using it. Neither has been checked.
 - How a multistep task shows its progress, and what happens when the panel is dismissed while one is running.
 - Code signing. This machine has no signing identity, and without one macOS forgets Accessibility and Automation grants on every rebuild.
