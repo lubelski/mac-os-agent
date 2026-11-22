@@ -80,6 +80,24 @@ import Testing
         #expect(ToolCallState(status: .finished, output: "nope\n[exit status 1]") == .failed("nope"))
         #expect(ToolCallState(status: .finished, output: ShellCommandTool.declinedOutput) == .declined)
         #expect(ToolCallState(status: .finished, output: ShellCommandTool.stoppedBeforeRunningOutput) == .stopped)
+        // The native tools that ask decline in their own words.
+        #expect(ToolCallState(status: .finished, output: "The owner declined. Nothing was changed.") == .declined)
+        #expect(ToolCallState(status: .finished, output: "The owner declined. Safari is still running.") == .declined)
+    }
+
+    @Test func theWaitingLineSaysWhatTheGoAheadIsFor() {
+        let reminders = ConfirmationRequest(
+            callID: "r", kind: .reminderChanges, body: .changes([.init(.delete, "\"Buy eggs\" from Groceries")]),
+            reason: "deletes a reminder")
+        let state = ToolCallState.waitingForConfirmation
+        #expect(state.branchText(pendingGoAhead: reminders, callID: "r") == "waiting for your go-ahead to delete a reminder")
+        #expect(state.accessibilityText(pendingGoAhead: reminders, callID: "r") == "Waiting for your go-ahead to delete a reminder")
+        // Another row, or no request in view, keeps the plain words.
+        #expect(state.branchText(pendingGoAhead: reminders, callID: "other") == "waiting for your go-ahead")
+        #expect(state.branchText(pendingGoAhead: nil, callID: "r") == "waiting for your go-ahead")
+        #expect(ToolCallState.running.branchText(pendingGoAhead: reminders, callID: "r") == "running")
+        let shell = ConfirmationRequest(callID: "s", command: "rm -rf ~/old", reason: "deletes files")
+        #expect(state.branchText(pendingGoAhead: shell, callID: "s") == "waiting for your go-ahead")
     }
 
     @Test func onlyStatesThatNeedASecondLineHaveOne() {

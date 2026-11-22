@@ -40,7 +40,8 @@ public struct SearchHistoryTool: AgentTool {
     }
 
     public func summary(arguments: JSONValue) -> String {
-        "Search history for \(arguments["query"]?.stringValue ?? "")"
+        guard let query = arguments["query"]?.trimmedString, !query.isEmpty else { return "Search history" }
+        return "Search history for \"\(query)\""
     }
 
     public func run(arguments: JSONValue, context: ToolRunContext) async -> String {
@@ -115,7 +116,11 @@ public struct ReadEpisodeTool: AgentTool {
     }
 
     public func summary(arguments: JSONValue) -> String {
-        "Read episode \(arguments["episode"]?.numberValue.map { String(Int($0)) } ?? "")"
+        guard let episode = arguments["episode"]?.numberValue.map({ Int($0) }) else { return "Read an episode" }
+        if let line = arguments["from_line"]?.numberValue.map({ Int($0) }), line > 1 {
+            return "Read episode \(episode) from line \(line)"
+        }
+        return "Read episode \(episode)"
     }
 
     public func run(arguments: JSONValue, context: ToolRunContext) async -> String {
@@ -224,8 +229,8 @@ public struct EpisodeLine: Sendable, Equatable, Identifiable {
     public var text: String
 
     /// The lines of an episode. Reasoning, results, and the marker are left out, and each
-    /// command takes its outcome from its result.
-    public static func lines(of episode: Episode, in contents: ThreadContents) -> [EpisodeLine] {
+    /// command takes its outcome from its result. A tool call reads as its row in the panel does.
+    public static func lines(of episode: Episode, in contents: ThreadContents, summaries: ToolCallSummaries = .builtIn) -> [EpisodeLine] {
         var outcomes: [String: TranscriptRow.ToolOutcome] = [:]
         for entry in contents.entries[episode.range] {
             if case .toolResult(let result) = entry.item {
@@ -240,7 +245,7 @@ public struct EpisodeLine: Sendable, Equatable, Identifiable {
                 EpisodeLine(id: entry.id, date: entry.date, kind: .agent, text: message.text)
             case .toolCall(let call):
                 EpisodeLine(id: entry.id, date: entry.date, kind: .command(outcomes[call.callID] ?? .unknown),
-                            text: HistorySearchText.command(of: call))
+                            text: summaries.summary(of: call))
             default:
                 nil
             }
@@ -260,12 +265,18 @@ public struct EpisodeListItem: Sendable, Equatable, Identifiable {
         contents.episodes.reversed().filter(\.hasActivity).map { EpisodeListItem(episode: $0) }
     }
 
-    /// The episodes that match a search, best first, each once, with its best match.
-    public static func matching(_ matches: [HistoryMatch]) -> [EpisodeListItem] {
+    /// The episodes that match a search, best first, each once, with its best match. A tool
+    /// call that matched reads as its row in the panel does.
+    public static func matching(_ matches: [HistoryMatch], summaries: ToolCallSummaries = .builtIn) -> [EpisodeListItem] {
         var seen = Set<UUID>()
         return matches.compactMap { match in
             guard seen.insert(match.episode.id).inserted else { return nil }
-            let text = HistorySearchText.of(match.entry.item)?.text ?? ""
+            let text: String
+            if case .toolCall(let call) = match.entry.item {
+                text = summaries.summary(of: call)
+            } else {
+                text = HistorySearchText.of(match.entry.item)?.text ?? ""
+            }
             return EpisodeListItem(episode: match.episode, match: HistoryText.clipped(text, limit: 200))
         }
     }

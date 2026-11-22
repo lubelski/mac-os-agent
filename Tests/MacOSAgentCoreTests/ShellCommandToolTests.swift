@@ -161,6 +161,19 @@ import Testing
         #expect(output.contains("declined"))
     }
 
+    @Test func theGoAheadReadsAsACommandToRun() async throws {
+        let recorder = GoAheadRecorder(answer: false)
+        _ = await ShellCommandTool().run(arguments: ["command": "rm /nonexistent/mac-os-agent-test", "destructive": true], context: recorder.context)
+        let request = try #require(recorder.requests.first)
+        #expect(request.kind == .shellCommand)
+        #expect(request.body == .command("rm /nonexistent/mac-os-agent-test"))
+        #expect(request.prompt == "Run this command? It deletes files.")
+        #expect(request.approveTitle == "Run")
+        #expect(request.declineTitle == "Don’t Run")
+        #expect(request.waitingText == "waiting for your go-ahead")
+        #expect(request.text == "rm /nonexistent/mac-os-agent-test")
+    }
+
     @Test func theSchemaRequiresTheDestructiveFlag() {
         let parameters = ShellCommandTool().definition.parameters
         #expect(parameters["required"] == ["command", "destructive"])

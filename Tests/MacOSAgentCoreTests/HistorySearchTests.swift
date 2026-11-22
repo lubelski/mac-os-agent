@@ -10,12 +10,13 @@ import Testing
         let store = try ThreadStore(fileURL: file, searchIndexURL: index ? indexURL : nil)
         try await store.append(.episodeStart(.init(reason: .requested)))
         try await store.append(.userMessage(text: "find the dark mode thing from before"))
+        if index { await store.waitForSearchIndex() }
         return (store, indexURL)
     }
 
     @Test func messagesRepliesAndCommandsAreFound() async throws {
         let (store, _) = try await history()
-        #expect(await store.hasSearchIndex)
+        #expect(await store.waitForSearchIndex())
         #expect(await store.search("eating disk").map(\.position) == [0])
         #expect(await store.search("Movies").map(\.position).contains(3))
         #expect(await store.search("du").map(\.position) == [1])
@@ -51,18 +52,22 @@ import Testing
             try await unindexed.append(assistant("The wallpaper is a sunset now."))
         }
         let reopened = try ThreadStore(fileURL: file, searchIndexURL: indexURL)
+        #expect(await reopened.waitForSearchIndex())
         #expect(await reopened.search("wallpaper").map(\.position) == [12])
 
         // An index that belongs to another thread is rebuilt.
         let other = try ThreadStore(fileURL: temporaryThreadFile(), searchIndexURL: indexURL)
+        #expect(await other.waitForSearchIndex())
         try await other.append(.userMessage(text: "unrelated"))
         let rebuilt = try ThreadStore(fileURL: file, searchIndexURL: indexURL)
+        #expect(await rebuilt.waitForSearchIndex())
         #expect(await rebuilt.search("unrelated").isEmpty)
         #expect(await rebuilt.search("wallpaper").map(\.position) == [12])
 
         // A deleted index is rebuilt too.
         try FileManager.default.removeItem(at: indexURL)
         let fresh = try ThreadStore(fileURL: file, searchIndexURL: indexURL)
+        #expect(await fresh.waitForSearchIndex())
         #expect(await fresh.search("battery").map(\.position) == [8])
     }
 
@@ -111,6 +116,59 @@ import Testing
         #expect(first.hasSuffix("Lines 1 to 60 of 70. Call read_episode with from_line 61 for more."))
         let second = await tool.run(arguments: ["episode": 1, "from_line": 61], context: ToolRunContext(callID: "c", confirm: { _ in true }))
         #expect(second.hasSuffix("message 70"))
+    }
+
+    @Test func openingALargeThreadDoesNotWaitForTheIndex() async throws {
+        let file = temporaryThreadFile()
+        try writeLargeThread(count: 40_000, to: file)
+        let indexURL = file.deletingLastPathComponent().appending(path: "history-index.sqlite")
+        let clock = ContinuousClock()
+
+        // Loading the thread alone is the floor. Opening with an index to build is about the same.
+        var plain: ThreadStore?
+        let loadOnly = try clock.measure { plain = try ThreadStore(fileURL: file) }
+        var store: ThreadStore?
+        let withIndex = try clock.measure { store = try ThreadStore(fileURL: file, searchIndexURL: indexURL) }
+        let opened = try #require(store)
+        #expect(await plain?.entries.count == 40_000)
+        #expect(await opened.entries.count == 40_000)
+        // It returned before the index was built, and took about as long as loading alone.
+        #expect(await !opened.hasSearchIndex)
+        #expect(withIndex < loadOnly * 2 + .milliseconds(100), "loading took \(loadOnly), with the index \(withIndex)")
+
+        // Search works before the index is ready, by reading the entries.
+        let early = await opened.search("report 39996")
+        #expect(early.map(\.position) == [39_996])
+
+        // Once it is ready, every match is found through it.
+        #expect(await opened.waitForSearchIndex())
+        let all = await opened.search("garden", limit: 20_000)
+        #expect(all.count == 10_000)
+        #expect(Set(all.map(\.position)) == Set(stride(from: 0, to: 40_000, by: 4)))
+        #expect(await opened.search("report 39996").map(\.position) == [39_996])
+    }
+
+    @Test func anAppendDuringARebuildIsIndexedOnce() async throws {
+        let file = temporaryThreadFile()
+        try writeLargeThread(count: 40_000, to: file)
+        let indexURL = file.deletingLastPathComponent().appending(path: "history-index.sqlite")
+        let store = try ThreadStore(fileURL: file, searchIndexURL: indexURL)
+        // The rebuild of 40,000 entries is still running when these arrive.
+        #expect(await !store.hasSearchIndex)
+        try await store.append(.userMessage(text: "the zucchini harvest"))
+        try await store.append(assistant("Zucchini noted for the harvest."))
+        #expect(await store.search("zucchini").map(\.position).sorted() == [40_000, 40_001])
+
+        #expect(await store.waitForSearchIndex())
+        #expect(await store.search("zucchini").map(\.position).sorted() == [40_000, 40_001])
+        try await store.append(.userMessage(text: "one more zucchini"))
+        #expect(await store.search("zucchini", limit: 10).map(\.position).sorted() == [40_000, 40_001, 40_002])
+
+        // The file holds each entry once and matches the thread, so the next open only checks it.
+        let reopened = try ThreadStore(fileURL: file, searchIndexURL: indexURL)
+        #expect(await reopened.waitForSearchIndex())
+        #expect(await reopened.search("zucchini", limit: 10).map(\.position).sorted() == [40_000, 40_001, 40_002])
+        #expect(await reopened.search("garden", limit: 20_000).count == 10_000)
     }
 
     @Test func searchStaysFastOnALongThread() async throws {

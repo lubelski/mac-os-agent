@@ -144,13 +144,18 @@ struct ToolLine: View {
     let state: ToolCallState
     let output: String?
     @Environment(ToolInspector.self) private var inspector: ToolInspector?
+    @Environment(\.pendingGoAhead) private var pendingGoAhead
 
     private var isSelected: Bool { inspector?.selectedCallID == callID }
+
+    private var branchText: String? {
+        state.branchText(pendingGoAhead: pendingGoAhead, callID: callID)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             header
-            if let branch = state.branchText {
+            if let branch = branchText {
                 BranchLine(text: branch, style: isFailed ? .secondary : .tertiary)
                     .accessibilityHidden(true)
             }
@@ -210,7 +215,7 @@ struct ToolLine: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(command.isEmpty ? "Preparing a command" : "Command: \(command)")
-        .accessibilityValue(state.accessibilityText)
+        .accessibilityValue(state.accessibilityText(pendingGoAhead: pendingGoAhead, callID: callID))
         .accessibilityAction(named: "Copy command") { MessageActions.copy(command) }
     }
 
@@ -250,4 +255,9 @@ struct StatusLine: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(isError ? "Error: \(text)" : text)
     }
+}
+
+extension EnvironmentValues {
+    /// The go-ahead the task is waiting on, so its tool row can say what it waits for.
+    @Entry var pendingGoAhead: ConfirmationRequest? = nil
 }

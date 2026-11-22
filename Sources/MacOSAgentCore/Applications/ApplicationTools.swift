@@ -35,7 +35,8 @@ public struct SearchApplicationsTool: AgentTool {
     }
 
     public func summary(arguments: JSONValue) -> String {
-        "Search applications for \"\(arguments["query"]?.stringValue ?? "")\""
+        guard let query = arguments["query"]?.trimmedString, !query.isEmpty else { return "Search applications" }
+        return "Search applications for \"\(query)\""
     }
 
     public func run(arguments: JSONValue, context: ToolRunContext) async -> String {
@@ -104,7 +105,12 @@ public struct OpenApplicationTool: AgentTool {
     }
 
     public func summary(arguments: JSONValue) -> String {
-        "Open \(arguments["bundle_identifier_or_path"]?.stringValue ?? "an application")"
+        guard let target = arguments["bundle_identifier_or_path"]?.trimmedString, !target.isEmpty else { return "Open an application" }
+        // A path reads as the app's name, such as Safari for /Applications/Safari.app.
+        if target.hasPrefix("/") || target.hasPrefix("~") {
+            return "Open \(URL(filePath: target).deletingPathExtension().lastPathComponent)"
+        }
+        return "Open \(target)"
     }
 
     public func run(arguments: JSONValue, context: ToolRunContext) async -> String {

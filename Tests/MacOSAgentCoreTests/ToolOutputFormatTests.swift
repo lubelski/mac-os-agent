@@ -452,6 +452,19 @@ import Testing
         ])
     }
 
+    @Test func theGoAheadOfAToolThatIsNotTheShellShowsWithItsAnswer() {
+        let approved = ToolRunDetails(seconds: 2, waitedSeconds: 1.5, goAhead: .approved, source: "Built In")
+        let changed = call("Deleted \"Buy eggs\" from Groceries.", details: approved, name: "change_reminders")
+        #expect(changed.status == .succeeded)
+        #expect(changed.goAheadText == "Asked, approved after 1.5 s")
+        let declined = call("The owner declined. Nothing was changed.", details: ToolRunDetails(goAhead: .declined), name: "change_reminders")
+        #expect(declined.status == .declined)
+        #expect(declined.metadata(now: Date(), timeText: { _ in "" }).contains(.init("Go-ahead", "Asked, declined")))
+        // A result stored before go-aheads were recorded still reads as declined.
+        #expect(call("The owner declined. Safari is still running.", name: "quit_or_hide_application").goAheadText == "Asked, declined")
+        #expect(call(nil, status: .waitingForConfirmation, name: "change_theme").goAheadText == "Asked, waiting for an answer")
+    }
+
     @Test func aRunningCallShowsHowLongItHasRun() {
         var running = call(nil, status: .running)
         running.facts.runningSince = Date(timeIntervalSince1970: 100)

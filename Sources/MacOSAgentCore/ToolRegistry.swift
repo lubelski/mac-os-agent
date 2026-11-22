@@ -24,6 +24,38 @@ public struct ToolRegistry: Sendable {
     }
 
     public var definitions: [ToolDefinition] { tools.map(\.definition) }
+
+    /// The one-line summaries of calls to these tools.
+    public var summaries: ToolCallSummaries { ToolCallSummaries(tools) }
+}
+
+/// The one-line summary a tool call's row shows, such as the command being run or the app
+/// being opened, taken from the tool's own `summary(arguments:)`. A row rebuilt from the
+/// saved thread reads the same as it did while the call ran. A call to a tool that no longer
+/// exists, or whose arguments cannot be read, shows the tool's name.
+public struct ToolCallSummaries: Sendable {
+    private let tools: [String: any AgentTool]
+
+    public init(_ tools: [any AgentTool]) {
+        self.tools = Dictionary(tools.map { ($0.definition.name, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// The app's built-in tools. Only their summaries are used, which read nothing but the
+    /// arguments, so nothing here touches the thread, Reminders, Calendar, or the system.
+    public static let builtIn = ToolRegistry(builtIn: BuiltInTools.make()).summaries
+
+    /// The summary of a stored call.
+    public func summary(of call: ThreadItem.ToolCall) -> String {
+        summary(name: call.name, arguments: call.arguments)
+    }
+
+    /// The summary of a call to the tool named `name` with these arguments, as the model wrote them.
+    public func summary(name: String, arguments: String) -> String {
+        guard let tool = tools[name], let parsed = JSONValue.parse(arguments), case .object = parsed else { return name }
+        // The same text the live row shows, so a shell command keeps its lines for Copy Command.
+        let text = tool.summary(arguments: parsed)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? name : text
+    }
 }
 
 /// The tools that ship with the app. Add new ones at the end, so the order of the existing ones

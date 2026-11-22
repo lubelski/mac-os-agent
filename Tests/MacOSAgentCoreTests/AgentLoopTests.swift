@@ -158,7 +158,7 @@ import Testing
         let asked = EventLog()
 
         try await loop.run("touch it", onEvent: { _ in }, confirm: { request in
-            asked.record(.toolRunning(callID: request.callID, summary: request.command))
+            asked.record(.toolRunning(callID: request.callID, summary: request.text))
             return false
         })
 
@@ -178,7 +178,7 @@ import Testing
         let asked = EventLog()
 
         try await loop.run("say hello", onEvent: { _ in }, confirm: { request in
-            asked.record(.toolRunning(callID: request.callID, summary: request.command))
+            asked.record(.toolRunning(callID: request.callID, summary: request.text))
             return true
         })
 

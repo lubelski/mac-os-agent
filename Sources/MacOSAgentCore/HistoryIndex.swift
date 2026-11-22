@@ -60,8 +60,10 @@ enum HistorySearchText {
 /// many entries it covers and the id of the last one, so on open it adds what it is missing,
 /// or starts over when it does not match the thread. Deleting the file is always safe.
 ///
-/// It belongs to one `ThreadStore` and is only used from inside that actor.
-final class HistoryIndex {
+/// It is opened and brought up to date off the main thread, then handed to one `ThreadStore`
+/// and only used from inside that actor. It is never used from two places at once, which is
+/// why it can cross between them.
+final class HistoryIndex: @unchecked Sendable {
     static let formatVersion = "1"
 
     private var database: OpaquePointer?
@@ -72,6 +74,9 @@ final class HistoryIndex {
             sqlite3_close(database)
             throw IndexError.cannotOpen
         }
+        // Another store opening the same file, such as one from an earlier launch still
+        // finishing, holds the lock for a moment. Wait for it rather than fail.
+        sqlite3_busy_timeout(database, 5_000)
         try execute("""
             CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE VIRTUAL TABLE IF NOT EXISTS passages USING fts5(
@@ -118,6 +123,16 @@ final class HistoryIndex {
             throw error
         }
         coveredCount = entries.count
+    }
+
+    /// Adds the entries after the ones the index covers, such as those appended while it was
+    /// being built. An entry it already covers is never added twice.
+    func catchUp(with entries: [ThreadEntry]) {
+        while coveredCount < entries.count {
+            let before = coveredCount
+            add(entries[coveredCount], position: coveredCount)
+            if coveredCount == before { return }
+        }
     }
 
     /// Adds one new entry at the end of the thread. A failure leaves the index behind the

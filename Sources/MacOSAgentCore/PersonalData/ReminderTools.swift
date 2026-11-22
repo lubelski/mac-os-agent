@@ -167,7 +167,7 @@ public struct ChangeRemindersTool: AgentTool {
             if change["completed"]?.boolValue == true { return "Complete a reminder" }
             return "Change reminder\(title)"
         }
-        return "Change \(changes.count) reminders"
+        return changes.isEmpty ? "Change reminders" : "Change \(changes.count) reminders"
     }
 
     enum Kind: Equatable { case create, update, delete }
@@ -176,7 +176,16 @@ public struct ChangeRemindersTool: AgentTool {
         var kind: Kind
         var reminder: Reminder
         var dueChanged: Bool
-        var description: String
+        /// What the change is to, after its action's word.
+        var subject: String
+
+        /// The change for the go-ahead card.
+        var change: ConfirmationRequest.Change {
+            ConfirmationRequest.Change(kind == .create ? .create : kind == .delete ? .delete : .change, subject)
+        }
+
+        /// The change in one line, as the results name it.
+        var description: String { change.text }
     }
 
     public func run(arguments: JSONValue, context: ToolRunContext) async -> String {
@@ -214,7 +223,7 @@ public struct ChangeRemindersTool: AgentTool {
         let deletions = plans.filter { $0.kind == .delete }.count
         if let reason = Self.reasonToConfirm(count: plans.count, deletions: deletions, noun: "reminder") {
             let approved = await context.confirm(ConfirmationRequest(
-                callID: context.callID, command: plans.map(\.description).joined(separator: "\n"), reason: reason))
+                callID: context.callID, kind: .reminderChanges, body: .changes(plans.map(\.change)), reason: reason))
             if !approved { return "The owner declined. Nothing was changed." }
         }
         if Task.isCancelled { return "The task was stopped before anything was changed." }
@@ -266,7 +275,7 @@ public struct ChangeRemindersTool: AgentTool {
             reminder = existing
             if delete {
                 return Plan(kind: .delete, reminder: existing, dueChanged: false,
-                            description: "Delete \"\(existing.title)\" from \(names[existing.listID] ?? "its list")")
+                            subject: "\"\(existing.title)\" from \(names[existing.listID] ?? "its list")")
             }
             guard !given.isEmpty else { throw ToolInputError("the change for \(short) has nothing to change.") }
             kind = .update
@@ -335,16 +344,16 @@ public struct ChangeRemindersTool: AgentTool {
         }
 
         let listName = names[reminder.listID] ?? "its list"
-        let description: String
+        let subject: String
         if kind == .create {
             var details = [String]()
             if let due = reminder.due { details.append("due \(ReminderText.dueText(due, dates: dates))") }
             if reminder.priority > 0 { details.append("\(ReminderText.priorityName(reminder.priority)) priority") }
-            description = "Create \"\(reminder.title)\" in \(listName)" + (details.isEmpty ? "" : ", " + details.joined(separator: ", "))
+            subject = "\"\(reminder.title)\" in \(listName)" + (details.isEmpty ? "" : ", " + details.joined(separator: ", "))
         } else {
-            description = "Change \"\(reminder.title)\" in \(listName): " + (edits.isEmpty ? "no visible change" : edits.joined(separator: ", "))
+            subject = "\"\(reminder.title)\" in \(listName): " + (edits.isEmpty ? "no visible change" : edits.joined(separator: ", "))
         }
-        return Plan(kind: kind, reminder: reminder, dueChanged: dueChanged, description: description)
+        return Plan(kind: kind, reminder: reminder, dueChanged: dueChanged, subject: subject)
     }
 
     private func find(_ short: String, everyReminder: inout [Reminder]?) async throws -> Reminder? {

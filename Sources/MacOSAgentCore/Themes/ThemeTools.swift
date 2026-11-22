@@ -118,11 +118,13 @@ public struct ChangeThemeTool: AgentTool {
     public func summary(arguments: JSONValue) -> String {
         let id = arguments["theme_id"]?.trimmedString
         switch arguments["action"]?.stringValue {
-        case "apply": return "Apply the theme \(id ?? "")"
-        case "delete": return "Delete the theme \(id ?? "")"
+        case "apply": return id.flatMap { $0.isEmpty ? nil : "Apply the theme \($0)" } ?? "Apply a theme"
+        case "delete": return id.flatMap { $0.isEmpty ? nil : "Delete the theme \($0)" } ?? "Delete a theme"
         default:
-            let name = arguments["file"]?.stringValue.flatMap(JSONValue.parse)?["name"]?.stringValue
-            return "Save the theme \(name ?? id ?? "")"
+            let name = arguments["file"]?.stringValue.flatMap(JSONValue.parse)?["name"]?.trimmedString
+            let verb = arguments["action"]?.stringValue == "save_and_apply" ? "Save and apply" : "Save"
+            guard let named = [name, id].compactMap({ $0 }).first(where: { !$0.isEmpty }) else { return "\(verb) a theme" }
+            return "\(verb) the theme \(named)"
         }
     }
 
@@ -145,7 +147,8 @@ public struct ChangeThemeTool: AgentTool {
             guard let entry = library.find(id) else { return missing(id) }
             if entry.isBuiltIn { return "Error: \(entry.name) is a built-in theme, which cannot be deleted." }
             let approved = await context.confirm(ConfirmationRequest(
-                callID: context.callID, command: "Delete the theme \(entry.name) (themes/\(entry.id).json)", reason: "deletes a theme"))
+                callID: context.callID, kind: .deleteTheme, body: .item(name: entry.name, detail: "themes/\(entry.id).json"),
+                reason: "removes its file from the themes folder"))
             guard approved else { return "The owner declined. \(entry.name) is still there." }
             if Task.isCancelled { return "The task was stopped before \(entry.name) was deleted." }
             do {

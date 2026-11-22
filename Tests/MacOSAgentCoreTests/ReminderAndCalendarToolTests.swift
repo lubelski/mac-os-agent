@@ -262,13 +262,20 @@ private func change(
         #expect(store.reminderReads == 1)
     }
 
-    @Test func deletingAsksFirstAndDecliningChangesNothing() async {
+    @Test func deletingAsksFirstAndDecliningChangesNothing() async throws {
         let store = reminderStore()
         let goAhead = GoAheadRecorder(answer: false)
         let output = await tool(store).run(arguments: ["changes": [change(id: short("R-EGGS"), delete: true)]], context: goAhead.context)
         #expect(output == "The owner declined. Nothing was changed.")
         #expect(goAhead.requests.map(\.reason) == ["deletes a reminder"])
-        #expect(goAhead.requests.first?.command == "Delete \"Buy eggs\" from Groceries")
+        #expect(goAhead.requests.first?.text == "Delete \"Buy eggs\" from Groceries")
+        let request = try #require(goAhead.requests.first)
+        #expect(request.kind == .reminderChanges)
+        #expect(request.body == .changes([.init(.delete, "\"Buy eggs\" from Groceries")]))
+        #expect(request.prompt == "Make this change in Reminders? It deletes a reminder.")
+        #expect(request.approveTitle == "Make Change")
+        #expect(request.declineTitle == "Don’t Change")
+        #expect(request.waitingText == "waiting for your go-ahead to delete a reminder")
         #expect(store.deletedReminders.isEmpty)
     }
 
@@ -289,11 +296,20 @@ private func change(
         ]], context: goAhead.context)
         #expect(goAhead.requests.count == 1)
         #expect(goAhead.requests[0].reason == "changes 3 reminders at once")
-        #expect(goAhead.requests[0].command == """
+        #expect(goAhead.requests[0].text == """
             Change "Buy milk" in Groceries: mark done
             Change "Buy eggs" in Groceries: mark done
             Create "Buy bread" in Groceries
             """)
+        // The card lists each change on its own line, with its kind first.
+        #expect(goAhead.requests[0].body == .changes([
+            .init(.change, "\"Buy milk\" in Groceries: mark done"),
+            .init(.change, "\"Buy eggs\" in Groceries: mark done"),
+            .init(.create, "\"Buy bread\" in Groceries"),
+        ]))
+        #expect(goAhead.requests[0].prompt == "Make these 3 changes in Reminders? It changes 3 reminders at once.")
+        #expect(goAhead.requests[0].approveTitle == "Make Changes")
+        #expect(goAhead.requests[0].waitingText == "waiting for your go-ahead to make 3 changes in Reminders")
         #expect(output.split(separator: "\n").count == 3)
         #expect(store.savedReminders.count == 3)
     }
@@ -499,7 +515,10 @@ private let standupMonday = "\(short("E-STANDUP"))-202611231730"
         let goAhead = GoAheadRecorder(answer: true)
         _ = await tool(store).run(arguments: ["changes": [eventChange(id: standupMonday, title: "Team standup", includeFuture: true)]], context: goAhead.context)
         #expect(goAhead.requests.map(\.reason) == ["changes a repeating event from this occurrence on"])
-        #expect(goAhead.requests.first?.command == "Change \"Standup\" (Mon 2026-11-23 09:30 to 09:45) and its later occurrences: title \"Team standup\"")
+        #expect(goAhead.requests.first?.text == "Change \"Standup\" (Mon 2026-11-23 09:30 to 09:45) and its later occurrences: title \"Team standup\"")
+        #expect(goAhead.requests.first?.kind == .eventChanges)
+        #expect(goAhead.requests.first?.prompt == "Make this change in Calendar? It changes a repeating event from this occurrence on.")
+        #expect(goAhead.requests.first?.waitingText == "waiting for your go-ahead to change an event")
         #expect(store.savedEvents.first?.1 == true)
     }
 
@@ -509,7 +528,10 @@ private let standupMonday = "\(short("E-STANDUP"))-202611231730"
         #expect(await tool(store).run(arguments: ["changes": [eventChange(id: short("E-LUNCH"), delete: true)]], context: declined.context)
             == "The owner declined. Nothing was changed.")
         #expect(declined.requests.first?.reason == "deletes an event")
-        #expect(declined.requests.first?.command == "Delete \"Lunch with Sam\" (Sat 2026-11-21 12:00 to 13:00) from Home")
+        #expect(declined.requests.first?.text == "Delete \"Lunch with Sam\" (Sat 2026-11-21 12:00 to 13:00) from Home")
+        #expect(declined.requests.first?.body == .changes([.init(.delete, "\"Lunch with Sam\" (Sat 2026-11-21 12:00 to 13:00) from Home")]))
+        #expect(declined.requests.first?.prompt == "Make this change in Calendar? It deletes an event.")
+        #expect(declined.requests.first?.waitingText == "waiting for your go-ahead to delete an event")
         #expect(store.deletedEvents.isEmpty)
 
         let approved = GoAheadRecorder(answer: true)

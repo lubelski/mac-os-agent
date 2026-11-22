@@ -178,6 +178,25 @@ public enum ToolCallState: Equatable, Sendable {
         }
     }
 
+    /// The words on the branch line, worded by the go-ahead the call is waiting on when it is
+    /// this row's. The shell tool's reads "waiting for your go-ahead", and a reminder change
+    /// reads "waiting for your go-ahead to delete a reminder".
+    public func branchText(pendingGoAhead: ConfirmationRequest?, callID: String) -> String? {
+        if self == .waitingForConfirmation, let pendingGoAhead, pendingGoAhead.callID == callID {
+            return pendingGoAhead.waitingText
+        }
+        return branchText
+    }
+
+    /// How VoiceOver names the state, worded by the go-ahead the call waits on like the branch line.
+    public func accessibilityText(pendingGoAhead: ConfirmationRequest?, callID: String) -> String {
+        if self == .waitingForConfirmation, let pendingGoAhead, pendingGoAhead.callID == callID {
+            let text = pendingGoAhead.waitingText
+            return text.prefix(1).uppercased() + text.dropFirst()
+        }
+        return accessibilityText
+    }
+
     /// How VoiceOver names the state.
     public var accessibilityText: String {
         switch self {
