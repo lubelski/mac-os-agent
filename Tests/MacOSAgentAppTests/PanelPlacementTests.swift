@@ -566,10 +566,12 @@ final class WindowRecorder {
         #expect(!panel.hidesOnDeactivate)
     }
 
-    @Test func thePanelFloatsOnEverySpaceAndOverFullScreenApps() throws {
+    /// It joins every Space and a full screen app's Space at any level. At rest without focus
+    /// it is an ordinary window. See `PanelLayeringTests` for when it floats.
+    @Test func thePanelJoinsEverySpaceAndFullScreenApps() throws {
         let (panel, defaults) = try makePanel()
         defer { cleanUp(defaults) }
-        #expect(panel.level == .floating)
+        #expect(panel.level == .normal)
         #expect(panel.collectionBehavior.contains(.canJoinAllSpaces))
         #expect(panel.collectionBehavior.contains(.fullScreenAuxiliary))
         #expect(panel.styleMask.contains(.nonactivatingPanel))

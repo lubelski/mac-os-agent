@@ -21,6 +21,11 @@ import SwiftUI
 /// cuts it off at that edge. That is how it leaves at the edge instead of travelling across a
 /// display beside this one.
 ///
+/// It is above other windows only while it has focus, or always when Keep on Top is on, and
+/// the app's own windows, such as Settings, always come in front of it. Once another window
+/// is brought forward it layers like an ordinary window and stays open underneath. See
+/// `PanelLayering` and the layering section below.
+///
 /// The incognito window is the same panel with the `.incognito` role. It has no layouts and
 /// no slide, keeps nothing about its place, and opens beside the main panel. Closing it, with
 /// the close button or Command-W, discards its conversation, so Escape never closes it.
@@ -105,6 +110,31 @@ final class SummonPanel: NSPanel {
     /// Stretches every slide in time, for a preview that shows the motion slowly.
     var slideTimeScale: Double = 1
 
+    /// Keep on Top, shared by both panels. Only the main panel's layout menu changes it.
+    let keepOnTop: KeepOnTopSetting
+    /// Whether the panel or its inspector has keyboard focus. Tests stand in their own.
+    var hasFocus: (SummonPanel) -> Bool = { $0.isKeyWindow || $0.inspectorWindow.isKeyWindow }
+    /// True when focus has gone to another app: no window of this app is key and the
+    /// frontmost app is another one.
+    var anotherApplicationHasFocus: () -> Bool = {
+        NSApp.keyWindow == nil
+            && NSWorkspace.shared.frontmostApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier
+    }
+    /// The window number of the frontmost app's front ordinary window, to order the panel
+    /// below when it drops behind that app.
+    var frontmostApplicationWindow: () -> Int? = { SummonPanel.frontWindowOfFrontmostApplication() }
+    /// Orders the panel below a window, by window number. Tests stand in a recorder.
+    var orderBelow: (SummonPanel, Int) -> Void = { panel, number in panel.order(.below, relativeTo: number) }
+    /// Holds the panel above ordinary windows without focus, for previews, which never take
+    /// focus and are captured over whatever is on screen.
+    var floatsWithoutFocus = false
+    /// The layer the panel is in now.
+    private(set) var layer: PanelLayer = .ordinary
+    /// The app's own window, such as Settings, that took focus after the panel did.
+    private var ownWindowInFront = OwnWindowInFront<ObjectIdentifier>()
+    private weak var ownWindowInFrontWindow: NSWindow?
+    private var layeringUpdateIsScheduled = false
+
     /// True once the panel has a frame on screen, restored or placed.
     private var hasBeenPlaced = false
     /// True while the panel moves itself, so the move is not taken for the owner's drag.
@@ -133,8 +163,11 @@ final class SummonPanel: NSPanel {
     ///     the panel remembers its frame, and to memory only when it does not.
     ///   - screens: the screens to place the panel on. Defaults to the connected displays.
     ///   - mouseLocation: where the mouse is. Defaults to the real one.
+    ///   - keepOnTop: Keep on Top. Defaults to the shared setting when the panel remembers its
+    ///     frame, and to one in memory only, off, when it does not.
     init(
         session: AgentSession, role: Role = .main, remembersFrame: Bool = true, placementDefaults: UserDefaults? = nil,
+        keepOnTop: KeepOnTopSetting? = nil,
         screens: @escaping () -> [Screen] = { NSScreen.screens.map { Screen(frame: $0.frame, visible: $0.visibleFrame) } },
         mouseLocation: @escaping () -> CGPoint = { NSEvent.mouseLocation }
     ) {
@@ -142,6 +175,7 @@ final class SummonPanel: NSPanel {
         self.session = session
         self.screens = screens
         self.mouseLocation = mouseLocation
+        self.keepOnTop = keepOnTop ?? (remembersFrame ? .shared : KeepOnTopSetting(defaults: nil))
         // Remembering where the incognito window was would be a trace of it.
         let remembersFrame = remembersFrame && role == .main
         defaults = role == .incognito ? nil : placementDefaults ?? (remembersFrame ? .standard : nil)
@@ -155,9 +189,9 @@ final class SummonPanel: NSPanel {
             backing: .buffered,
             defer: true)
         isFloatingPanel = true
-        // Above ordinary windows, on every Space, and over a full screen app, because it stays
-        // up while the owner works in other apps. Mission Control leaves it out.
-        level = .floating
+        // On every Space and over a full screen app, because it stays up while the owner works
+        // in other apps. Mission Control leaves it out. Its level follows focus, Keep on Top,
+        // and the app's own windows: see `updateLayering()`.
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         isOpaque = false
         backgroundColor = .clear
@@ -173,6 +207,13 @@ final class SummonPanel: NSPanel {
         placement.choose = { [weak self] preset in self?.choose(preset) }
         placement.close = { [weak self] in self?.closeButtonPressed() }
         placement.offersLayouts = role == .main
+        placement.keepsOnTop = self.keepOnTop.isOn
+        if role == .main {
+            // The incognito window shows that Keep on Top is on but never changes it, since it
+            // writes nothing to the preferences.
+            let setting = self.keepOnTop
+            placement.setKeepsOnTop = { setting.set($0) }
+        }
         inspectorWindow = ToolInspectorWindow(inspector: inspector, session: session, defaults: defaults)
         inspector.callIDs = { [weak session] in session?.transcript.toolCallIDs ?? [] }
         inspector.onChange = { [weak self] in self?.updateInspector() }
@@ -210,6 +251,11 @@ final class SummonPanel: NSPanel {
         center.addObserver(self, selector: #selector(frameDidChange), name: NSWindow.didMoveNotification, object: self)
         center.addObserver(self, selector: #selector(frameDidChange), name: NSWindow.didResizeNotification, object: self)
         center.addObserver(self, selector: #selector(screensDidChange), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        center.addObserver(self, selector: #selector(windowDidBecomeKey(_:)), name: NSWindow.didBecomeKeyNotification, object: nil)
+        center.addObserver(self, selector: #selector(windowDidResignKey(_:)), name: NSWindow.didResignKeyNotification, object: nil)
+        center.addObserver(self, selector: #selector(windowWillClose(_:)), name: NSWindow.willCloseNotification, object: nil)
+        center.addObserver(self, selector: #selector(keepOnTopDidChange), name: KeepOnTopSetting.didChange, object: self.keepOnTop)
+        applyLayer(PanelLayering.layer(for: layeringState))
     }
 
     /// An owner who had docked the panel with PR #17 finds it in the matching slide over, and
@@ -284,7 +330,9 @@ final class SummonPanel: NSPanel {
 
     /// Gives the panel keyboard focus where it is, with the text field ready.
     func focus() {
+        raiseForFocus()
         orderIn(self, true)
+        scheduleLayeringUpdate()
         isOrderedIn = true
         session.panelDidAppear()
     }
@@ -292,16 +340,22 @@ final class SummonPanel: NSPanel {
     /// Shows the panel for a screenshot without making it key, so the frontmost app keeps
     /// keyboard focus. A slide over panel slides in as it would on a summon.
     func showForPreview() {
+        floatsWithoutFocus = true
+        updateLayering()
         present(makeKey: false)
     }
 
     private func present(makeKey: Bool) {
+        // A summon brings the panel to the front, over a full screen app too. It is raised
+        // before it is ordered in, so its first frame is already in front.
+        if makeKey { raiseForFocus() }
         if isOrderedIn, var slide, slide.target == .hidden {
             // On its way out: turn around from where it is.
             slide.retarget(.shown)
             self.slide = slide
             isPresented = true
             orderIn(self, makeKey)
+            scheduleLayeringUpdate()
             return
         }
         let wasOrderedIn = isOrderedIn
@@ -321,6 +375,7 @@ final class SummonPanel: NSPanel {
         invalidateShadow()
         updateInspector()
         if slide == nil { reportMotion() }
+        scheduleLayeringUpdate()
     }
 
     /// Hides the panel. In slide over it slides out past its edge first. It never stops a task.
@@ -642,6 +697,7 @@ final class SummonPanel: NSPanel {
             return
         }
         placeInspector()
+        inspectorWindow.level = level
         if inspectorWindow.parent == nil {
             addChildWindow(inspectorWindow, ordered: .above)
         }
@@ -716,6 +772,122 @@ final class SummonPanel: NSPanel {
 
     /// Where the panel is when it has been placed, for a window that opens beside it.
     var placedFrame: CGRect? { hasBeenPlaced ? panelFrame : nil }
+
+    // MARK: - Layering
+
+    /// What decides the panel's layer now. See `PanelLayering`.
+    var layeringState: PanelLayeringState {
+        if let window = ownWindowInFrontWindow, !window.isVisible {
+            ownWindowInFront.windowClosed(ObjectIdentifier(window))
+            ownWindowInFrontWindow = nil
+        }
+        if ownWindowInFrontWindow == nil, let id = ownWindowInFront.window {
+            ownWindowInFront.windowClosed(id)
+        }
+        return PanelLayeringState(
+            hasFocus: hasFocus(self), keepsOnTop: keepOnTop.isOn || floatsWithoutFocus,
+            ownWindowInFront: ownWindowInFront.window != nil)
+    }
+
+    /// Puts the panel, and its inspector with it, in the layer its state calls for. When it
+    /// drops to the ordinary windows it goes below the window that took focus from it, since
+    /// a change of level alone would leave it in front of that window.
+    func updateLayering() {
+        layeringUpdateIsScheduled = false
+        let state = layeringState
+        let old = layer
+        let new = PanelLayering.layer(for: state)
+        applyLayer(new)
+        guard isVisible, let lowering = PanelLayering.lowering(
+            from: old, to: new, ownWindowInFront: state.ownWindowInFront,
+            anotherApplicationIsFrontmost: anotherApplicationHasFocus())
+        else { return }
+        switch lowering {
+        case .belowOwnWindow:
+            if let window = ownWindowInFrontWindow { orderBelow(self, window.windowNumber) }
+        case .belowFrontmostApplication:
+            if let number = frontmostApplicationWindow() { orderBelow(self, number) }
+        case .inPlace:
+            break
+        }
+    }
+
+    /// Focus moves in steps, such as from the panel to its inspector, and the window that
+    /// takes focus may be ordered front just after. The layer is worked out once things settle,
+    /// on the next turn of the run loop.
+    func scheduleLayeringUpdate() {
+        guard !layeringUpdateIsScheduled else { return }
+        layeringUpdateIsScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.updateLayering() }
+        }
+    }
+
+    /// Raises the panel at once for a summon, before it has focus, so it is ordered in on top.
+    private func raiseForFocus() {
+        ownWindowInFront.panelTookFocus()
+        ownWindowInFrontWindow = nil
+        applyLayer(.floating)
+    }
+
+    private func applyLayer(_ new: PanelLayer) {
+        layer = new
+        let level: NSWindow.Level = new == .floating ? .floating : .normal
+        if self.level != level { self.level = level }
+        if let inspectorWindow, inspectorWindow.level != level { inspectorWindow.level = level }
+        if placement.keepsOnTop != keepOnTop.isOn { placement.keepsOnTop = keepOnTop.isOn }
+    }
+
+    /// Whether a window is part of a summoned panel: a panel or an inspector, this one's or
+    /// the other window's. Focus moving between them is not the app's own window in front.
+    private static func isPartOfAPanel(_ window: NSWindow) -> Bool {
+        window is SummonPanel || window is ToolInspectorWindow
+    }
+
+    @objc private func windowDidBecomeKey(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        if window === self || window === inspectorWindow {
+            ownWindowInFront.panelTookFocus()
+            ownWindowInFrontWindow = nil
+        } else if !Self.isPartOfAPanel(window) {
+            // Settings, a sheet on it, an alert, or a file panel.
+            ownWindowInFront.ownWindowTookFocus(ObjectIdentifier(window))
+            ownWindowInFrontWindow = window
+        }
+        scheduleLayeringUpdate()
+    }
+
+    @objc private func windowDidResignKey(_ notification: Notification) {
+        scheduleLayeringUpdate()
+    }
+
+    @objc private func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window !== self else { return }
+        ownWindowInFront.windowClosed(ObjectIdentifier(window))
+        if ownWindowInFrontWindow === window { ownWindowInFrontWindow = nil }
+        scheduleLayeringUpdate()
+    }
+
+    @objc private func keepOnTopDidChange() {
+        updateLayering()
+    }
+
+    /// The front ordinary window of the frontmost app, from the window server's list, which
+    /// is front to back. It reports window numbers, layers, and owners without Screen
+    /// Recording permission.
+    static func frontWindowOfFrontmostApplication() -> Int? {
+        guard let application = NSWorkspace.shared.frontmostApplication,
+              application.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+              let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]]
+        else { return nil }
+        let window = list.first { info in
+            (info[kCGWindowOwnerPID as String] as? Int32) == application.processIdentifier
+                && (info[kCGWindowLayer as String] as? Int) == 0
+                && ((info[kCGWindowAlpha as String] as? Double) ?? 1) > 0
+        }
+        return window?[kCGWindowNumber as String] as? Int
+    }
 }
 
 /// The window's content view. It draws nothing, and it cuts the glass off at its bounds while
