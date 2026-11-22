@@ -42,13 +42,17 @@ private struct GoAheadTool: AgentTool {
     @Test func theBuiltInToolsAreGroupedBySourceInRegistryOrder() {
         let store = FakePersonalDataStore()
         let registry = ToolRegistry(builtIn: BuiltInTools.make(
-            applicationWorkspace: FakeApplicationWorkspace(installed: []), reminders: store, calendar: store))
+            applicationWorkspace: FakeApplicationWorkspace(installed: []), reminders: store, calendar: store,
+            system: FakeSystemControl()))
         let groups = registry.groups
-        #expect(groups.map(\.source) == [.builtIn, .reminders, .calendar])
+        #expect(groups.map(\.source) == [.builtIn, .reminders, .calendar, .system])
         #expect(groups.flatMap(\.tools).map(\.name) == BuiltInTools.names)
         #expect(groups[1].tools.map(\.name) == ["read_reminders", "change_reminders"])
         #expect(groups[2].tools.map(\.name) == ["read_events", "change_events"])
-        #expect(groups.map(\.source.privacyAccess) == [nil, .reminders, .calendars])
+        #expect(groups[3].tools.map(\.name) == [
+            "open_item", "find_files", "read_clipboard", "write_clipboard", "set_desktop_picture", "quit_or_hide_application",
+        ])
+        #expect(groups.map(\.source.privacyAccess) == [nil, .reminders, .calendars, nil])
     }
 
     @Test func theSummaryKeepsTheDescriptionAsSentAndTheGoAhead() throws {
