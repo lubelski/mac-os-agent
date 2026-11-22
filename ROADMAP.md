@@ -1,6 +1,6 @@
 # Roadmap
 
-What has been decided for mac-os-agent, what is proposed, what is still open, and what has not been started. `README.md` says what the app is and how to run it.
+What has been decided for mac-os-agent, what is proposed, what is still open, what has not been started, and ideas to try later. `README.md` says what the app is and how to run it.
 
 When a decision changes, move it between the lists here in the same pull request.
 
@@ -208,7 +208,7 @@ When a decision changes, move it between the lists here in the same pull request
 
 Ideas the owner has raised that nobody has designed or built yet.
 
-- A cheap model as a second step before the main one, for simple requests the instant action rule does not cover. Instant actions for apps are built. Other kinds, such as System Settings panes, recent files, web addresses, and skills, are not.
+- More kinds of instant action. Instant actions for apps are built. Other kinds, such as System Settings panes, recent files, web addresses, and skills, are not.
 - Interfaces the agent builds itself: a small markup language for forms and other inputs shown in the panel, with the go-ahead card as the first case, and later visualizations such as maps.
 - Suggestions in the empty space of a fresh episode. What they contain is not decided. The slot for them exists: `FreshStartContent` in `Sources/mac-os-agent/HistoryView.swift` is shown at the bottom of a fresh page and is empty for now.
 - MCP servers, managed from a Settings section above Debugging, with each server's tools as a group in Tools.
@@ -223,3 +223,30 @@ Ideas the owner has raised that nobody has designed or built yet.
   - Contacts, Mail, Messages, Music, Photos, and Notes. Each needs a permission of its own or Automation, and Notes and Mail have no public framework.
   - Battery, disk, and network status. Readable without permission, but the shell already answers these quickly with `pmset`, `df`, and `networksetup`.
   - Location and weather. A new permission class.
+
+## Ideas to try later
+
+Experiments the owner has raised. None is a plan. Each says what would have to be true for it to be worth building.
+
+### Pre-agents: a fast model first, a stronger one when it declines
+
+Subagents hand work down. A pre-agent hands it up. Every new message goes first to the fast model with the whole episode, as it does now. The fast model answers if it can do so quickly, and it has a way to say the request is too much for it. When it says so, the same episode and message go to a stronger model, which answers instead.
+
+- What it needs
+  - A way for the fast model to decline. A tool it can call, or a fixed reply the app recognizes, are the two candidates. Declining has to be cheap and early, before the model has started acting.
+  - A rule for what the stronger model sees of the declined attempt. The simplest is nothing: the decline is never part of the thread.
+  - A way to show in the panel which model answered, and a setting to turn the whole thing off.
+- The prompt cache
+  - OpenAI caches per model, so each model has its own cached prefix. Sending the same messages to a second model does not reuse the first model's cache.
+  - The first escalation in an episode is therefore cold for the stronger model, however warm the fast model was.
+  - After that, each model keeps hitting its own cache only if the request it sees is a prefix of the next one it sees. An episode answered by two models interleaves their messages, so the rule has to be: what a model is sent is a fixed function of the append-only thread, and that function never changes what it produced for earlier entries.
+  - Today the request already differs by model. Items that only make sense to the model that wrote them, such as encrypted reasoning, are left out after a model change. That is compatible with the rule as long as it is decided per entry and not by where the conversation currently stands.
+  - A declined attempt must never appear in one request and vanish from a later one for the same model.
+- What would make it not worth it
+  - A declined attempt adds its whole latency to exactly the requests that are already slow.
+  - The fast model may not know what it cannot do, and answer badly instead of declining.
+  - One model may be simple and fast enough. Debugging in Settings records seconds per request by model, so this can be measured before anything is built.
+  - Instant actions already answer the simplest requests with no model at all.
+- How to try it
+  - Measure first: time the same set of real requests on the fast model and the strong one.
+  - Then build it behind an experimental switch, off by default, and compare cached share and seconds per request with it on and off.
