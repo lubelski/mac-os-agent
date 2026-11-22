@@ -357,7 +357,17 @@ struct PanelHarness {
     /// - Parameter fieldOnly: hosts the text field on its own, with its send and hide actions
     ///   counted, instead of the whole panel.
     init(draft: String, preview: String = "empty", fieldOnly: Bool = false) throws {
-        session = try #require(PanelPreview.session(named: preview))
+        try self.init(session: try #require(PanelPreview.session(named: preview)), draft: draft, fieldOnly: fieldOnly)
+    }
+
+    /// The panel over a session of the test's own.
+    init(session: AgentSession, draft: String = "", fieldOnly: Bool = false) throws {
+        self.session = session
+        // The previews' preferences are the owner's to change from a preview. A test reads a
+        // suite nothing has written, so the switches are at their defaults, unless it set its own.
+        if session.preferences === SummonPanel.previewPreferences || session.preferences === UserDefaults.standard {
+            session.preferences = UserDefaults(suiteName: "mac-os-agent-panel-harness-unwritten")!
+        }
         session.draft = draft
         if fieldOnly {
             let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 500, height: 300), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)

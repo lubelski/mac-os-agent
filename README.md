@@ -13,6 +13,7 @@ The agent is called Iris unless you name it otherwise in Settings, General. The 
 - Press the summon shortcut, Option-Shift-Space unless you change it in Settings, General, or click the menu bar icon, to show or hide the panel, and type what you want done. Right-click or Control-click the icon for its menu.
 - Typing an app's name, or part of it, and pressing Return opens the app at once, without the model. Command-Return sends the text to the agent instead.
 - Typing a saved action's name and pressing Return runs it at once, without the model. An action is a fixed tool call, or a few, kept in `actions/`. Ask the agent to "make that instant" to save one.
+- Up Arrow on the field's first line recalls your earlier messages, as in a terminal. Settings, Behaviors turns it off, and has other habits from terminal coding agents.
 - Typing a slash lists the panel's commands and the skills you can invoke. `/skill-name` and some text asks the agent to use that skill for the text.
 - Settings opens from the menu bar menu, or with Command-comma while the panel is in front.
 

@@ -16,6 +16,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case actions
     case tools
     case history
+    case behaviors
+    case experiments
     case debugging
 
     var id: String { rawValue }
@@ -29,6 +31,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .actions: "Actions"
         case .tools: "Tools"
         case .history: "History"
+        case .behaviors: "Behaviors"
+        case .experiments: "Experiments"
         case .debugging: "Debugging"
         }
     }
@@ -42,6 +46,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .actions: "bolt"
         case .tools: "wrench.and.screwdriver"
         case .history: "clock.arrow.circlepath"
+        case .behaviors: "keyboard"
+        case .experiments: "flask"
         case .debugging: "ladybug"
         }
     }
@@ -140,6 +146,10 @@ struct SettingsRootView: View {
             ToolsSettingsView(model: models.tools)
         case .history:
             HistorySettingsView(model: models.history)
+        case .behaviors:
+            BehaviorsSettingsView()
+        case .experiments:
+            ExperimentsSettingsView()
         case .debugging:
             DebuggingSettingsView(model: models.debugging, instructions: models.instructions)
         }

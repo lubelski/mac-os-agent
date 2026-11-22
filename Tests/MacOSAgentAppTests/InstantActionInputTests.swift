@@ -120,6 +120,10 @@ import Testing
 
     @Test func theArrowsMoveTheCursorWhenThereIsNothingToChoose() async throws {
         let (harness, _) = try makeHarness()
+        // Up on the first line would otherwise recall an earlier message from the history.
+        let preferences = StandInPreferences(recall: false)
+        defer { preferences.forget() }
+        harness.session.preferences = preferences.defaults
         harness.type("open safari")
         harness.press("\u{F700}", code: 126, [.function, .numericPad]) // Up goes to the start
         harness.type("x")

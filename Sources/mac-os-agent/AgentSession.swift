@@ -109,6 +109,14 @@ final class AgentSession {
     @ObservationIgnored var previewRevealsControls = false
     /// True after a fresh start in the panel, until the next message starts the episode.
     @ObservationIgnored private var startsNewEpisode = false
+    /// Where the switches in Settings, Behaviors and Experiments are read. Previews and tests
+    /// set a stand-in suite, so they never read the owner's.
+    @ObservationIgnored var preferences: UserDefaults = .standard
+    /// Up and Down Arrow through the owner's earlier messages in this window.
+    @ObservationIgnored private var recall = MessageRecall()
+    /// Messages sent while a task ran, waiting for their turn. Held in memory only, one per
+    /// window. An experiment, behind `Experiment.queueMessagesWhileRunning`.
+    private(set) var queue = MessageQueue()
 
     /// The main panel's session, on the kept thread.
     /// - Parameter signedIn: For tests, which run without an authenticator.
@@ -162,6 +170,7 @@ final class AgentSession {
         self.pendingConfirmation = pendingConfirmation
         self.isRunning = isRunning
         signInState = .signedIn
+        preferences = SummonPanel.previewPreferences
     }
 
     /// For previews: sets a tool row's status.
@@ -337,6 +346,8 @@ final class AgentSession {
         loop = nil
         transcript = Transcript()
         draft = ""
+        recall.reset()
+        queue.clear()
         conversation += 1
         onStatusChange?()
     }
@@ -353,7 +364,13 @@ final class AgentSession {
     /// Return. Takes the instant action the row offers when there is one, and otherwise sends
     /// the text to the agent.
     func submit() {
-        guard !isRunning else { return }
+        guard !isRunning || queuesWhileRunning else { return }
+        // While a task runs, what the app does itself, an instant action or one of its own
+        // commands, is not queued: it stays in the field until the task ends.
+        if isRunning, let candidate = instantActions.offered(for: draft) {
+            transcript.appendNotice("\(candidate.title) can be run when the task ends. Command-Return queues the text as a message instead.")
+            return
+        }
         if let candidate = instantActions.take(for: draft) {
             perform(candidate)
             return
@@ -381,6 +398,7 @@ final class AgentSession {
         let text = draft
         let conversation = conversation
         draft = ""
+        recall.reset()
         if kind == .kept { hidePanel?() }
         Task {
             do {
@@ -416,6 +434,7 @@ final class AgentSession {
         startsNewEpisode = false
         let conversation = conversation
         draft = ""
+        recall.reset()
         streamingText = ""
         isRunning = true
         onStatusChange?()
@@ -436,26 +455,58 @@ final class AgentSession {
                     if draft.isEmpty { draft = text }
                     showPanel?()
                 }
+            } catch is CancellationError {
+                finishTask(conversation, ending: .stopped)
+                return
             } catch {
                 appendError(error, in: conversation)
                 if draft.isEmpty { draft = text }
                 showPanel?()
+                finishTask(conversation, ending: .failed)
+                return
             }
-            finishTask(conversation)
+            finishTask(conversation, ending: .finished)
         }
     }
 
-    /// Command-Return, and Return when nothing is offered: sends the text to the agent.
+    /// Command-Return, and Return when nothing is offered: sends the text to the agent. While a
+    /// task runs with the queue experiment on, the message waits in the queue instead.
     func submitToAgent() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isRunning else { return }
+        guard !text.isEmpty else { return }
+        if isRunning {
+            guard queuesWhileRunning else { return }
+            // The app's own commands are not queued. They stay in the field until the task ends.
+            if case .builtIn = slashMenu.parse(text) {
+                transcript.appendNotice("\(text) can be used when the task ends.")
+                return
+            }
+            queue.append(text)
+            draft = ""
+            recall.reset()
+            return
+        }
+        if send(text) {
+            draft = ""
+            recall.reset()
+        }
+    }
+
+    /// Whether Return while a task runs queues the message. Read each time, so the switch in
+    /// Settings applies at once.
+    var queuesWhileRunning: Bool { Experiment.queueMessagesWhileRunning.isOn(preferences) }
+
+    /// Sends one message to the agent as its own turn: the field's text, or a queued message.
+    /// Returns false when nothing was sent and the text should stay where it was.
+    @discardableResult
+    private func send(_ text: String) -> Bool {
+        guard !isRunning else { return false }
         // A known command is the app's to handle. It is never sent or written down.
         var skill: ThreadItem.SkillInvocation?
         switch slashMenu.parse(text) {
         case .builtIn(let command):
-            draft = ""
             perform(command)
-            return
+            return true
         case .skill(let command, _):
             // Read as it is now, so the agent gets the instructions the owner sees in Settings.
             switch skillCommands?.library.invocation(typed: text, command: command) {
@@ -464,22 +515,21 @@ final class AgentSession {
             case .failure(let error):
                 skillCommands?.reload()
                 transcript.appendError("\(command.slashName) cannot be used. \(Self.describe(error))")
-                return
+                return false
             case nil:
-                return
+                return false
             }
         case nil:
             break
         }
-        guard let loop else { return }
+        guard let loop else { return false }
         guard signInState == .signedIn else {
             transcript.appendError("Sign in with ChatGPT first, from the mac-os-agent menu in the menu bar.")
-            return
+            return false
         }
         let startsNew = startsNewEpisode
         startsNewEpisode = false
         let conversation = conversation
-        draft = ""
         streamingText = ""
         isRunning = true
         onStatusChange?()
@@ -492,6 +542,7 @@ final class AgentSession {
         // The task holds the session strongly until it ends. Discarding an incognito
         // conversation cancels it, and anything it reports after that is dropped.
         task = Task {
+            var ending = TaskEnding.finished
             do {
                 try await loop.run(
                     text,
@@ -500,15 +551,24 @@ final class AgentSession {
                     onEvent: { event in await self.handle(event, in: conversation) },
                     confirm: { request in await self.requestConfirmation(request, in: conversation) })
             } catch is CancellationError {
+                ending = .stopped
                 update(conversation) {
                     $0.stopUnfinishedTools()
                     $0.appendNotice("Stopped.")
                 }
             } catch {
+                ending = .failed
                 appendError(error, in: conversation)
             }
-            finishTask(conversation)
+            finishTask(conversation, ending: ending)
         }
+        return true
+    }
+
+    private enum TaskEnding {
+        case finished
+        case stopped
+        case failed
     }
 
     /// Waits for the running task, for tests.
@@ -552,7 +612,7 @@ final class AgentSession {
         }
     }
 
-    private func finishTask(_ conversation: Int) {
+    private func finishTask(_ conversation: Int, ending: TaskEnding) {
         guard conversation == self.conversation else { return }
         task = nil
         isRunning = false
@@ -561,6 +621,100 @@ final class AgentSession {
         announceSkillCommandChanges()
         announceActionChanges()
         onStatusChange?()
+        switch ending {
+        case .finished: sendNextQueued()
+        case .stopped: queue.pause(.stopped)
+        case .failed: queue.pause(.failed)
+        }
+    }
+
+    // MARK: - The queue
+
+    /// After a turn that finished normally: the next queued message, as its own turn.
+    private func sendNextQueued() {
+        guard let item = queue.next() else { return }
+        sendQueued(item)
+    }
+
+    private func sendQueued(_ item: MessageQueue.Item) {
+        if !send(item.text) {
+            // It could not go out, such as when signed out. It goes back to the front, paused.
+            queue = Self.requeued(queue, puttingBack: item)
+        }
+    }
+
+    private static func requeued(_ queue: MessageQueue, puttingBack item: MessageQueue.Item) -> MessageQueue {
+        var rebuilt = MessageQueue()
+        rebuilt.append(item.text)
+        for other in queue.items { rebuilt.append(other.text) }
+        rebuilt.pause(.failed)
+        return rebuilt
+    }
+
+    /// Send in the paused queue's line: sends the next message and resumes the queue.
+    func resumeQueue() {
+        guard !isRunning, let item = queue.resume() else { return }
+        sendQueued(item)
+    }
+
+    func clearQueue() {
+        queue.clear()
+    }
+
+    func removeQueued(_ id: UUID) {
+        queue.remove(id)
+    }
+
+    /// Edit on a queued row: takes it out of the queue and into the field, when the field is
+    /// empty, so nothing typed is lost.
+    func editQueued(_ id: UUID) {
+        guard draft.isEmpty, let text = queue.pullBack(id) else { return }
+        draft = text
+        recall.reset()
+        focusRequest += 1
+    }
+
+    // MARK: - Habits from terminal coding agents
+
+    /// Up (-1) or Down (1) with the insertion point on the field's first or last line. Up on an
+    /// empty field while messages are queued takes the newest back into the field. Otherwise,
+    /// with the behavior on, it moves through the owner's earlier messages in this window.
+    /// Returns false when it did nothing, so the key does what it always does.
+    func recallMessage(by offset: Int) -> Bool {
+        if offset < 0, draft.isEmpty, !recall.isRecalling, let text = queue.pullBack() {
+            draft = text
+            return true
+        }
+        guard HarnessBehavior.recallEarlierMessages.isOn(preferences), !isRunning || queuesWhileRunning else { return false }
+        let text = offset < 0
+            ? recall.older(current: draft, history: { recallHistory })
+            : recall.newer(current: draft)
+        guard let text else { return false }
+        draft = text
+        return true
+    }
+
+    /// The owner's messages in this window, newest first. The main panel's history is the whole
+    /// kept thread. The incognito window's is only its own conversation.
+    var recallHistory: [String] {
+        MessageRecall.history(newestFirst: transcript.rows.reversed().lazy.compactMap { row in
+            if case .user(let text, _, _) = row.kind { text } else { nil }
+        })
+    }
+
+    /// Control-C, with the behavior on: stops the running task the way Command-Period does, or
+    /// with no task running clears the field. Returns false when it did nothing, as with an
+    /// empty field and no task, so the key does what it always does.
+    func interrupt() -> Bool {
+        guard HarnessBehavior.controlCStopsOrClears.isOn(preferences) else { return false }
+        if isRunning {
+            stop()
+            return true
+        }
+        guard !draft.isEmpty else { return false }
+        draft = ""
+        recall.reset()
+        return true
     }
 
     /// After a task in which a skill the owner can invoke was added or changed, such as one the

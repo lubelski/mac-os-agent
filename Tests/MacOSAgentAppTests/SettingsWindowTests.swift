@@ -63,7 +63,7 @@ struct SettingsWindowHarness {
 @MainActor
 @Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_SETTINGS"] != nil))
 struct SettingsWindowRenders {
-    @Test(arguments: [SettingsSection.general, .instructions, .skills])
+    @Test(arguments: [SettingsSection.general, .instructions, .skills, .behaviors, .experiments])
     func rendersTheWindow(section: SettingsSection) throws {
         let out = URL(filePath: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_SETTINGS"]!, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
