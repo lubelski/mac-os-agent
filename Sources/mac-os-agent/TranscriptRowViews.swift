@@ -31,6 +31,8 @@ enum MessageStyle {
     static let verticalPadding: CGFloat = 8
     /// The room a box leaves on its far side, so the two kinds sit on opposite sides.
     static let farSideInset: CGFloat = 56
+    /// Between a box and the copy control beside it.
+    static let controlGap: CGFloat = 8
 }
 
 /// What the owner typed: a box on the right with a faint accent tint. A time label sits above
@@ -41,6 +43,7 @@ struct OwnerMessage: View {
     let showsTime: Bool
     let now: Date
     @Environment(\.colorSchemeContrast) private var contrast
+    @State private var hovering = false
 
     var body: some View {
         VStack(spacing: 8) {
@@ -67,36 +70,58 @@ struct OwnerMessage: View {
                         }
                     }
                     .help(TranscriptTimeLabel.fullText(for: date))
+                    .contextMenu { MessageMenu(source: text, plainText: nil) }
+                    // The copy control sits in the empty room to the box's left, so showing it
+                    // moves nothing.
+                    .overlay(alignment: .topLeading) {
+                        CopyControl(help: "Copy the message") { text }
+                            .revealed(when: hovering)
+                            .alignmentGuide(.leading) { $0[.trailing] + MessageStyle.controlGap }
+                            .padding(.top, MessageStyle.verticalPadding)
+                    }
             }
+            .onHover { hovering = $0 }
+            .accessibilityElement(children: .contain)
+            .accessibilityAction(named: "Copy") { MessageActions.copy(text) }
         }
     }
 }
 
-/// What the agent said to the owner: a box on the left with a neutral tint that sets it apart
-/// from the glass behind it.
+/// What the agent said to the owner, as Markdown: a box on the left with a neutral tint that
+/// sets it apart from the glass behind it. While it streams it is parsed with its unfinished
+/// end completed, so it keeps its shape as the rest arrives.
 struct AgentMessage: View {
     let text: String
+    var streaming = false
     @Environment(\.colorSchemeContrast) private var contrast
+    @State private var hovering = false
 
     var body: some View {
+        let document = MarkdownCache.document(for: text, streaming: streaming)
         HStack(spacing: 0) {
-            Text(Self.rendered(text))
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            MarkdownView(document: document)
                 .padding(.horizontal, MessageStyle.horizontalPadding)
                 .padding(.vertical, MessageStyle.verticalPadding)
                 .background(.primary.opacity(contrast == .increased ? 0.17 : 0.13), in: .rect(cornerRadius: MessageStyle.cornerRadius))
                 .overlay(RoundedRectangle(cornerRadius: MessageStyle.cornerRadius)
                     .strokeBorder(.primary.opacity(contrast == .increased ? 0.35 : 0.1), lineWidth: 1))
+                .contextMenu { MessageMenu(source: text, plainText: document.plainText) }
+                // The copy control sits in the empty room to the box's right, so showing it
+                // moves nothing. It copies the Markdown as the agent wrote it.
+                .overlay(alignment: .topTrailing) {
+                    if !streaming {
+                        CopyControl(help: "Copy the reply as Markdown") { text }
+                            .revealed(when: hovering)
+                            .alignmentGuide(.trailing) { $0[.leading] - MessageStyle.controlGap }
+                            .padding(.top, MessageStyle.verticalPadding)
+                    }
+                }
             Spacer(minLength: MessageStyle.farSideInset)
         }
-    }
-
-    /// Inline Markdown such as `code` and **bold**, keeping the model's line breaks. The same
-    /// rendering is used while streaming, so the finished reply does not change shape.
-    static func rendered(_ text: String) -> AttributedString {
-        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+        .onHover { hovering = $0 }
+        .accessibilityElement(children: .contain)
+        .accessibilityAction(named: "Copy as Markdown") { MessageActions.copy(text) }
+        .accessibilityAction(named: "Copy as plain text") { MessageActions.copy(document.plainText) }
     }
 }
 
@@ -166,9 +191,18 @@ struct ToolLine: View {
                 line
             }
         }
+        .contextMenu {
+            if !command.isEmpty {
+                Button("Copy Command") { MessageActions.copy(command) }
+            }
+            if let output {
+                Button("Copy Output") { MessageActions.copy(output) }
+            }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(command.isEmpty ? "Preparing a command" : "Command: \(command)")
         .accessibilityValue(state.accessibilityText)
+        .accessibilityAction(named: "Copy command") { MessageActions.copy(command) }
     }
 
     @ViewBuilder private var commandText: some View {

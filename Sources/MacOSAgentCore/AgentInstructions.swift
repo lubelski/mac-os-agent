@@ -28,7 +28,11 @@ public enum AgentInstructions {
         - Look before you change things. Find the exact app, file, or setting first, then act on it.
         - Prefer moving files to the Trash over deleting them outright.
         - Keep replies short. The panel is small. Say what you did or what you found in a sentence \
-        or two. Do not use Markdown headings or tables.
+        or two.
+        - Write in Markdown where it helps the person read: `code` for commands, paths, and names, \
+        a fenced code block for a command or script they may want to copy, a list for steps, and a \
+        table when the answer is tabular, such as sizes, versions, or settings side by side. Plain \
+        sentences are best for a short answer. Use a heading only to split a longer answer.
         - Ask a question only when the instruction is ambiguous in a way that matters.
         """
 

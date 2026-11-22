@@ -53,19 +53,26 @@ extension ToolSignal {
 /// Code or command text held by an open bracket on its left, in the scheme of Pi's code
 /// blocks: the label, or `┌──` when there is none, then a `│` rule beside each line, then `└──`.
 /// The text scrolls sideways instead of wrapping, so lines keep their shape.
-struct CodeBracket<Content: View>: View {
+struct CodeBracket<Content: View, Accessory: View>: View {
     var label: String?
     var font: Font = .system(size: 11, design: .monospaced)
+    /// False lets the bracket hug its content instead of taking the width it is offered.
+    var fillsWidth = true
     @ViewBuilder var content: Content
+    /// Sits on the label's line, after the label, such as a copy control.
+    @ViewBuilder var accessory: Accessory
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(verbatim: label?.isEmpty == false ? label! : Mark.bracketTop)
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(label == nil)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(verbatim: label?.isEmpty == false ? label! : Mark.bracketTop)
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(label == nil)
+                accessory
+            }
             // The rule is drawn beside the content and takes its height, never more.
             content
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
                 .padding(.leading, 12)
                 .overlay(alignment: .leading) {
                     Rectangle()
@@ -79,6 +86,14 @@ struct CodeBracket<Content: View>: View {
                 .accessibilityHidden(true)
         }
         .font(font)
+    }
+}
+
+extension CodeBracket where Accessory == EmptyView {
+    init(label: String? = nil, font: Font = .system(size: 11, design: .monospaced), fillsWidth: Bool = true,
+         @ViewBuilder content: () -> Content)
+    {
+        self.init(label: label, font: font, fillsWidth: fillsWidth, content: content, accessory: { EmptyView() })
     }
 }
 

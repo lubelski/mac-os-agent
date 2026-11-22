@@ -264,7 +264,7 @@ private struct StreamingReply: View {
 
     var body: some View {
         if !session.streamingText.isEmpty {
-            AgentMessage(text: session.streamingText)
+            AgentMessage(text: session.streamingText, streaming: true)
                 .padding(.top, HistoryView.spacing(TranscriptRow.gap(after: after, before: TranscriptRow(id: "streaming", kind: .assistant("")))))
         }
     }
