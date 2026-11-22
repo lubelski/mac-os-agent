@@ -17,6 +17,10 @@ Read `README.md` first for what the product is, then `ROADMAP.md`, which records
 - Commit and push as you work, and open a pull request early.
 - Merge your own pull requests as needed, squashed. Hold a pull request for the owner only when it needs a discussion: a product decision that is not already in `ROADMAP.md`, or something you could not verify that the owner has to try.
 - A pull request that changes anything visible includes evidence of how it looks: a screenshot, a recording, or a rendered image. For a change to something that exists, show before and after.
+- Put images and videos on a pull request with `gh`'s `--attach` flag, which uploads the file and adds it to the body. It works on `gh pr create`, `gh pr edit`, and `gh pr comment`.
+  - Alt text follows the path after `#`, as in `--attach './panel-dark.png#The panel in dark mode'`.
+  - A reference to the file already in the body, such as `![The panel](./panel-dark.png)`, is rewritten to point at the upload, so the image lands where you wrote it.
+  - Do not commit screenshots to a branch for this. Earlier pull requests pushed them to a `pr-assets` branch and linked the raw files. That is no longer needed, and nothing new should go there.
 - Screen capture from an agent session often shows only the wallpaper, because the terminal lacks Screen Recording permission. If you could not see a change on screen, say so in the pull request.
 - When a decision changes, move it between Decided, Proposed, and Open in `ROADMAP.md` in the same pull request. Keep `README.md` short: what the app is and how to run it.
 
