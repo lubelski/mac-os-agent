@@ -165,6 +165,44 @@ private func darkThemeFile(name: String = "Night Swim", primary: String = "#F2F4
         #expect(problem(darkThemeFile().replacingOccurrences(of: "\"accent\": \"#7FB2FF\"", with: "\"accent\": 7")) == "dark.accent should be a color as text, such as \"#1C1E21\".")
     }
 
+    /// A file written before the bars' fill existed reads as before, writes the same bytes,
+    /// and takes the derived fill: the primary text at 3 percent.
+    @Test func theBarIsOptionalAndDerivedFromThePrimaryText() throws {
+        let text = darkThemeFile()
+        let theme = try Theme.parse(text)
+        let dark = try #require(theme.dark)
+        #expect(dark.bar == nil)
+        #expect(!theme.fileText.contains("\"bar\""))
+        #expect(theme.fileText == (try Theme.parse(theme.fileText)).fileText)
+        #expect(dark.barFill == .hex(red: 0xF2, green: 0xF4, blue: 0xF8, alpha: 8))
+        #expect(BuiltInThemes.glass.appearance(dark: false).barFill == .system(.label, percent: 3))
+        for entry in BuiltInThemes.all {
+            for (_, appearance) in try #require(entry.theme).appearances {
+                #expect(appearance.bar == nil, "\(entry.id) derives its bars' fill")
+                #expect(appearance.barFill == appearance.text.primary.scaled(toOpacity: appearance.text.primary.opacity * 0.03))
+                #expect(appearance.barFill.opacity > 0 && appearance.barFill.opacity < 0.05)
+            }
+        }
+    }
+
+    /// A theme may set the bars' fill. It reads, writes after the incognito colors, and reads
+    /// back as itself, and a malformed one says where it is.
+    @Test func aThemeCanSetTheBar() throws {
+        let text = darkThemeFile().replacingOccurrences(
+            of: "\"badge\": \"#FFFFFF14\" }", with: "\"badge\": \"#FFFFFF14\" },\n    \"bar\": \"#FFFFFF0D\"")
+        let theme = try Theme.parse(text)
+        #expect(theme.dark?.bar == .hex(red: 255, green: 255, blue: 255, alpha: 0x0D))
+        #expect(theme.dark?.barFill == .hex(red: 255, green: 255, blue: 255, alpha: 0x0D))
+        #expect(theme.fileText.contains("\"incognito\": { \"tint\": \"#7A66E02E\", \"badge\": \"#FFFFFF14\" },\n    \"bar\": \"#FFFFFF0D\"\n  }"))
+        #expect(try Theme.parse(theme.fileText) == theme)
+        do {
+            _ = try Theme.parse(text.replacingOccurrences(of: "\"#FFFFFF0D\"", with: "\"pale\""))
+            Issue.record("A malformed bar should be refused.")
+        } catch {
+            #expect(error.description.hasPrefix("dark.bar is \"pale\", which is not a color."))
+        }
+    }
+
     @Test func theTintIsOptional() throws {
         let text = darkThemeFile().replacingOccurrences(of: "\"tint\": \"#101828F0\", ", with: "")
         let theme = try Theme.parse(text)
@@ -188,6 +226,19 @@ private func darkThemeFile(name: String = "Night Swim", primary: String = "#F2F4
                 print("contrast \(entry.id) \(kind.rawValue) \(level.rawValue) \(ThemeContrast.Check.ratioText(check.ratio)) \(check.place) \(check.backdrop)")
             }
         }
+    }
+
+    /// Text on the bars is checked over the bars' fill laid on the surface, in every theme.
+    @Test func textOnTheBarsIsChecked() throws {
+        for entry in BuiltInThemes.all {
+            let theme = try #require(entry.theme)
+            let onBars = ThemeContrast.checks(theme).filter { $0.place == "on the bars" }
+            #expect(Set(onBars.map(\.level)) == [.primary, .secondary], "\(entry.id)")
+            #expect(onBars.allSatisfy { $0.passes }, "\(entry.id)")
+        }
+        let hard = try Theme.parse(darkThemeFile().replacingOccurrences(
+            of: "\"badge\": \"#FFFFFF14\" }", with: "\"badge\": \"#FFFFFF14\" },\n    \"bar\": \"#E0E4EA\""))
+        #expect(ThemeContrast.failures(hard).contains { $0.place == "on the bars" })
     }
 
     @Test func everyHexBuiltInThemeMeetsAAWithoutTheSystemAllowance() throws {

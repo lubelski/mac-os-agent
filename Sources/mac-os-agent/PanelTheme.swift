@@ -96,6 +96,16 @@ struct PanelPalette {
     }
 
     var fallbackFill: Color { color(appearance.surface.fill) }
+
+    /// The fill of the panel's bars: the top bar, the band with the text field and the footer
+    /// under it, and the inspector's bar. The conversation between them keeps the surface, so
+    /// the panel reads as bar, conversation, bar. It is a tint laid over the surface, so on
+    /// glass and blur the glass shows through it. A theme may set it with `bar`. Without that
+    /// it is the primary text at 3 percent, as `textTint` draws it, which is exactly the fill
+    /// the suggestions experiment's footer had.
+    var bar: AnyShapeStyle {
+        appearance.bar.map(style) ?? textTint(ThemeAppearance.derivedBarStrength)
+    }
     var incognitoTint: Color { color(appearance.incognito.tint) }
 
     // MARK: Colors
@@ -144,12 +154,7 @@ struct PanelPalette {
     }
 
     private func scaled(_ color: ThemeColor, toOpacity opacity: Double) -> ThemeColor {
-        switch color {
-        case .hex(let red, let green, let blue, _):
-            .hex(red: red, green: green, blue: blue, alpha: UInt8((opacity * 255).rounded()))
-        case .system(let system, _):
-            .system(system, percent: Int((opacity * 100).rounded()))
-        }
+        color.scaled(toOpacity: opacity)
     }
 }
 
@@ -196,6 +201,9 @@ private struct PanelSurface: ViewModifier {
     var blursWithinWindow = false
 
     func body(content: Content) -> some View {
+        // The content is clipped to the surface's shape too, so a fill inside it, such as the
+        // bars', never shows past a rounded corner, whether or not the window clips its layer.
+        let content = content.clipShape(shape)
         switch palette.surfaceKind {
         case .glass:
             let tint = palette.surfaceTint(incognito: incognito)

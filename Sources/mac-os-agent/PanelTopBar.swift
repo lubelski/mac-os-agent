@@ -117,6 +117,9 @@ struct PanelTopBar: View {
                     onHover: { placement?.barIsHovered = $0 })
             }
         }
+        // The bars' fill, which the band with the text field shares, so the panel reads as
+        // bar, conversation, bar.
+        .background(PanelBarFill())
     }
 
     /// The agent's name, and in the incognito window the incognito label after it.

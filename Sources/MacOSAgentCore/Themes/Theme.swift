@@ -23,6 +23,11 @@ import Foundation
 ///   only one is inherently light or dark, and the panel uses that appearance whatever the
 ///   Mac is set to.
 ///
+/// An appearance may also set `bar`, the fill of the panel's bars: the top bar, the band with
+/// the text field, and the footer under it. It is optional. Without it the bars are the primary
+/// text at 3 percent, a faint offset from the surface that suits any theme, and a file written
+/// before the key existed reads exactly as before.
+///
 /// Fonts, layout, and corner radii are not part of a theme.
 public struct Theme: Sendable, Hashable {
     public static let format = 1
@@ -161,10 +166,13 @@ public struct ThemeAppearance: Sendable, Hashable {
     /// The card that asks for a go-ahead.
     public var goAhead: ThemeBox
     public var incognito: ThemeIncognito
+    /// The fill of the panel's bars, laid over the surface: the top bar, the band with the text
+    /// field, and the footer, and the inspector's bar. Nil takes `derivedBar`. Optional in a file.
+    public var bar: ThemeColor?
 
     public init(
         surface: ThemeSurface, text: ThemeText, accent: ThemeColor, ownerMessage: ThemeBox, agentReply: ThemeBox,
-        divider: ThemeColor, code: ThemeColor, goAhead: ThemeBox, incognito: ThemeIncognito
+        divider: ThemeColor, code: ThemeColor, goAhead: ThemeBox, incognito: ThemeIncognito, bar: ThemeColor? = nil
     ) {
         self.surface = surface
         self.text = text
@@ -175,7 +183,22 @@ public struct ThemeAppearance: Sendable, Hashable {
         self.code = code
         self.goAhead = goAhead
         self.incognito = incognito
+        self.bar = bar
     }
+
+    /// How strong the bars' fill is when a theme does not set one: the primary text at this
+    /// fraction of its own strength. It is the fill the suggestions experiment's footer had.
+    public static let derivedBarStrength = 0.03
+
+    /// The bars' fill when the theme does not set one: the primary text at 3 percent. Over a
+    /// dark surface that is a faint lightening and over a light one a faint darkening, and for
+    /// a theme whose text is the system's it is `system-label 3%`, which keeps the vibrancy.
+    public var derivedBar: ThemeColor {
+        text.primary.scaled(toOpacity: text.primary.opacity * Self.derivedBarStrength)
+    }
+
+    /// The bars' fill as drawn: the theme's own, or the derived one.
+    public var barFill: ThemeColor { bar ?? derivedBar }
 }
 
 /// Why a theme file could not be read, with where in the file the problem is.
@@ -252,7 +275,7 @@ extension Theme {
         }
 
         static func appearance(_ value: JSONValue, at path: String) throws(ThemeFormatError) -> ThemeAppearance {
-            let object = try Self.object(value, at: path, keys: ThemeAppearance.keys)
+            let object = try Self.object(value, at: path, keys: ThemeAppearance.keys, optional: ["bar"])
 
             let surfacePath = "\(path).surface"
             let surface = try Self.object(object["surface"] ?? .null, at: surfacePath, keys: ["kind", "tint", "fill"], optional: ["tint"])
@@ -287,14 +310,17 @@ extension Theme {
                 goAhead: try box(object["goAhead"], at: "\(path).goAhead"),
                 incognito: ThemeIncognito(
                     tint: try color(incognito, "tint", at: incognitoPath),
-                    badge: try color(incognito, "badge", at: incognitoPath)))
+                    badge: try color(incognito, "badge", at: incognitoPath)),
+                bar: try object["bar"].flatMap { value throws(ThemeFormatError) in
+                    value == .null ? nil : try color(object, "bar", at: path)
+                })
         }
     }
 }
 
 extension ThemeAppearance {
     /// The keys of an appearance, in the order a file writes them.
-    static let keys = ["surface", "text", "accent", "ownerMessage", "agentReply", "divider", "code", "goAhead", "incognito"]
+    static let keys = ["surface", "text", "accent", "ownerMessage", "agentReply", "divider", "code", "goAhead", "incognito", "bar"]
 }
 
 // MARK: - Writing
@@ -323,9 +349,11 @@ extension Theme {
                 "    \"divider\": \(color(appearance.divider)),",
                 "    \"code\": \(color(appearance.code)),",
                 box("goAhead", appearance.goAhead),
-                "    \"incognito\": { \"tint\": \(color(appearance.incognito.tint)), \"badge\": \(color(appearance.incognito.badge)) }",
-                last ? "  }" : "  },",
+                "    \"incognito\": { \"tint\": \(color(appearance.incognito.tint)), \"badge\": \(color(appearance.incognito.badge)) }\(appearance.bar == nil ? "" : ",")",
             ]
+            // Written only when the theme sets it, so a file without it writes the same bytes.
+            if let bar = appearance.bar { lines.append("    \"bar\": \(color(bar))") }
+            lines.append(last ? "  }" : "  },")
         }
         lines.append("}")
         return lines.joined(separator: "\n") + "\n"

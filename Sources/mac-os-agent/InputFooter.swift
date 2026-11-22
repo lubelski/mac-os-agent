@@ -142,29 +142,9 @@ struct InputFooter: View {
         .padding(.horizontal, 16)
         .frame(height: Self.height)
         .frame(maxWidth: .infinity)
-        .background(FooterFill())
+        .background(PanelBarFill())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(content.spoken)
-    }
-}
-
-/// The faint fill of the footer and the list, as in the wireframe. Opaque, on the theme's solid
-/// fill, where the list covers the conversation.
-struct FooterFill: View {
-    var opaque = false
-    @Environment(\.panelPalette) private var palette
-
-    var body: some View {
-        ZStack {
-            if opaque {
-                // A theme's solid fill can be translucent, as Glass's is. Under it the window's
-                // own background makes sure the conversation does not show through.
-                Rectangle().fill(Color(nsColor: .windowBackgroundColor))
-                Rectangle().fill(palette.fallbackFill)
-            }
-            Rectangle().fill(palette.textTint(0.03))
-        }
-        .accessibilityHidden(true)
     }
 }
 

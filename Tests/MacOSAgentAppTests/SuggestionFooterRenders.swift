@@ -90,6 +90,7 @@ struct SuggestionFooterRenders {
                 Spacer()
             }
             .frame(height: PanelTopBar.height)
+            .background(PanelBarFill())
             PanelDivider()
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(session.transcript.rows.filter { !$0.isEpisodeStart }) { row in RowView(row: row, now: Date()) }
@@ -118,17 +119,17 @@ struct SuggestionFooterRenders {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+                .background(PanelBarFill())
             }
             .overlay(alignment: .top) {
                 if overlay, !rows.isEmpty {
-                    list.background(FooterFill(opaque: true)).offset(y: -session.suggestionListHeight)
+                    list.background(PanelBarFill(opaque: true)).offset(y: -session.suggestionListHeight)
                 }
             }
             if growth > 0 {
-                list.frame(height: growth, alignment: .top).background(FooterFill())
+                list.frame(height: growth, alignment: .top).background(PanelBarFill())
             }
             if !off {
-                PanelDivider()
                 InputFooter(content: .make(
                     session.footerState, agentName: "Iris", modelName: "GPT-6 Luna",
                     recallsMessages: true, queuesWhileRunning: false))
