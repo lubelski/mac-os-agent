@@ -54,6 +54,7 @@ final class AgentSession {
     private(set) var pendingDiscard: Discard?
     var draft = "" {
         didSet {
+            syncInstantActionMode()
             instantActions.draftChanged(draft)
             if draft != oldValue { draftChangedForHint() }
             suggestionListFollowsDraft()
@@ -378,6 +379,8 @@ final class AgentSession {
     /// the text to the agent.
     func submit() {
         guard !isRunning || queuesWhileRunning else { return }
+        // The switch may have changed in Settings since the last keystroke.
+        syncInstantActionMode()
         // With the list under the field open, Return acts on its highlighted row.
         if submitFromSuggestionList() { return }
         // While a task runs, what the app does itself, an instant action or one of its own

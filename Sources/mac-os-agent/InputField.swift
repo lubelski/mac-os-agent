@@ -46,6 +46,10 @@ struct InputField: NSViewRepresentable {
     /// and neither a key repeat. Returns true when it used the key, to start a new episode as
     /// `/new` does. Otherwise the key goes to the text view as before. See `DoubleDelete`.
     var onDoubleDelete: () -> Bool = { false }
+    /// Called with true when an input method starts composing in the field, and with false when
+    /// it stops. While it composes, the field's text holds what is being composed, such as the
+    /// Latin letters a pinyin or romaji input method shows, which are not yet what was typed.
+    var onComposingChange: (Bool) -> Void = { _ in }
     /// Gray text after the insertion point, from the suggestions-in-the-field experiment. It is
     /// drawn only, never part of the text. See `InputTextView.inlineCompletion`.
     var inlineCompletion: InlineCompletion? = nil
@@ -93,6 +97,7 @@ struct InputField: NSViewRepresentable {
         textView.onCommandReturn = { [weak coordinator = context.coordinator] in coordinator?.parent.onSubmitToAgent() }
         textView.onControlC = { [weak coordinator = context.coordinator] in coordinator?.parent.onInterrupt() ?? false }
         textView.onDoubleDelete = { [weak coordinator = context.coordinator] in coordinator?.parent.onDoubleDelete() ?? false }
+        textView.onComposingChange = { [weak coordinator = context.coordinator] in coordinator?.parent.onComposingChange($0) }
         return scrollView
     }
 
@@ -358,6 +363,9 @@ final class InputTextView: NSTextView {
     var onControlC: (() -> Bool)?
     /// The second of two quick presses of Delete in an empty field. Returns true when it used the key.
     var onDoubleDelete: (() -> Bool)?
+    /// An input method started (true) or stopped (false) composing.
+    var onComposingChange: ((Bool) -> Void)?
+    private var wasComposing = false
     /// How close two presses of Delete have to be. The system's double-click interval, read at
     /// each press so a change in System Settings applies at once.
     var doubleDeleteInterval: () -> TimeInterval = { NSEvent.doubleClickInterval }
@@ -473,17 +481,33 @@ final class InputTextView: NSTextView {
 
     override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
         super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+        reportComposing()
         updateInlineCompletion()
     }
 
     override func unmarkText() {
         super.unmarkText()
+        reportComposing()
         updateInlineCompletion()
+    }
+
+    override func insertText(_ string: Any, replacementRange: NSRange) {
+        super.insertText(string, replacementRange: replacementRange)
+        reportComposing()
     }
 
     override func didChangeText() {
         super.didChangeText()
+        reportComposing()
         updateInlineCompletion()
+    }
+
+    /// Tells the field when composing starts or stops, once each time.
+    private func reportComposing() {
+        let composing = hasMarkedText()
+        guard composing != wasComposing else { return }
+        wasComposing = composing
+        onComposingChange?(composing)
     }
 
     private func updateInlineCompletion() {

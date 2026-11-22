@@ -38,6 +38,8 @@ final class SuggestionListState {
     private(set) var isOpen = false
     /// The highlighted row of the instant action list.
     private(set) var highlight = 0
+    /// True while an input method composes in the field. See `AgentSession.composingChanged(_:)`.
+    var isComposing = false
     /// How far the window has grown downward to hold the list. Set by the window only.
     var growth: CGFloat = 0
     /// For previews and tests: the experiment's switch, in place of the preferences.
@@ -72,6 +74,13 @@ extension AgentSession {
         suggestionList.forcedOn ?? Experiment.suggestionsInFieldAndFooter.isOn(preferences)
     }
 
+    /// Matches the draft as eagerly as the switch says: from the first character with the
+    /// experiment on, and only when confident with it off, since the row above the field pushes
+    /// the conversation up. Called before every evaluation of the draft.
+    func syncInstantActionMode() {
+        instantActions.setMode(suggestionsInFooter ? .inField : .row)
+    }
+
     /// The rows the list shows now, or none when it is closed. Slash commands come first: a
     /// slash rules out an instant action.
     var suggestionRows: [SuggestionRow] {
@@ -82,9 +91,18 @@ extension AgentSession {
         return matches.map(SuggestionRow.candidate) + [.ask(draft)]
     }
 
+    /// An input method started or stopped composing in the field. While it composes, the
+    /// draft holds what is being composed, so nothing is suggested for it: no mark, no gray
+    /// text, no list, and the footer says what it says for typing.
+    func composingChanged(_ composing: Bool) {
+        guard composing != suggestionList.isComposing else { return }
+        suggestionList.isComposing = composing
+        if composing { _ = closeSuggestionList() }
+    }
+
     /// The instant action matches for the draft as it is, when Return could take one.
     private var listedMatches: [InstantActionCandidate]? {
-        guard !isRunning, let suggestion = instantActions.suggestion, suggestion.input == draft,
+        guard !isRunning, !suggestionList.isComposing, let suggestion = instantActions.suggestion, suggestion.input == draft,
               !suggestion.matches.isEmpty else { return nil }
         return suggestion.matches
     }

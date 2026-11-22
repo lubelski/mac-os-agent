@@ -22,6 +22,10 @@ final class InstantActions {
     private(set) var suggestion: InstantActionSuggestion?
     /// Which of the suggestion's choices Return takes.
     private(set) var selection = 0
+    /// How eager the rule is: `.row` for the row above the field, `.inField` with the
+    /// suggestions-in-the-field experiment on, which suggests from the first character. The
+    /// session sets it from the switch on every change to the draft. See `InstantActionRule`.
+    private(set) var mode: InstantActionRule.Mode = .row
 
     @ObservationIgnored private var engine: InstantActionEngine
     @ObservationIgnored private var draft = ""
@@ -134,6 +138,7 @@ final class InstantActions {
             applications: applications, catalog: catalog, store: nil, runningPaths: runningPaths,
             open: openApplication, learns: false, history: history)
         copy.clock = clock
+        copy.mode = mode
         copy.refresh()
         return copy
     }
@@ -181,6 +186,13 @@ final class InstantActions {
         evaluate()
     }
 
+    /// Sets how eager the rule is. The suggestion follows at once when it changes.
+    func setMode(_ mode: InstantActionRule.Mode) {
+        guard mode != self.mode else { return }
+        self.mode = mode
+        evaluate()
+    }
+
     /// Called on every change to the draft.
     func draftChanged(_ draft: String) {
         self.draft = draft
@@ -191,7 +203,7 @@ final class InstantActions {
     }
 
     private func evaluate() {
-        let next = dismissedDraft == nil ? engine.suggestion(for: draft, history: history, now: clock()) : nil
+        let next = dismissedDraft == nil ? engine.suggestion(for: draft, history: history, now: clock(), mode: mode) : nil
         if next?.choices.map(\.id) != suggestion?.choices.map(\.id) { selection = 0 }
         if next != suggestion { suggestion = next }
     }

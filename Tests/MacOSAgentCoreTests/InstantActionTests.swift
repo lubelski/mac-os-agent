@@ -315,6 +315,137 @@ private func offered(_ input: String, history: InstantActionHistory = InstantAct
     }
 }
 
+/// The suggestions-in-the-field experiment's rule, `InstantActionRule.Mode.inField`: a single
+/// typed character suggests the best name that starts with it, and everything longer is judged
+/// as the row judges it, except that close matches never hold a short input back.
+@Suite struct InstantActionFirstCharacterTests {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func inField(_ input: String, history: InstantActionHistory = InstantActionHistory()) -> InstantActionSuggestion? {
+        engine.suggestion(for: input, history: history, now: now, mode: .inField)
+    }
+
+    /// True when the name, or a word of it, starts with the text, ignoring case.
+    private func startsAWord(_ name: String, _ text: String) -> Bool {
+        ApplicationMatcher.words(name).contains { $0.hasPrefix(text.lowercased()) }
+            || ApplicationMatcher.normalized(name).hasPrefix(text.lowercased())
+    }
+
+    @Test func aSingleCharacterSuggestsANameThatStartsWithIt() throws {
+        for letter in "abcdefghijklmnopqrstuvwxyz1".map(String.init) {
+            let suggestion = inField(letter)
+            for match in suggestion?.matches ?? [] {
+                // A name the app answers to, such as the end of its bundle identifier, counts
+                // as one of its names. Nothing matches by only containing the letter.
+                let names = [match.title] + (standInApplications.first { "application:" + $0.path == match.id }
+                    .map { $0.alternateNames + [$0.bundleIdentifier?.split(separator: ".").last.map(String.init) ?? ""] } ?? [])
+                #expect(names.contains { startsAWord($0, letter) }, "\(letter) listed \(match.title)")
+                #expect(match.strength >= .wordPrefix, "\(letter) listed \(match.title) as \(match.strength)")
+            }
+        }
+        #expect(inField("s")?.top.title == "Siri", "the shortest of the names that start with s")
+        #expect(inField("x")?.top.title == "Xcode")
+        #expect(inField("1")?.top.title == "1Password")
+        #expect(inField("S")?.top.title == "Siri", "whatever the case")
+        // Names that start with the letter come before names with a later word that does.
+        let m = try #require(inField("m"))
+        #expect(m.matches.first?.strength == .prefix)
+        #expect(m.matches.count == InstantActionRule.maximumMatches)
+        // The row above the field never suggests from one letter.
+        #expect(engine.suggestion(for: "s", now: now) == nil)
+        #expect(engine.suggestion(for: "x", now: now) == nil)
+    }
+
+    @Test func learnedUseRanksTheFirstCharacter() throws {
+        let slack = "application:/Applications/Slack.app"
+        var picked = InstantActionHistory()
+        picked.record(slack, subject: "s", at: now)
+        #expect(inField("s", history: picked)?.top.title == "Slack")
+        // Use for other text counts too, as it does for longer input.
+        var used = InstantActionHistory()
+        for _ in 0..<3 { used.record("application:/Applications/Spotify.app", subject: "spotify", at: now) }
+        #expect(inField("s", history: used)?.top.title == "Spotify")
+    }
+
+    @Test func aOneLetterWordSuggestsUntilItBecomesASentence() {
+        // "a" and "i" are words that start sentences, and names start with them too.
+        #expect(inField("a")?.top.title.lowercased().hasPrefix("a") == true)
+        #expect(inField("i")?.top.title.lowercased().hasPrefix("i") == true)
+        #expect(inField("y") == nil || inField("y")!.top.title.lowercased().hasPrefix("y"))
+        // The next character makes it a word, and the function word rule applies again.
+        for input in ["a ", "a c", "a cat", "an", "i ", "i w", "i want to rename photos", "im", "it", "is", "ok", "no", "k "] {
+            #expect(inField(input) == nil, "\(input) suggested \(inField(input)?.top.title ?? "")")
+        }
+    }
+
+    @Test func noMessageLongerThanOneCharacterSuggestsAnything() {
+        for input in InstantActionRuleTests.messages where input.count > 1 {
+            let suggestion = inField(input)
+            #expect(suggestion == nil, "\(input) suggested \(suggestion?.choices.map(\.title) ?? [])")
+        }
+    }
+
+    @Test func closeMatchesNeverHoldAShortInputBack() {
+        // The row offers nothing for these, since nothing leads clearly.
+        #expect(offered("sa").isEmpty)
+        #expect(offered("ph").isEmpty)
+        #expect(inField("sa")?.top.title == "Safari")
+        #expect(inField("ph")?.top.title == "Phone")
+        // Longer input is the same in both.
+        #expect(inField("saf")?.choices.map(\.title) == offered("saf"))
+        #expect(inField("safari")?.choices.map(\.title) == ["Safari"])
+    }
+
+    @Test func spacesPunctuationAndSlashesSuggestNothing() {
+        for input in [" s", "s ", " ", "  a", ".", ",", "/", "?", "-", "'", "\n", "\t", "😀", "s."] {
+            #expect(inField(input) == nil, "\(input.debugDescription) suggested \(inField(input)?.top.title ?? "")")
+        }
+    }
+
+    @Test func aCharacterOfAnotherScriptSuggestsANameInIt() {
+        let applications = standInApplications + [app("微信", "com.tencent.xinWeChat"), app("Яндекс Музыка", "ru.yandex.music")]
+        let engine = InstantActionEngine(providers: [ApplicationInstantActions(applications: applications)])
+        #expect(engine.suggestion(for: "微", mode: .inField)?.top.title == "微信")
+        #expect(engine.suggestion(for: "я", mode: .inField)?.top.title == "Яндекс Музыка")
+        #expect(engine.suggestion(for: "м", mode: .inField)?.top.title == "Яндекс Музыка", "a later word")
+        #expect(engine.suggestion(for: "ж", mode: .inField) == nil)
+        #expect(engine.suggestion(for: "微", mode: .row) == nil)
+    }
+
+    /// The first keystroke matches every installed app, since nearly all of them start with
+    /// some letter. This times it on a made-up Mac with 600 apps, more than most have, and
+    /// fails only far above what typing could notice, so a busy test run does not trip it.
+    @Test func theFirstCharacterIsFastOnManyApps() {
+        let syllables = ["ka", "lo", "mi", "ne", "su", "ra", "to", "vi", "be", "do", "fa", "go"]
+        var applications = standInApplications
+        var index = 0
+        while applications.count < 600 {
+            let first = syllables[index % syllables.count] + syllables[(index / 7) % syllables.count]
+            let name = index % 3 == 0 ? "\(first.capitalized) \(syllables[(index / 3) % syllables.count].capitalized)\(index)" : "\(first.capitalized)\(index)"
+            applications.append(app(name, "com.example.\(name.replacingOccurrences(of: " ", with: ""))"))
+            index += 1
+        }
+        let engine = InstantActionEngine(providers: [ApplicationInstantActions(applications: applications)])
+        let letters = "abcdefghijklmnopqrstuvwxyz".map(String.init)
+        var worst = Duration.zero
+        var total = Duration.zero
+        let rounds = 20
+        for _ in 0..<rounds {
+            for letter in letters {
+                let start = ContinuousClock.now
+                _ = engine.suggestion(for: letter, now: now, mode: .inField)
+                let elapsed = ContinuousClock.now - start
+                total += elapsed
+                worst = max(worst, elapsed)
+            }
+        }
+        let mean = total / (rounds * letters.count)
+        print("instant-actions: first character on \(applications.count) apps, mean \(mean), worst \(worst)")
+        #expect(mean < .milliseconds(5))
+        #expect(worst < .milliseconds(50))
+    }
+}
+
 @Suite struct InstantActionLearningTests {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     let safari = "application:/System/Cryptexes/App/System/Applications/Safari.app"

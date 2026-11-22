@@ -2,12 +2,13 @@ import Foundation
 import MacOSAgentCore
 
 /// Stand-in states for the suggestions-in-the-field experiment, for screenshots and tests: the
-/// footer with an empty field, "chr" with a match, the list open, and the slash list. The
+/// footer with an empty field, "chr" with a match, "c" alone with its match, the list open,
+/// and the slash list. The
 /// experiment is on for these sessions only, without touching the preferences, and they use
 /// made-up apps and actions, so nothing reads the real ones.
 @MainActor
 enum FooterPreview {
-    static let names = ["footer-idle", "footer-typing", "footer-list", "footer-slash", "footer-incognito"]
+    static let names = ["footer-idle", "footer-typing", "footer-one-character", "footer-list", "footer-slash", "footer-incognito"]
 
     static func session(named name: String) -> AgentSession? {
         guard names.contains(name) else { return nil }
@@ -16,6 +17,8 @@ enum FooterPreview {
         switch name {
         case "footer-typing", "footer-incognito":
             session.draft = "chr"
+        case "footer-one-character":
+            session.draft = "c"
         case "footer-list":
             session.draft = "chr"
             _ = session.chooseInFooter(by: 1)

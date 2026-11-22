@@ -5,7 +5,8 @@ import Testing
 @testable import mac_os_agent
 
 /// Renders the suggestions-in-the-field experiment offscreen, for a pull request when screen
-/// capture is not available: the empty field with its footer, "chr" with a match, the list
+/// capture is not available: the empty field with its footer, "chr" with a match, "c" alone
+/// with its match and, with the switch off, with nothing, the list
 /// open below the field, the same list drawn over the conversation where the window has no room
 /// to grow, the slash list, and the incognito window, in light and dark. Run with
 /// MAC_OS_AGENT_RENDER_FOOTER set to a folder.
@@ -33,6 +34,8 @@ struct SuggestionFooterRenders {
         State(name: "off-typing-chr", preview: "footer-typing", off: true),
         State(name: "idle", preview: "footer-idle"),
         State(name: "typing-chr", preview: "footer-typing"),
+        State(name: "typing-one-character", preview: "footer-one-character"),
+        State(name: "off-typing-one-character", preview: "footer-one-character", off: true),
         State(name: "list-below", preview: "footer-list"),
         State(name: "list-overlay", preview: "footer-list", overlay: true),
         State(name: "slash-list", preview: "footer-slash"),
@@ -46,7 +49,10 @@ struct SuggestionFooterRenders {
         for state in Self.states {
             for scheme in [ColorScheme.light, .dark] {
                 let session = try #require(PanelPreview.session(named: state.preview))
-                if state.off { session.suggestionList.forcedOn = false }
+                if state.off {
+                    session.suggestionList.forcedOn = false
+                    session.syncInstantActionMode()
+                }
                 let palette = PanelPalette(theme: theme, dark: scheme == .dark, allowsGlass: false)
                 let field = try Self.fieldImage(session: session, palette: palette, dark: scheme == .dark)
                 let view = panel(session: session, field: field, overlay: state.overlay)
