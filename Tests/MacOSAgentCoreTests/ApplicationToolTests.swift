@@ -304,7 +304,7 @@ final class FakeApplicationWorkspace: ApplicationWorkspace, @unchecked Sendable 
             "read_themes", "change_theme",
         ]
         #expect(Array(first.definitions.map(\.name).prefix(before.count)) == before)
-        #expect(first.definitions.map(\.name) == before + ["read_actions", "change_action"])
+        #expect(first.definitions.map(\.name) == before + ["read_quick_actions", "change_quick_action"])
         #expect(first.definitions == second.definitions)
     }
 

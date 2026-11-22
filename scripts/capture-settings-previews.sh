@@ -54,9 +54,9 @@ skill wallpaper-of-the-day "Set the desktop picture to the Bing image of the day
 skill zoom-cleanup "Quit Zoom and remove its leftover launch agents."
 printf '{"disabled":["wallpaper-of-the-day","night-shift"]}\n' > "$DATA/skill-settings.json"
 
-# A few saved actions, one of them off and one that no longer fits its tool.
-mkdir -p "$DATA/actions"
-cat > "$DATA/actions/start-screensaver.json" <<'JSON'
+# A few quick actions, one of them off and one that no longer fits its tool.
+mkdir -p "$DATA/quick-actions"
+cat > "$DATA/quick-actions/start-screensaver.json" <<'JSON'
 {
   "format": 1,
   "name": "Start Screensaver",
@@ -68,7 +68,7 @@ cat > "$DATA/actions/start-screensaver.json" <<'JSON'
   ]
 }
 JSON
-cat > "$DATA/actions/empty-downloads.json" <<'JSON'
+cat > "$DATA/quick-actions/empty-downloads.json" <<'JSON'
 {
   "format": 1,
   "name": "Empty Downloads",
@@ -80,7 +80,7 @@ cat > "$DATA/actions/empty-downloads.json" <<'JSON'
   ]
 }
 JSON
-cat > "$DATA/actions/focus-music.json" <<'JSON'
+cat > "$DATA/quick-actions/focus-music.json" <<'JSON'
 { "format": 1, "name": "Focus Music", "description": "Opens Music for a work session.", "enabled": false,
   "steps": [ { "tool": "open_application", "arguments": { "bundle_identifier_or_path": "com.apple.Music" } } ] }
 JSON

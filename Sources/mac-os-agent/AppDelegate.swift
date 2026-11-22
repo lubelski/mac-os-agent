@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var updater: AppUpdater!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything reads the quick actions folder, which used to be `actions/`.
+        let quickActionsMove = SavedActionLibrary.moveFolderFromOldName()
         let installationID = AgentPaths.installationID()
         let authenticator = ChatGPTAuthenticator(secrets: AgentPaths.secretStore(), installationID: installationID)
         var loop: AgentLoop?
@@ -102,6 +104,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             session.problems.record("Shortcut", problem)
         }
         updateStatusIcon()
+        if quickActionsMove == .moved { log.notice("Renamed the actions folder to quick-actions") }
+        if let problem = quickActionsMove.problem {
+            log.notice("\(problem, privacy: .public)")
+            session.problems.record("Quick actions", problem)
+        }
         if let startupError {
             session.problems.record("Startup", "Could not open the thread: \(startupError.localizedDescription)")
         }

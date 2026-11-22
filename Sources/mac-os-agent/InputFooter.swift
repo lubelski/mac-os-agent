@@ -364,7 +364,7 @@ private struct SuggestionRowView: View {
         case .candidate(let candidate):
             switch candidate.target {
             case .application: "app"
-            case .action: "action"
+            case .action: "quick action"
             }
         case .ask: Mark.commandReturn
         case .command(let item):
@@ -377,7 +377,7 @@ private struct SuggestionRowView: View {
         case .candidate(let candidate):
             switch candidate.target {
             case .application: "\(candidate.title), app"
-            case .action: "\(candidate.title), saved action"
+            case .action: "\(candidate.title), quick action"
             }
         case .ask(let text): "Ask \(agentName): \(text)"
         case .command(let item): "\(item.name), \(item.summary(incognito: incognito))"

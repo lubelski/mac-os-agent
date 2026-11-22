@@ -28,7 +28,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .appearance: "Appearance"
         case .instructions: "Instructions"
         case .skills: "Skills"
-        case .actions: "Actions"
+        case .actions: "Quick Actions"
         case .tools: "Tools"
         case .history: "History"
         case .behaviors: "Behaviors"

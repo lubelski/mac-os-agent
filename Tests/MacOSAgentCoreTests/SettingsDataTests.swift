@@ -53,7 +53,7 @@ private struct GoAheadTool: AgentTool {
             "open_item", "find_files", "read_clipboard", "write_clipboard", "set_desktop_picture", "quit_or_hide_application",
         ])
         #expect(groups[4].tools.map(\.name) == ["read_themes", "change_theme"])
-        #expect(groups[5].tools.map(\.name) == ["read_actions", "change_action"])
+        #expect(groups[5].tools.map(\.name) == ["read_quick_actions", "change_quick_action"])
         #expect(groups.map(\.source.privacyAccess) == [nil, .reminders, .calendars, nil, nil, nil])
     }
 

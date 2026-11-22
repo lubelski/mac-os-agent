@@ -94,7 +94,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .eventChanges: changeCount == 1 ? "Make this change in Calendar?" : "Make these \(changeCount) changes in Calendar?"
         case .quitApplication: "Quit this app?"
         case .deleteTheme: "Delete this theme?"
-        case .deleteAction: "Delete this action?"
+        case .deleteAction: "Delete this quick action?"
         }
     }
 
@@ -141,7 +141,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .deleteTheme:
             return itemName.map { "\(waiting) to delete the theme \($0)" } ?? waiting
         case .deleteAction:
-            return itemName.map { "\(waiting) to delete the action \($0)" } ?? waiting
+            return itemName.map { "\(waiting) to delete the quick action \($0)" } ?? waiting
         }
     }
 

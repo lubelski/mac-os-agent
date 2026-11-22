@@ -125,8 +125,8 @@ public struct SavedAction: Sendable, Equatable, Identifiable {
         guard let stepValues = object["steps"]?.arrayValue else {
             throw SavedActionError("The file needs \"steps\", a list of tool calls.")
         }
-        guard !stepValues.isEmpty else { throw SavedActionError("The action has no steps.") }
-        guard stepValues.count <= maximumSteps else { throw SavedActionError("The action has more than \(maximumSteps) steps.") }
+        guard !stepValues.isEmpty else { throw SavedActionError("The quick action has no steps.") }
+        guard stepValues.count <= maximumSteps else { throw SavedActionError("The quick action has more than \(maximumSteps) steps.") }
         var steps: [Step] = []
         for (index, value) in stepValues.enumerated() {
             let number = index + 1
@@ -258,7 +258,7 @@ public struct SavedActionLibrary: Sendable {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try Data(action.fileText.utf8).write(to: fileURL(id: action.id), options: .atomic)
         } catch {
-            throw SavedActionError("Could not write the action file: \(error.localizedDescription)")
+            throw SavedActionError("Could not write the quick action file: \(error.localizedDescription)")
         }
         Self.postChange()
         return action.id
@@ -276,12 +276,12 @@ public struct SavedActionLibrary: Sendable {
     public func delete(id: String) throws(SavedActionError) {
         let url = fileURL(id: id)
         guard FileManager.default.fileExists(atPath: url.plainPath) else {
-            throw SavedActionError("There is no action file \(url.lastPathComponent).")
+            throw SavedActionError("There is no quick action file \(url.lastPathComponent).")
         }
         do {
             try FileManager.default.removeItem(at: url)
         } catch {
-            throw SavedActionError("Could not delete the action file: \(error.localizedDescription)")
+            throw SavedActionError("Could not delete the quick action file: \(error.localizedDescription)")
         }
         Self.postChange()
     }
@@ -293,7 +293,7 @@ public struct SavedActionLibrary: Sendable {
     /// The id for a name: lowercase letters and digits, with hyphens between the words.
     public static func identifier(for name: String) -> String {
         let id = SkillLibrary.suggestedName(from: name)
-        return id.isEmpty ? "action" : String(id.prefix(64))
+        return id.isEmpty ? "quick-action" : String(id.prefix(64))
     }
 
     static func postChange() {
@@ -303,7 +303,7 @@ public struct SavedActionLibrary: Sendable {
 
 extension SavedActionLibrary {
     /// The one line shown by the text field after a task that added or changed actions the
-    /// instant row offers, such as "The action Start Screensaver is ready to use. Type its name
+    /// instant row offers, such as "The quick action Start Screensaver is ready to use. Type its name
     /// and press Return.", or nil when none did. Actions that are off or broken are not named.
     public static func changeNotice(from before: [SavedActionEntry], to after: [SavedActionEntry]) -> String? {
         let old = Dictionary(before.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -319,11 +319,11 @@ extension SavedActionLibrary {
         var sentences: [String] = []
         if !added.isEmpty {
             sentences.append(added.count == 1
-                ? "The action \(added[0]) is ready to use. Type its name and press Return."
-                : "The actions \(list(added)) are ready to use.")
+                ? "The quick action \(added[0]) is ready to use. Type its name and press Return."
+                : "The quick actions \(list(added)) are ready to use.")
         }
         if !changed.isEmpty {
-            sentences.append(changed.count == 1 ? "The action \(changed[0]) is updated." : "The actions \(list(changed)) are updated.")
+            sentences.append(changed.count == 1 ? "The quick action \(changed[0]) is updated." : "The quick actions \(list(changed)) are updated.")
         }
         return sentences.isEmpty ? nil : sentences.joined(separator: " ")
     }
@@ -333,6 +333,52 @@ extension SavedActionLibrary {
         case 1: names[0]
         case 2: "\(names[0]) and \(names[1])"
         default: names.dropLast().joined(separator: ", ") + ", and " + names.last!
+        }
+    }
+}
+
+extension SavedActionLibrary {
+    /// What happened to the folder quick actions were kept in before they were renamed,
+    /// `actions/`, when the app started.
+    public enum FolderMove: Sendable, Equatable {
+        /// There is no `actions/` folder, so nothing was moved.
+        case nothingToMove
+        /// `actions/` became `quick-actions/`.
+        case moved
+        /// Both folders are there. Neither was touched, and `quick-actions/` is the one used.
+        case bothExist
+        /// The rename failed, with why. `quick-actions/` is the one used.
+        case failed(String)
+
+        /// A line for Debugging when the owner should know, and nil when all is well. It names
+        /// the folders and never what is in them.
+        public var problem: String? {
+            switch self {
+            case .nothingToMove, .moved: nil
+            case .bothExist:
+                "The data folder has both \(AgentPaths.oldActionsFolderName)/ and \(AgentPaths.actionsFolderName)/. "
+                    + "The app uses \(AgentPaths.actionsFolderName)/ and leaves \(AgentPaths.oldActionsFolderName)/ as it is."
+            case .failed(let reason):
+                "Could not rename \(AgentPaths.oldActionsFolderName)/ to \(AgentPaths.actionsFolderName)/: \(reason) "
+                    + "The app uses \(AgentPaths.actionsFolderName)/."
+            }
+        }
+    }
+
+    /// Renames `actions/` in the data folder to `quick-actions/`, once, at launch. When both
+    /// exist neither is touched. Call it before anything reads the quick actions folder.
+    public static func moveFolderFromOldName(in dataFolder: URL = AgentPaths.applicationSupport) -> FolderMove {
+        let manager = FileManager.default
+        let old = dataFolder.appending(path: AgentPaths.oldActionsFolderName, directoryHint: .isDirectory)
+        let new = dataFolder.appending(path: AgentPaths.actionsFolderName, directoryHint: .isDirectory)
+        var isDirectory: ObjCBool = false
+        guard manager.fileExists(atPath: old.plainPath, isDirectory: &isDirectory), isDirectory.boolValue else { return .nothingToMove }
+        guard !manager.fileExists(atPath: new.plainPath) else { return .bothExist }
+        do {
+            try manager.moveItem(at: old, to: new)
+            return .moved
+        } catch {
+            return .failed(error.localizedDescription)
         }
     }
 }
