@@ -50,7 +50,7 @@ public enum DestructiveCommandCheck {
     /// The reason a command needs a go-ahead, or nil when it can run without one.
     public static func reasonToConfirm(command: String, markedDestructive: Bool) -> String? {
         if let reason = patternReason(command) { return reason }
-        return markedDestructive ? "marked as destructive" : nil
+        return markedDestructive ? "is marked as destructive" : nil
     }
 
     /// The reason the first matching pattern gives, or nil when none match.
