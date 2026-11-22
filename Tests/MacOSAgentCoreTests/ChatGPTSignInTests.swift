@@ -50,6 +50,33 @@ import Testing
         #expect(values["nonce"] == "nonce-1")
     }
 
+    @Test func aReauthorizationUsesTheIssuedClientAndTheHints() {
+        let url = ChatGPTSignIn.authorizationURL(
+            installationID: installationID, state: "s", challenge: "c", nonce: "n",
+            registration: .init(clientID: "oaiapp_1", subject: "user-1", email: "owner+1@example.com"),
+            idTokenHint: "header.payload.sig")
+        let pairs = query(url)
+        #expect(pairs.map(\.0) == [
+            "client_id", "ext_agent_host_id", "response_type", "redirect_uri", "resource",
+            "scope", "state", "code_challenge", "code_challenge_method", "nonce", "login_hint", "id_token_hint",
+        ])
+        let values = Dictionary(pairs, uniquingKeysWith: { first, _ in first })
+        #expect(values["client_id"] == "oaiapp_1")
+        #expect(values["ext_agent_host_id"] == "urn:uuid:e61bbe28-07ef-466d-8e5d-a344f94ab305")
+        #expect(values["login_hint"] == "owner+1@example.com")
+        #expect(values["id_token_hint"] == "header.payload.sig")
+        #expect(url.absoluteString.contains("login_hint=owner%2B1%40example.com"))
+    }
+
+    @Test func aReauthorizationWithNoHintsSendsNone() {
+        let url = ChatGPTSignIn.authorizationURL(
+            installationID: installationID, state: "s", challenge: "c", nonce: "n", registration: .init(clientID: "oaiapp_1"))
+        let names = query(url).map(\.0)
+        #expect(!names.contains("login_hint"))
+        #expect(!names.contains("id_token_hint"))
+        #expect(!names.contains("agent_name_hint"))
+    }
+
     @Test func theScopeIsEncodedLikeURLSearchParams() {
         let url = ChatGPTSignIn.authorizationURL(installationID: installationID, state: "s", challenge: "c", nonce: "n")
         #expect(url.absoluteString.contains(
@@ -80,6 +107,77 @@ import Testing
         #expect(attempt("code=c&state=other&client_id=x") == .stateMismatch)
         #expect(attempt("code=c&state=s1") == .missingClientID)
         #expect(attempt("error=access_denied") == .authorizationFailed("access_denied"))
+        // The dynamic entry point is never an issued id.
+        #expect(attempt("code=c&state=s1&client_id=dynamic_agent_client") == .missingClientID)
+        #expect(attempt("code=c&state=s1&client_id=oaiapp%2F1") == .missingClientID)
+    }
+
+    @Test func aReauthorizationCallbackMayLeaveTheClientOutButNotChangeIt() throws {
+        func result(_ query: String) throws -> ChatGPTSignIn.AuthorizationResult {
+            try ChatGPTSignIn.authorizationResult(
+                callback: URL(string: "http://127.0.0.1:1455/auth/callback?\(query)")!, expectedState: "s1",
+                savedClientID: "oaiapp_kept")
+        }
+        #expect(try result("code=c&state=s1") == .init(code: "c", clientID: "oaiapp_kept"))
+        #expect(try result("code=c&state=s1&client_id=oaiapp_kept") == .init(code: "c", clientID: "oaiapp_kept"))
+        #expect(throws: ChatGPTSignIn.SignInError.clientIDMismatch) { try result("code=c&state=s1&client_id=oaiapp_other") }
+    }
+
+    // MARK: Revocation
+
+    @Test func theRevocationBodyNamesTheRefreshToken() {
+        #expect(ChatGPTSignIn.revocationBody(refreshToken: "r/1", clientID: "oaiapp_1")
+            == "token=r%2F1&token_type_hint=refresh_token&client_id=oaiapp_1")
+    }
+
+    @Test func theRevocationEndpointComesFromOpenAIsConfiguration() {
+        func endpoint(_ json: JSONValue) -> URL? { ChatGPTSignIn.revocationEndpoint(fromDiscovery: json.data) }
+        // The fields of https://auth.openai.com/.well-known/openid-configuration as published.
+        #expect(endpoint([
+            "issuer": "https://auth.openai.com",
+            "revocation_endpoint": "https://auth.openai.com/api/accounts/oauth/revoke",
+        ]) == URL(string: "https://auth.openai.com/api/accounts/oauth/revoke"))
+        #expect(endpoint(["issuer": "https://auth.openai.com", "revocation_endpoint": "https://elsewhere.example/revoke"]) == nil)
+        #expect(endpoint(["issuer": "https://auth.openai.com", "revocation_endpoint": "http://auth.openai.com/revoke"]) == nil)
+        #expect(endpoint(["issuer": "https://elsewhere.example", "revocation_endpoint": "https://auth.openai.com/revoke"]) == nil)
+        #expect(endpoint(["issuer": "https://auth.openai.com"]) == nil)
+    }
+
+    // MARK: ID token
+
+    private func claims(_ changes: [String: JSONValue] = [:]) -> String {
+        var object: [String: JSONValue] = [
+            "iss": "https://auth.openai.com", "aud": "oaiapp_1", "nonce": "n1", "exp": 2_000_000_000,
+            "sub": "user-1", "email": "owner@example.com",
+        ]
+        for (key, value) in changes { object[key] = value }
+        return idToken(.object(object.filter { $0.value != .null }))
+    }
+
+    @Test func theIDTokenSaysWhoSignedIn() throws {
+        let now = Date(timeIntervalSince1970: 1_900_000_000)
+        #expect(try ChatGPTSignIn.idTokenClaims(claims(), clientID: "oaiapp_1", nonce: "n1", now: now)
+            == .init(subject: "user-1", email: "owner@example.com"))
+        #expect(try ChatGPTSignIn.idTokenClaims(claims(["aud": ["other", "oaiapp_1"], "email": .null]), clientID: "oaiapp_1", nonce: "n1", now: now)
+            == .init(subject: "user-1", email: nil))
+    }
+
+    @Test func badIDTokensAreRefused() {
+        let now = Date(timeIntervalSince1970: 1_900_000_000)
+        func attempt(_ token: String) -> ChatGPTSignIn.SignInError? {
+            do {
+                _ = try ChatGPTSignIn.idTokenClaims(token, clientID: "oaiapp_1", nonce: "n1", now: now)
+                return nil
+            } catch {
+                return error as? ChatGPTSignIn.SignInError
+            }
+        }
+        #expect(attempt("not-a-token") == .invalidIDToken("could not be read"))
+        #expect(attempt(claims(["iss": "https://elsewhere.example"])) == .invalidIDToken("has the wrong issuer"))
+        #expect(attempt(claims(["aud": "oaiapp_2"])) == .invalidIDToken("is for a different client"))
+        #expect(attempt(claims(["nonce": "n2"])) == .invalidIDToken("does not match this sign-in"))
+        #expect(attempt(claims(["exp": 1_800_000_000])) == .invalidIDToken("has expired"))
+        #expect(attempt(claims(["sub": ""])) == .invalidIDToken("does not name an account"))
     }
 
     // MARK: Token requests and responses
@@ -111,6 +209,7 @@ import Testing
         #expect(credential.clientID == "oaiapp_1")
         #expect(credential.scopes.contains("chatgpt.tokens.use.direct"))
         #expect(credential.refreshAfter == now.addingTimeInterval(3600 - 180))
+        #expect(credential.idToken == "id")
     }
 
     @Test func badTokenResponsesAreRejected() {
@@ -170,14 +269,16 @@ import Testing
         #expect(transport.requests.count == 2)
     }
 
-    @Test func signingOutForgetsTheStoredTokens() async throws {
+    @Test func signingOutForgetsTheStoredTokensAndKeepsTheClient() async throws {
         let secrets = MemorySecrets([
             ChatGPTAuthenticator.refreshTokenKey: "r", ChatGPTAuthenticator.clientIDKey: "c",
         ])
+        // The discovery document here is empty, so revocation cannot be confirmed.
         let authenticator = ChatGPTAuthenticator(secrets: secrets, installationID: installationID, transport: FakeTransport(body: [:]))
         #expect(await authenticator.isSignedIn())
-        await authenticator.signOut()
+        #expect(await authenticator.signOut() == .notConfirmed)
         #expect(await !authenticator.isSignedIn())
+        #expect(secrets.read(ChatGPTAuthenticator.clientIDKey) == "c")
         await #expect(throws: ChatGPTSignIn.SignInError.notSignedIn) { try await authenticator.accessToken() }
     }
 

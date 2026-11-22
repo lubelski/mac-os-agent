@@ -15,6 +15,10 @@ struct GeneralSettingsView: View {
     @AppStorage(EpisodeTimeoutSetting.key) private var episodeTimeout = EpisodeTimeoutSetting.defaultMinutes
     @AppStorage(AgentNameSetting.key) private var agentName = ""
 
+    private var modelChoices: (models: [OpenAIModel], currentIsUnlisted: Bool) {
+        session.modelChoices(current: model)
+    }
+
     var body: some View {
         Form {
             Section {
@@ -40,22 +44,33 @@ struct GeneralSettingsView: View {
                             Button("Cancel") { session.cancelSignIn() }
                         }
                     case .signedOut:
-                        Button("Sign in with ChatGPT…") { session.signIn() }
+                        HStack {
+                            Button("Sign in with ChatGPT…") { session.signIn() }
+                            // A sign-in reuses this Mac's registration, which belongs to one
+                            // account. Another account needs a registration of its own.
+                            if session.hasRegistration {
+                                Button("Use a Different Account…") { session.signIn(differentAccount: true) }
+                            }
+                        }
                     }
                 }
                 Picker("Model", selection: $model) {
-                    ForEach(OpenAIModel.all) { model in
+                    ForEach(modelChoices.models) { model in
                         Text(model.name).tag(model.id)
-                    }
-                    if !OpenAIModel.all.contains(where: { $0.id == model }) {
-                        Text(model).tag(model)
                     }
                 }
             } header: {
                 Text("ChatGPT")
             } footer: {
-                Text("A new model applies from the next reply. The model is also in the menu bar menu.")
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    if modelChoices.currentIsUnlisted {
+                        Text("\(model) is not in your ChatGPT account's model list. It stays selected until you choose another, and requests may fail with it.")
+                    }
+                    Text(session.accountModels == nil
+                        ? "A new model applies from the next reply. The model is also in the menu bar menu."
+                        : "These are the models your ChatGPT account lists. A new model applies from the next reply. The model is also in the menu bar menu.")
+                }
+                .foregroundStyle(.secondary)
             }
             Section {
                 Picker("Start a new episode after", selection: $episodeTimeout) {
