@@ -8,5 +8,6 @@ let package = Package(
         .target(name: "MacOSAgentCore"),
         .executableTarget(name: "mac-os-agent", dependencies: ["MacOSAgentCore"]),
         .testTarget(name: "MacOSAgentCoreTests", dependencies: ["MacOSAgentCore"]),
+        .testTarget(name: "MacOSAgentAppTests", dependencies: ["mac-os-agent", "MacOSAgentCore"]),
     ]
 )

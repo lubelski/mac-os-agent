@@ -68,6 +68,7 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
   - The whole thread is scrollable history above the text field. It opens at the latest message and follows new output unless the owner has scrolled up.
   - The owner's messages and the agent's replies sit in quiet boxes on opposite sides. Commands are small secondary lines between them, with their output behind a disclosure. A time label marks the first message of a new day or after a pause of 30 minutes or more.
   - It stays light: a floating Liquid Glass panel with no title bar, sidebar, or conversation list. The text field has focus when it appears, Return sends, and Escape hides it.
+  - The text field is a standard Mac text view with everything the system gives one: the Edit menu's commands and shortcuts, the usual key bindings, input methods, spelling, text replacement, dictation, and the emoji picker. It grows with its text up to eight lines, then scrolls. Shift-Return and Option-Return add a line.
 - Progress and dismissal
   - Each command shows as it runs, and the reply streams into place.
   - The go-ahead card and the Stop button sit by the text field, outside the scrolling history.

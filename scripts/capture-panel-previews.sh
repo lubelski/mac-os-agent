@@ -19,7 +19,7 @@ fi
 
 BIN="build/mac-os-agent.app/Contents/MacOS/mac-os-agent"
 OUT="${1:-docs/screenshots}"
-STATES=(empty history running confirmation finished)
+STATES=(empty history running confirmation finished draft multiline-draft)
 mkdir -p "$OUT"
 
 # A small helper that prints the panel's window number for a process id.

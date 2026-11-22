@@ -7,7 +7,8 @@ import SwiftUI
 struct SummonView: View {
     @Bindable var session: AgentSession
     var onDismiss: () -> Void = {}
-    @FocusState private var fieldFocused: Bool
+    /// Changes whenever the text field should take keyboard focus.
+    @State private var focusRequest = 0
     /// The reference time for the history's time labels, refreshed on every summon.
     @State private var now = Date()
 
@@ -29,36 +30,52 @@ struct SummonView: View {
         .glassEffect(.regular, in: .rect(cornerRadius: SummonPanel.cornerRadius))
         .onChange(of: session.focusRequest, initial: true) {
             now = Date()
-            fieldFocused = true
+            focusRequest += 1
         }
         .onChange(of: session.isRunning) { _, running in
-            if !running { fieldFocused = true }
+            if !running { focusRequest += 1 }
         }
         .onExitCommand(perform: onDismiss)
     }
 
     private var inputRow: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: "sparkle")
                 .font(.system(size: 15))
                 .foregroundStyle(.secondary)
-            TextField("Tell your Mac what to do", text: $session.draft)
-                .textFieldStyle(.plain)
-                .font(.system(size: 15))
-                .focused($fieldFocused)
-                .onSubmit { session.submit() }
-                .disabled(session.isRunning)
+                .frame(height: InputField.rowHeight)
+            InputField(
+                text: $session.draft,
+                placeholder: Self.placeholder,
+                isEnabled: !session.isRunning,
+                focusRequest: focusRequest,
+                onSubmit: session.submit,
+                onCancel: onDismiss)
+                .overlay(alignment: .topLeading) {
+                    if session.draft.isEmpty {
+                        Text(Self.placeholder)
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color(nsColor: .placeholderTextColor))
+                            .padding(.top, InputField.verticalInset)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
             if session.isRunning {
-                ProgressView().controlSize(.small)
-                Button("Stop", action: session.stop)
-                    .buttonStyle(.glass)
-                    .keyboardShortcut(".", modifiers: .command)
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Button("Stop", action: session.stop)
+                        .buttonStyle(.glass)
+                        .keyboardShortcut(".", modifiers: .command)
+                }
+                .frame(height: InputField.rowHeight)
             }
         }
-        .frame(minHeight: 28)
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }
+
+    private static let placeholder = "Tell your Mac what to do"
 }
 
 // MARK: - History
