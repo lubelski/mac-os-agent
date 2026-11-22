@@ -84,7 +84,16 @@ struct InputField: NSViewRepresentable {
             textView.undoManager?.removeAllActions()
         }
         textView.isEditable = isEnabled
-        textView.textColor = isEnabled ? .labelColor : .secondaryLabelColor
+        // The theme's text colors, and its accent for the cursor.
+        let palette = context.environment.panelPalette
+        let color = isEnabled ? palette.primaryNSColor : palette.secondaryNSColor
+        if textView.textColor != color {
+            textView.textColor = color
+            textView.typingAttributes[.foregroundColor] = color
+        }
+        if palette.accentOverride != nil {
+            textView.insertionPointColor = palette.accentNSColor
+        }
 
         if coordinator.focusRequest != focusRequest {
             coordinator.focusRequest = focusRequest

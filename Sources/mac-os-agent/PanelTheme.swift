@@ -265,3 +265,60 @@ struct WindowAppearance: NSViewRepresentable {
         }
     }
 }
+
+extension PanelPalette {
+    var tertiaryNSColor: NSColor { nsColor(appearance.text.tertiary) }
+
+    /// The primary text color at a fraction of its strength, for quiet fills such as a selected
+    /// row, table striping, and diff lines.
+    func textTint(_ opacity: Double) -> AnyShapeStyle {
+        let primary = appearance.text.primary
+        switch primary {
+        case .system where usesSystemText:
+            return AnyShapeStyle(.primary.opacity(opacity))
+        default:
+            return AnyShapeStyle(color(primary).opacity(opacity))
+        }
+    }
+}
+
+extension View {
+    /// The root of a window that draws with the active theme, the panel or the inspector beside
+    /// it: the palette for the views inside, the text levels and accent, the surface, and the
+    /// window held to a theme's only appearance.
+    func themedPanel(incognito: Bool = false) -> some View {
+        modifier(ThemedPanelRoot(model: ThemeModel.shared, incognito: incognito))
+    }
+}
+
+private struct ThemedPanelRoot: ViewModifier {
+    let model: ThemeModel
+    let incognito: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        let theme = model.activeTheme
+        let palette = PanelPalette(
+            theme: theme, dark: colorScheme == .dark, increasedContrast: contrast == .increased,
+            allowsGlass: model.usesGlass && !reduceTransparency)
+        content
+            .panelText(palette)
+            .environment(\.panelPalette, palette)
+            .panelSurface(palette, incognito: incognito, cornerRadius: SummonPanel.cornerRadius)
+            .background(WindowAppearance(fixed: theme.fixedAppearance))
+    }
+}
+
+/// The faint line above the text field, and between the inspector's input and output.
+struct PanelDivider: View {
+    @Environment(\.panelPalette) private var palette
+
+    var body: some View {
+        Rectangle()
+            .fill(palette.inputDivider)
+            .frame(height: 1)
+            .accessibilityHidden(true)
+    }
+}

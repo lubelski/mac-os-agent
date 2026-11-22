@@ -42,7 +42,7 @@ struct OwnerMessage: View {
     let date: Date
     let showsTime: Bool
     let now: Date
-    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.panelPalette) private var palette
     @State private var hovering = false
 
     var body: some View {
@@ -60,14 +60,12 @@ struct OwnerMessage: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, MessageStyle.horizontalPadding)
                     .padding(.vertical, MessageStyle.verticalPadding)
-                    // The system accent, which stays in color while the app is inactive. The
-                    // panel never activates the app, so `Color.accentColor` would turn gray.
-                    .background(Color(nsColor: .controlAccentColor).opacity(0.3), in: .rect(cornerRadius: MessageStyle.cornerRadius))
+                    // The theme's fill and edge. Glass tints it with the system accent, and draws
+                    // the edge only with Increase Contrast.
+                    .background(palette.ownerFill, in: .rect(cornerRadius: MessageStyle.cornerRadius))
                     .overlay {
-                        if contrast == .increased {
-                            RoundedRectangle(cornerRadius: MessageStyle.cornerRadius)
-                                .strokeBorder(Color(nsColor: .controlAccentColor), lineWidth: 1)
-                        }
+                        RoundedRectangle(cornerRadius: MessageStyle.cornerRadius)
+                            .strokeBorder(palette.ownerEdge, lineWidth: 1)
                     }
                     .help(TranscriptTimeLabel.fullText(for: date))
                     .contextMenu { MessageMenu(source: text, plainText: nil) }
@@ -97,7 +95,7 @@ struct OwnerMessage: View {
 struct AgentMessage: View {
     let text: String
     var streaming = false
-    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.panelPalette) private var palette
     @State private var hovering = false
 
     var body: some View {
@@ -106,9 +104,9 @@ struct AgentMessage: View {
             MarkdownView(document: document)
                 .padding(.horizontal, MessageStyle.horizontalPadding)
                 .padding(.vertical, MessageStyle.verticalPadding)
-                .background(.primary.opacity(contrast == .increased ? 0.17 : 0.13), in: .rect(cornerRadius: MessageStyle.cornerRadius))
+                .background(palette.agentFill, in: .rect(cornerRadius: MessageStyle.cornerRadius))
                 .overlay(RoundedRectangle(cornerRadius: MessageStyle.cornerRadius)
-                    .strokeBorder(.primary.opacity(contrast == .increased ? 0.35 : 0.1), lineWidth: 1))
+                    .strokeBorder(palette.agentEdge, lineWidth: 1))
                 .contextMenu { MessageMenu(source: text, plainText: document.plainText) }
                 // The copy control sits in the empty room to the box's right, so showing it
                 // moves nothing. It copies the Markdown as the agent wrote it.
@@ -140,6 +138,7 @@ struct AgentMessage: View {
 /// Return or Space when it has keyboard focus, shows the call in the inspector beside the
 /// panel. The row never grows in place. The call the inspector shows has a faint fill.
 struct ToolLine: View {
+    @Environment(\.panelPalette) private var palette
     let callID: String
     let command: String
     let state: ToolCallState
@@ -160,7 +159,7 @@ struct ToolLine: View {
         .background(alignment: .leading) {
             if isSelected {
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(.primary.opacity(0.07))
+                    .fill(palette.textTint(0.07))
                     .padding(.leading, MessageStyle.horizontalPadding - 5)
                     .padding(.vertical, -2)
                     .accessibilityHidden(true)

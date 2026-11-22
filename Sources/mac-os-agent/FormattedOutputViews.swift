@@ -154,6 +154,7 @@ private struct TableOutput: View {
 }
 
 private struct TableRows: View {
+    @Environment(\.panelPalette) private var palette
     let table: ToolOutputFormat.Table
     let layout: TableLayout
 
@@ -163,7 +164,7 @@ private struct TableRows: View {
                 ForEach(Array(table.rows.enumerated()), id: \.offset) { index, row in
                     cells(row, style: .secondary)
                         .padding(.vertical, 1)
-                        .background(index.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(0.03))
+                        .background(index.isMultiple(of: 2) ? AnyShapeStyle(.clear) : palette.textTint(0.03))
                 }
                 if table.totalRows > table.rows.count {
                     Text(verbatim: "Showing the first \(table.rows.count) of \(table.totalRows) rows. The raw view has all of them.")
@@ -175,7 +176,7 @@ private struct TableRows: View {
                     VStack(alignment: .leading, spacing: 0) {
                         cells(table.header, style: .tertiary)
                             .padding(.vertical, 3)
-                        Rectangle().fill(.tertiary).frame(height: 1).opacity(0.5)
+                        Rectangle().fill(palette.code).frame(height: 1).opacity(0.5)
                     }
                 }
             }
@@ -225,6 +226,7 @@ private struct KeyValueOutput: View {
 
 /// A unified diff in the text levels only: added lines on a faint fill, removed lines dimmer.
 private struct DiffOutput: View {
+    @Environment(\.panelPalette) private var palette
     let lines: [ToolOutputFormat.DiffLine]
 
     var body: some View {
@@ -249,11 +251,11 @@ private struct DiffOutput: View {
         }
     }
 
-    private func fill(_ kind: ToolOutputFormat.DiffLine.Kind) -> Color {
+    private func fill(_ kind: ToolOutputFormat.DiffLine.Kind) -> AnyShapeStyle {
         switch kind {
-        case .added: Color.primary.opacity(0.08)
-        case .removed: Color.primary.opacity(0.03)
-        default: .clear
+        case .added: palette.textTint(0.08)
+        case .removed: palette.textTint(0.03)
+        default: AnyShapeStyle(.clear)
         }
     }
 }

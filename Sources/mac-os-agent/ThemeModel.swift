@@ -18,7 +18,11 @@ final class ThemeModel {
     @ObservationIgnored let preferences: ThemePreferences
     private(set) var entries: [ThemeEntry] = []
     private(set) var activeID: String
-    private(set) var usesGlass: Bool
+    private(set) var storedUsesGlass: Bool
+    /// The Use Glass switch, or a preview's choice in place of it.
+    var usesGlass: Bool { previewUsesGlass ?? storedUsesGlass }
+    /// Use Glass for a preview, never saved.
+    var previewUsesGlass: Bool?
     var errorMessage: String?
     /// A theme to show in place of the active one, for a preview. Never saved.
     var previewOverride: Theme?
@@ -29,7 +33,7 @@ final class ThemeModel {
         self.library = library
         self.preferences = preferences
         activeID = preferences.themeID
-        usesGlass = preferences.usesGlass
+        storedUsesGlass = preferences.usesGlass
         reload()
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: ThemeLibrary.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
@@ -64,7 +68,7 @@ final class ThemeModel {
         let id = preferences.themeID
         if id != activeID { activeID = id }
         let glass = preferences.usesGlass
-        if glass != usesGlass { usesGlass = glass }
+        if glass != storedUsesGlass { storedUsesGlass = glass }
     }
 
     func select(_ id: String) {

@@ -102,6 +102,7 @@ struct TopBarButton: View {
     var isOn = false
     let action: () -> Void
     @State private var isHovered = false
+    @Environment(\.panelPalette) private var palette
 
     static let size: CGFloat = 22
 
@@ -112,7 +113,7 @@ struct TopBarButton: View {
                 .foregroundStyle(.primary)
                 .opacity(isOn || isHovered ? 0.9 : 0.4)
                 .frame(width: Self.size, height: Self.size)
-                .background(.primary.opacity(isOn ? 0.12 : isHovered ? 0.07 : 0), in: .rect(cornerRadius: 6))
+                .background(palette.textTint(isOn ? 0.12 : isHovered ? 0.07 : 0), in: .rect(cornerRadius: 6))
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)

@@ -27,7 +27,7 @@ struct ToolInspectorView: View {
                         .scrollBounceBehavior(.basedOnSize)
                         .frame(maxHeight: geometry.size.height * 0.45)
                         .fixedSize(horizontal: false, vertical: true)
-                        Divider().opacity(0.5)
+                        PanelDivider()
                         InspectorOutput(call: call)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
@@ -43,7 +43,7 @@ struct ToolInspectorView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .glassEffect(.regular, in: .rect(cornerRadius: SummonPanel.cornerRadius))
+        .themedPanel()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Tool call inspector")
     }
