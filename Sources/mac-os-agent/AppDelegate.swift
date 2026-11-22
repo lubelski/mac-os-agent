@@ -1,5 +1,8 @@
 import AppKit
 import MacOSAgentCore
+import os
+
+let log = Logger(subsystem: "dev.lubelski.mac-os-agent", category: "app")
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -37,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         hotKey = SummonHotKey { [weak self] in self?.panel.toggle() }
         hotKeyRegistered = hotKey.register()
+        log.notice("Hotkey \(SummonShortcut.displayName, privacy: .public) registered: \(self.hotKeyRegistered, privacy: .public). Status item button: \(self.statusItem.button != nil, privacy: .public)")
 
         Task { await session.start() }
 
