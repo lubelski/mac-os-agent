@@ -226,7 +226,7 @@ private struct FreshStartStandIn: View {
                     .padding(.horizontal, MessageStyle.horizontalPadding)
                     .padding(.vertical, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.tertiary, style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
+                    .overlay(PanelShape.message.strokeBorder(.tertiary, style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
             }
         }
     }

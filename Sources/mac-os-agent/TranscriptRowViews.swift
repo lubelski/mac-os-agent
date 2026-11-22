@@ -26,7 +26,6 @@ struct RowView: View {
 
 /// Shared look of the two kinds of message box.
 enum MessageStyle {
-    static let cornerRadius: CGFloat = 14
     static let horizontalPadding: CGFloat = 12
     static let verticalPadding: CGFloat = 8
     /// The room a box leaves on its far side, so the two kinds sit on opposite sides.
@@ -62,9 +61,9 @@ struct OwnerMessage: View {
                     .padding(.vertical, MessageStyle.verticalPadding)
                     // The theme's fill and edge. Glass tints it with the system accent, and draws
                     // the edge only with Increase Contrast.
-                    .background(palette.ownerFill, in: .rect(cornerRadius: MessageStyle.cornerRadius))
+                    .background(palette.ownerFill, in: PanelShape.message)
                     .overlay {
-                        RoundedRectangle(cornerRadius: MessageStyle.cornerRadius)
+                        PanelShape.message
                             .strokeBorder(palette.ownerEdge, lineWidth: 1)
                     }
                     .help(TranscriptTimeLabel.fullText(for: date))
@@ -104,8 +103,8 @@ struct AgentMessage: View {
             MarkdownView(document: document)
                 .padding(.horizontal, MessageStyle.horizontalPadding)
                 .padding(.vertical, MessageStyle.verticalPadding)
-                .background(palette.agentFill, in: .rect(cornerRadius: MessageStyle.cornerRadius))
-                .overlay(RoundedRectangle(cornerRadius: MessageStyle.cornerRadius)
+                .background(palette.agentFill, in: PanelShape.message)
+                .overlay(PanelShape.message
                     .strokeBorder(palette.agentEdge, lineWidth: 1))
                 .contextMenu { MessageMenu(source: text, plainText: document.plainText) }
                 // The copy control sits in the empty room to the box's right, so showing it
@@ -163,7 +162,7 @@ struct ToolLine: View {
         .padding(.leading, MessageStyle.horizontalPadding)
         .background(alignment: .leading) {
             if isSelected {
-                RoundedRectangle(cornerRadius: 6)
+                PanelShape.control
                     .fill(palette.textTint(0.07))
                     .padding(.leading, MessageStyle.horizontalPadding - 5)
                     .padding(.vertical, -2)

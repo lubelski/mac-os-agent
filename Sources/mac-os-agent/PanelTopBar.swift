@@ -151,7 +151,7 @@ struct TopBarTextButton: View {
                 .opacity(!isEnabled ? 0.25 : isHovered ? 0.9 : 0.55)
                 .padding(.horizontal, 6)
                 .frame(height: TopBarButton.size)
-                .background(palette.textTint(isEnabled && isHovered ? 0.07 : 0), in: .rect(cornerRadius: 6))
+                .background(palette.textTint(isEnabled && isHovered ? 0.07 : 0), in: PanelShape.control)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -183,7 +183,7 @@ struct TopBarButton: View {
                 .foregroundStyle(.primary)
                 .opacity(isOn || isHovered ? 0.9 : 0.4)
                 .frame(width: Self.size, height: Self.size)
-                .background(palette.textTint(isOn ? 0.12 : isHovered ? 0.07 : 0), in: .rect(cornerRadius: 6))
+                .background(palette.textTint(isOn ? 0.12 : isHovered ? 0.07 : 0), in: PanelShape.control)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)

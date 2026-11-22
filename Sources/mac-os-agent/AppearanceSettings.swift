@@ -184,6 +184,9 @@ struct ThemeSample: View {
     let dark: Bool
     var allowsGlass = true
     static let cornerRadius: CGFloat = 12
+    /// The small panel and its message boxes, in the proportion of the real ones.
+    static let panelCornerRadius: CGFloat = 7
+    static let messageCornerRadius: CGFloat = 5
 
     var body: some View {
         let palette = PanelPalette(theme: theme, dark: dark, allowsGlass: allowsGlass)
@@ -195,8 +198,8 @@ struct ThemeSample: View {
                     Text(verbatim: "turn on dark mode")
                         .padding(.horizontal, 7)
                         .padding(.vertical, 4)
-                        .background(palette.ownerFill, in: .rect(cornerRadius: 7))
-                        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(palette.ownerEdge, lineWidth: 1))
+                        .background(palette.ownerFill, in: .rect(cornerRadius: Self.messageCornerRadius))
+                        .overlay(RoundedRectangle(cornerRadius: Self.messageCornerRadius, style: .continuous).strokeBorder(palette.ownerEdge, lineWidth: 1))
                 }
                 HStack(spacing: 0) {
                     Text(verbatim: "› ").foregroundStyle(.tertiary)
@@ -210,8 +213,8 @@ struct ThemeSample: View {
                     Text(verbatim: "Dark mode is on.")
                         .padding(.horizontal, 7)
                         .padding(.vertical, 4)
-                        .background(palette.agentFill, in: .rect(cornerRadius: 7))
-                        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(palette.agentEdge, lineWidth: 1))
+                        .background(palette.agentFill, in: .rect(cornerRadius: Self.messageCornerRadius))
+                        .overlay(RoundedRectangle(cornerRadius: Self.messageCornerRadius, style: .continuous).strokeBorder(palette.agentEdge, lineWidth: 1))
                     Spacer(minLength: 24)
                 }
                 Rectangle().fill(palette.divider).frame(height: 1).padding(.top, 2)
@@ -225,7 +228,7 @@ struct ThemeSample: View {
             .padding(9)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             .panelText(palette)
-            .previewSurface(palette, cornerRadius: 10)
+            .previewSurface(palette, cornerRadius: Self.panelCornerRadius)
             .padding(7)
         }
         .frame(height: 124)

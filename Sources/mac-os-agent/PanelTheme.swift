@@ -161,8 +161,8 @@ extension EnvironmentValues {
 extension View {
     /// Draws the panel's surface from the theme: Liquid Glass, a frosted blur with its tint,
     /// or the solid fill, with the incognito tint while an incognito episode is on.
-    func panelSurface(_ palette: PanelPalette, incognito: Bool, cornerRadius: CGFloat) -> some View {
-        modifier(PanelSurface(palette: palette, incognito: incognito, cornerRadius: cornerRadius))
+    func panelSurface(_ palette: PanelPalette, incognito: Bool) -> some View {
+        modifier(PanelSurface(palette: palette, incognito: incognito, shape: PanelShape.surface))
     }
 
     /// Sets the hierarchical text levels and the accent to the theme's own, unless the theme
@@ -189,16 +189,15 @@ private struct PanelText: ViewModifier {
 private struct PanelSurface: ViewModifier {
     let palette: PanelPalette
     let incognito: Bool
-    let cornerRadius: CGFloat
+    let shape: RoundedRectangle
     /// Within the window, for small previews over a sample backdrop, instead of behind it.
     var blursWithinWindow = false
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         switch palette.surfaceKind {
         case .glass:
             let tint = palette.surfaceTint(incognito: incognito)
-            content.glassEffect(tint.map { .regular.tint($0) } ?? .regular, in: .rect(cornerRadius: cornerRadius))
+            content.glassEffect(tint.map { .regular.tint($0) } ?? .regular, in: shape)
         case .blur:
             content.background {
                 ZStack {
@@ -224,7 +223,9 @@ private struct PanelSurface: ViewModifier {
 extension View {
     /// The panel's surface for a small preview, blurring the preview's own backdrop.
     func previewSurface(_ palette: PanelPalette, cornerRadius: CGFloat) -> some View {
-        modifier(PanelSurface(palette: palette, incognito: false, cornerRadius: cornerRadius, blursWithinWindow: true))
+        modifier(PanelSurface(
+            palette: palette, incognito: false,
+            shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous), blursWithinWindow: true))
     }
 }
 
@@ -306,7 +307,7 @@ private struct ThemedPanelRoot: ViewModifier {
         content
             .panelText(palette)
             .environment(\.panelPalette, palette)
-            .panelSurface(palette, incognito: incognito, cornerRadius: SummonPanel.cornerRadius)
+            .panelSurface(palette, incognito: incognito)
             .background(WindowAppearance(fixed: theme.fixedAppearance))
     }
 }

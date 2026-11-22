@@ -39,7 +39,6 @@ final class SummonPanel: NSPanel {
     static let incognitoSize = NSSize(width: 480, height: 500)
     static let defaultSize = NSSize(width: 640, height: 560)
     static let minimumSize = NSSize(width: 440, height: 300)
-    static let cornerRadius: CGFloat = 26
     private static let frameName = "SummonPanel"
     static let presetKey = "SummonPanelPreset"
     static let centeredFrameKey = "SummonPanelCenteredFrame"
@@ -239,9 +238,7 @@ final class SummonPanel: NSPanel {
         view.wantsLayer = true
         guard let layer = view.layer else { return }
         layer.backgroundColor = .clear
-        layer.cornerRadius = cornerRadius
-        layer.cornerCurve = .continuous
-        layer.masksToBounds = true
+        PanelShape.clipToSurface(layer)
     }
 
     override var canBecomeKey: Bool { true }
