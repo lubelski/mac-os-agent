@@ -49,14 +49,20 @@ final class ToolInspector {
 /// when the owner clicks into something that takes keyboard focus, such as the output text,
 /// so opening it never takes focus from the text field.
 ///
-/// A child window, not a wider panel: the panel's frame, docking, saved frame, and resize
+/// A child window, not a wider panel: the panel's frame, layout preset, saved frame, and resize
 /// limits stay exactly as they are, and the inspector has its own glass, edge, and width.
+///
+/// Its glass sits in a container, as the panel's does, so it can slide with the panel's glass
+/// in slide over and be cut off at the same screen edge. See `place(_:clip:)`.
 @MainActor
 final class ToolInspectorWindow: NSPanel {
     static let defaultWidth: CGFloat = 440
     static let widthKey = "ToolInspectorWidth"
 
     private let defaults: UserDefaults?
+    /// Holds the glass and cuts it off at the screen's edge while it slides with the panel.
+    private let container = SlideContainerView()
+    private let hostingController: NSHostingController<AnyView>
     /// True while the window is being placed, so the move is not taken for the owner's resize.
     private var isPlacing = false
     /// The width the owner chose, kept across launches.
@@ -70,6 +76,8 @@ final class ToolInspectorWindow: NSPanel {
         self.defaults = defaults
         let stored = defaults?.double(forKey: Self.widthKey) ?? 0
         preferredWidth = stored >= PanelGeometry.inspectorMinimumWidth ? stored : Self.defaultWidth
+        hostingController = NSHostingController(rootView: AnyView(ToolInspectorView(session: session).environment(inspector)))
+        hostingController.sizingOptions = []
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: preferredWidth, height: SummonPanel.defaultSize.height),
             styleMask: [.nonactivatingPanel, .borderless, .resizable, .fullSizeContentView],
@@ -88,10 +96,13 @@ final class ToolInspectorWindow: NSPanel {
         becomesKeyOnlyIfNeeded = true
         contentMinSize = NSSize(width: PanelGeometry.inspectorNarrowestWidth, height: 200)
 
-        let controller = NSHostingController(rootView: ToolInspectorView(session: session).environment(inspector))
-        controller.sizingOptions = []
-        contentViewController = controller
-        SummonPanel.giveRoundedShape(to: controller.view)
+        let host = hostingController.view
+        container.frame = NSRect(x: 0, y: 0, width: preferredWidth, height: SummonPanel.defaultSize.height)
+        host.frame = container.bounds
+        host.autoresizingMask = [.width, .height]
+        container.addSubview(host)
+        contentView = container
+        SummonPanel.giveRoundedShape(to: host)
 
         NotificationCenter.default.addObserver(self, selector: #selector(didResize), name: NSWindow.didResizeNotification, object: self)
     }
@@ -102,14 +113,42 @@ final class ToolInspectorWindow: NSPanel {
     /// Puts the window at a frame without taking it for the owner's resize. The height is held
     /// at the panel's, so only the width resizes.
     func place(_ frame: CGRect) {
+        place(frame, clip: nil)
+    }
+
+    /// Puts the glass at a frame, with the window cut down to the part of it inside `clip`, so
+    /// the glass is cut off at the clip's edge as it slides with the panel. The glass keeps its
+    /// size, so nothing in it reflows. With no clip, or a frame wholly inside it, the window
+    /// is the glass.
+    func place(_ frame: CGRect, clip: CGRect?) {
         isPlacing = true
-        contentMaxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: frame.height)
-        contentMinSize = NSSize(width: PanelGeometry.inspectorNarrowestWidth, height: frame.height)
-        if frame != self.frame {
-            setFrame(frame, display: true)
-            invalidateShadow()
+        defer { isPlacing = false }
+        var shown = frame
+        if let clip {
+            let minX = max(frame.minX, clip.minX)
+            let maxX = min(frame.maxX, clip.maxX)
+            // Fully past the edge: a sliver at the edge that shows none of the glass.
+            shown = maxX > minX
+                ? CGRect(x: minX, y: frame.minY, width: maxX - minX, height: frame.height)
+                : CGRect(x: frame.maxX <= clip.minX ? clip.minX : clip.maxX - 1, y: frame.minY, width: 1, height: frame.height)
         }
-        isPlacing = false
+        if shown == frame {
+            contentMaxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: frame.height)
+            contentMinSize = NSSize(width: PanelGeometry.inspectorNarrowestWidth, height: frame.height)
+        } else {
+            contentMinSize = NSSize(width: 1, height: frame.height)
+        }
+        if shown != self.frame {
+            setFrame(shown, display: true)
+        }
+        let glass = CGRect(x: frame.minX - shown.minX, y: 0, width: frame.width, height: frame.height)
+        if hostingController.view.frame != glass { hostingController.view.frame = glass }
+        invalidateShadow()
+    }
+
+    /// Where the inspector's glass is drawn now, in screen coordinates.
+    var glassFrameOnScreen: CGRect {
+        hostingController.view.frame.offsetBy(dx: frame.minX, dy: frame.minY)
     }
 
     @objc private func didResize() {

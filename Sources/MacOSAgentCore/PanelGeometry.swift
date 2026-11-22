@@ -1,22 +1,30 @@
 import CoreGraphics
 
-/// The screen edge the panel is docked to.
-public enum PanelDock: String, Sendable, CaseIterable {
+/// A side of the screen, or of the panel.
+public enum PanelEdge: String, Sendable, CaseIterable {
     case left, right
+
+    public var opposite: PanelEdge { self == .left ? .right : .left }
 }
+
+/// The name from when the panel docked to an edge. Kept so work written against it still
+/// builds. New code says `PanelEdge`.
+public typealias PanelDock = PanelEdge
 
 /// Where the summon panel goes, worked out from screen rectangles alone. Every rectangle is in
 /// AppKit's screen coordinates, with the origin at the bottom left of the primary screen and y
 /// growing upward. A screen's `visible` rectangle leaves out the menu bar and the Dock.
 public enum PanelGeometry {
-    /// The gap between a docked panel and the screen's edges, so the glass's soft shadow is not
-    /// cut off at the edge of the display.
-    public static let dockMargin: CGFloat = 10
-    /// The least room left around an undocked panel.
+    /// The gap between a slide over panel and the screen's edges, so the glass's soft shadow is
+    /// not cut off at the edge of the display and the glass reads as floating.
+    public static let slideOverMargin: CGFloat = 10
+    /// The name from when the panel docked. New code says `slideOverMargin`.
+    public static let dockMargin: CGFloat = slideOverMargin
+    /// The least room left around a centered panel.
     public static let screenMargin: CGFloat = 20
-    /// A docked panel is at most this share of the screen's width when it docks.
-    public static let dockedWidthShare: CGFloat = 0.5
-    /// How far a docked edge can be from where it belongs and still count as docked.
+    /// A slide over panel is at most this share of the screen's width.
+    public static let slideOverWidthShare: CGFloat = 0.5
+    /// How far an edge can be from where it belongs and still count as in place.
     public static let tolerance: CGFloat = 1
 
     /// The panel's default place: centered across the screen, with its top a little below the
@@ -31,25 +39,26 @@ public enum PanelGeometry {
             width: width, height: height)
     }
 
-    /// The panel docked to one edge of the screen: the full height of the visible area less
-    /// the margin, and the width it has now, kept between the minimum and half the screen.
-    public static func dockedFrame(_ dock: PanelDock, width: CGFloat, minimumWidth: CGFloat, in visible: CGRect) -> CGRect {
-        let room = visible.width - 2 * dockMargin
-        let widest = max(minimumWidth, (visible.width * dockedWidthShare).rounded(.down))
-        let docked = min(room, max(minimumWidth, min(width, widest))).rounded()
-        let x = dock == .left ? visible.minX + dockMargin : visible.maxX - dockMargin - docked
-        return CGRect(x: x, y: visible.minY + dockMargin, width: docked, height: visible.height - 2 * dockMargin)
+    /// The panel in slide over at one edge of the screen: the full height of the visible area
+    /// less the margin, and the width asked for, kept between the minimum and half the screen.
+    public static func slideOverFrame(_ edge: PanelEdge, width: CGFloat, minimumWidth: CGFloat, in visible: CGRect) -> CGRect {
+        let room = visible.width - 2 * slideOverMargin
+        let widest = max(minimumWidth, (visible.width * slideOverWidthShare).rounded(.down))
+        let fitted = min(room, max(minimumWidth, min(width, widest))).rounded()
+        let x = edge == .left ? visible.minX + slideOverMargin : visible.maxX - slideOverMargin - fitted
+        return CGRect(x: x, y: visible.minY + slideOverMargin, width: fitted, height: visible.height - 2 * slideOverMargin)
     }
 
-    /// Whether a frame still sits where a docked panel belongs. The docked edge, the top, and
-    /// the bottom must be in place. The free edge can move, so the owner can change the width.
-    public static func isDocked(_ frame: CGRect, at dock: PanelDock, in visible: CGRect) -> Bool {
-        let edge = dock == .left
-            ? abs(frame.minX - (visible.minX + dockMargin))
-            : abs(frame.maxX - (visible.maxX - dockMargin))
-        return edge <= tolerance
-            && abs(frame.minY - (visible.minY + dockMargin)) <= tolerance
-            && abs(frame.maxY - (visible.maxY - dockMargin)) <= tolerance
+    /// Whether a frame still sits where a slide over panel at that edge belongs. The edge, the
+    /// top, and the bottom must be in place. The free edge can move, so the owner can change
+    /// the width.
+    public static func isInSlideOver(_ frame: CGRect, at edge: PanelEdge, in visible: CGRect) -> Bool {
+        let held = edge == .left
+            ? abs(frame.minX - (visible.minX + slideOverMargin))
+            : abs(frame.maxX - (visible.maxX - slideOverMargin))
+        return held <= tolerance
+            && abs(frame.minY - (visible.minY + slideOverMargin)) <= tolerance
+            && abs(frame.maxY - (visible.maxY - slideOverMargin)) <= tolerance
     }
 
     /// The frame moved and shrunk as little as needed to fit inside the screen, with a margin.
@@ -124,17 +133,18 @@ extension PanelGeometry {
     public static let conversationKeptInView: CGFloat = 280
 
     /// The inspector's frame: the panel's height and top, against the side of the panel that has
-    /// room. That is the right, unless the panel is docked right or the right has no room for
-    /// the minimum width, and then the left. When neither side has room, it goes against the
+    /// room. That is the panel's free side, from `PanelPreset.freeSide`: the right, or the left
+    /// when the panel is in slide over at the right. When the free side has no room for the
+    /// minimum width, it is the other side. When neither side has room, it goes against the
     /// screen's edge on the side with more room and covers the panel's far side, leaving at
     /// least `conversationKeptInView` of the panel in view when the screen allows it.
     public static func inspectorPlacement(
-        panel: CGRect, dock: PanelDock?, width: CGFloat, in visible: CGRect
+        panel: CGRect, freeSide: PanelEdge, width: CGFloat, in visible: CGRect
     ) -> InspectorPlacement {
-        let margin = dockMargin
+        let margin = slideOverMargin
         let roomRight = visible.maxX - margin - (panel.maxX + inspectorGap)
         let roomLeft = (panel.minX - inspectorGap) - (visible.minX + margin)
-        let preferred: InspectorPlacement.Side = dock == .right ? .left : .right
+        let preferred: InspectorPlacement.Side = freeSide == .left ? .left : .right
         let other: InspectorPlacement.Side = preferred == .right ? .left : .right
         func room(_ side: InspectorPlacement.Side) -> CGFloat { side == .right ? roomRight : roomLeft }
         let wanted = max(width, inspectorMinimumWidth)
