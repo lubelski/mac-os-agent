@@ -4,7 +4,7 @@ An agent for this Mac that lives in the menu bar. You summon it with a hotkey, t
 
 It is like Siri in shape, without being slow or locked down, and it keeps a visible conversation like an agent chat. It is not a coding tool.
 
-The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a shell tool, and tools for finding and opening apps. This file records what has been decided so far.
+The first slice is built: a menu bar item, a hotkey, a panel, one thread divided into episodes, a shell tool, and tools for finding and opening apps. This file records what has been decided so far.
 
 ## Building and running
 
@@ -21,10 +21,25 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
 ## Decided
 
 - One thread
-  - Every summon continues the same conversation. There are no separate chats to pick from.
-  - The thread is a single chain that goes back in time, chunked by topic.
-  - Resuming loads only the recent chunks. Older ones stay on disk.
-  - Within a conversation the context only grows by appending, so prompt caching keeps working.
+  - Every summon continues the same thread. There are no separate chats to pick from.
+  - The thread is a single append-only chain that goes back in time, divided into episodes. An episode can be one exchange or many.
+  - Within an episode the context only grows by appending, so prompt caching keeps working.
+- Episodes
+  - A new episode starts when the owner sends a message after the last one has been idle longer than a timeout, or when they type `/new`. The timeout defaults to 30 minutes. Idleness counts from the last message, reply, or command in the episode, not from when the panel was shown.
+  - A new episode is recorded as an `episode_start` line in `thread.jsonl`, written just before its first message. Nothing earlier is rewritten. The part of the thread written before episodes existed has no markers, and its episodes are derived from pauses of 30 minutes or more. That pause is fixed, so episode numbers never change.
+  - Only the current episode is sent to the model, after the instructions and the tool list. A new episode starts with that short prefix, which is where the prompt cache starts over. Earlier episodes are not summarized into the prompt.
+  - The fixed part of the instructions tells the agent that earlier episodes exist and are not in view, and to search them when the owner refers to something from before.
+- Search over past episodes
+  - `search_history` finds the owner's messages, the agent's replies, and the commands that ran, by words, and returns the best matches with their dates, their episode, and the messages around them. It leaves out the episode the agent already sees. `read_episode` reads one episode in order, a page at a time, with the start of each command's output.
+  - The search runs on a full text index, `history-index.sqlite` in Application Support. It is a copy of the thread that is brought up to date on launch and rebuilt from the thread whenever it is missing or does not match, so deleting it is always safe. Without it, search reads the entries directly.
+- Incognito
+  - An incognito episode leaves no trace. It runs on a store held only in memory, with no file and no index, and it is gone when it ends. Only token counts reach `usage.jsonl`, which holds no content.
+  - It starts fresh, with no earlier messages in the model's context. The agent can still search past episodes. It cannot add to them.
+  - It starts with `/incognito` or the Incognito item in the menu bar menu. It ends with `/new`, with `/incognito` again, after the episode timeout, or when the app quits. Tools work as usual, including the go-ahead for destructive commands.
+  - While it is on, the panel's glass has a faint tint and a line at the top says nothing from the episode is kept. If the owner writes after it timed out, the message is kept in the text field and not sent.
+- Commands in the panel
+  - A message that is exactly a known command, such as `/new`, is handled by the app. It is never sent to the model or written to the thread. Any other text that starts with a slash is sent as a normal message.
+  - The commands are `/new` and `/incognito`. Typing a slash lists the commands that match, under the history.
 - Its own harness
   - The agent loop is ours: a while loop and tool calls, talking to the model API directly.
   - No dependency on pi or any other coding agent. Pi is an influence on the design, not a component.
@@ -39,7 +54,7 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
   - The agent runs with a set of tools that it can modify itself.
   - The tool list sent to the model stays fixed within a conversation, because a list that changes breaks prompt caching.
   - Built-in tools are a fixed, ordered list. New built-in tools go at the end. Tools from other sources will go after the built-ins, sorted by name.
-  - The built-in tools are a shell command, three app tools (search the installed apps by a loose name, open an app or bring it to the front, and list the running apps), and a tool that loads a skill.
+  - The built-in tools are a shell command, three app tools (search the installed apps by a loose name, open an app or bring it to the front, and list the running apps), a tool that loads a skill, and two tools for past episodes (search them, and read one).
 - Settings
   - A Settings window with a sidebar of sections on the left and the selected section beside it, in the style of System Settings. The sections are General, Instructions, Skills, Tools, and Debugging.
   - The window keeps one size whichever section is showing. It opens at 900 by 620 points, the owner can resize it down to 760 by 480, and it comes back at the size and place it was left. A section scrolls inside the window when it does not fit. The last section shown opens again next time.
@@ -55,7 +70,7 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
   - Debugging in Settings shows the recent requests and today's total, with the cached share as a percentage.
 - Instructions the owner can edit
   - The system prompt has two parts. The editable part is a file, `instructions.md` in Application Support, and the default applies until the owner saves an edit.
-  - A fixed part always follows it. It covers what the app needs to work correctly: how the destructive flag and the go-ahead work, the time at the start of each message, and how skills are found, loaded, and written.
+  - A fixed part always follows it. It covers what the app needs to work correctly: how the destructive flag and the go-ahead work, the time at the start of each message, that earlier episodes exist and how to search them, and how skills are found, loaded, and written. An incognito episode adds a line saying nothing from it is kept.
   - The prompt is read once at the start of each instruction from the owner, so an edit applies from the next one. It comes out byte for byte the same when nothing changed, so the prompt cache holds.
 - Skills
   - A skill is a folder in `skills/` in Application Support with a `SKILL.md` that has `name` and `description` front matter and then instructions, plus any scripts beside it. This is the Agent Skills format.
@@ -71,8 +86,10 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
   - Either one is enough. The model cannot talk its way past the pattern list.
 - A conversation you summon
   - The panel is a small chat window, not a launcher bar. It opens at 640 by 560 points, the owner can move and resize it, and it comes back where it was left, across summons and launches.
-  - The whole thread is scrollable history above the text field. It opens at the latest message and follows new output unless the owner has scrolled up.
-  - The owner's messages and the agent's replies sit in quiet boxes on opposite sides. Commands are small secondary lines between them, with their output behind a disclosure. A time label marks the first message of a new day or after a pause of 30 minutes or more.
+  - The whole thread is scrollable history above the text field, read as episodes. Each episode starts with a quiet separator that shows its date and time. Rows are built lazily as they scroll into view, so a long thread scrolls smoothly.
+  - The current episode is a page at least as tall as the history. When the panel comes up after the last episode timed out, or after `/new`, it opens on an empty page, with earlier episodes above it, out of view until the owner scrolls up. Within the timeout it opens on the current episode.
+  - It opens at the latest message and follows new output unless the owner has scrolled up.
+  - The owner's messages and the agent's replies sit in quiet boxes on opposite sides. Commands are small secondary lines between them, with their output behind a disclosure. Inside an episode, a time label marks a message on a new day or after a pause of 30 minutes or more.
   - It stays light: a floating Liquid Glass panel with no title bar, sidebar, or conversation list. The text field has focus when it appears, Return sends, and Escape hides it.
   - The text field is a standard Mac text view with everything the system gives one: the Edit menu's commands and shortcuts, the usual key bindings, input methods, spelling, text replacement, dictation, and the emoji picker. It grows with its text up to eight lines, then scrolls. Shift-Return and Option-Return add a line.
 - Progress and dismissal
@@ -90,10 +107,10 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
 ## Proposed, not yet agreed
 
 - Make the skills folder a local git repo with no remote, so every self-edit is a commit that can be reverted.
-- Topic chunking and self-modification come after a week of real use of the first slice.
+- Self-modification comes after a week of real use of the first slice.
 
 ## Open
 
 - Which ChatGPT plans and models the sign-in token covers, and what OpenAI's terms say about third-party apps using it. Neither has been checked.
-- How far back the panel's history reaches once the thread is chunked by topic. For now it shows the whole file, with rows built lazily as they scroll into view.
+- Whether a new episode should start with a short summary of the recent ones, and whether the agent should name episodes by topic. For now it starts with nothing from before and searches when it needs to.
 - Code signing. This machine has no signing identity, and without one macOS forgets Accessibility and Automation grants on every rebuild. The Keychain may also ask again for the stored sign-in after a rebuild.

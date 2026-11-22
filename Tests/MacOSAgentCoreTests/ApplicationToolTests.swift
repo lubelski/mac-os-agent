@@ -268,11 +268,13 @@ final class FakeApplicationWorkspace: ApplicationWorkspace, @unchecked Sendable 
             """)
     }
 
-    @Test func schemasAreStrict() {
+    @Test func schemasAreStrict() throws {
         let workspace = FakeApplicationWorkspace(installed: [])
+        let history = try ThreadStore(fileURL: temporaryThreadFile())
         let tools: [any AgentTool] = [
             SearchApplicationsTool(workspace: workspace), OpenApplicationTool(workspace: workspace),
             ListRunningApplicationsTool(workspace: workspace),
+            SearchHistoryTool(history: history), ReadEpisodeTool(history: history),
         ]
         for tool in tools {
             let parameters = tool.definition.parameters
@@ -288,12 +290,14 @@ final class FakeApplicationWorkspace: ApplicationWorkspace, @unchecked Sendable 
 }
 
 @Suite struct ToolRegistryTests {
-    @Test func builtInToolsAreAFixedOrderedList() {
+    @Test func builtInToolsAreAFixedOrderedList() throws {
         let workspace = FakeApplicationWorkspace(installed: [])
-        let first = ToolRegistry(builtIn: BuiltInTools.make(applicationWorkspace: workspace))
-        let second = ToolRegistry(builtIn: BuiltInTools.make(applicationWorkspace: workspace))
+        let history = try ThreadStore(fileURL: temporaryThreadFile())
+        let first = ToolRegistry(builtIn: BuiltInTools.make(applicationWorkspace: workspace, history: history))
+        let second = ToolRegistry(builtIn: BuiltInTools.make(applicationWorkspace: workspace, history: history))
         #expect(first.definitions.map(\.name) == [
             "run_shell_command", "search_applications", "open_application", "list_running_applications", "load_skill",
+            "search_history", "read_episode",
         ])
         #expect(first.definitions == second.definitions)
     }

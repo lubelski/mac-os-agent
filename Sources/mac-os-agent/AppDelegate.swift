@@ -19,26 +19,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let installationID = AgentPaths.installationID()
         let authenticator = ChatGPTAuthenticator(installationID: installationID)
         var loop: AgentLoop?
+        var makeIncognitoLoop: (() -> AgentLoop)?
         var startupError: Error?
-        // Built once, so the tool list stays the same for the whole run, and shared with Settings.
-        let tools = ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills))
+        var thread: ThreadStore?
         do {
-            let thread = try ThreadStore(fileURL: AgentPaths.threadFile)
+            thread = try ThreadStore(fileURL: AgentPaths.threadFile, searchIndexURL: AgentPaths.historyIndexFile)
+        } catch {
+            startupError = error
+        }
+        // Built once, so the tool list stays the same for the whole run, and shared with Settings.
+        let tools = ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: thread))
+        if let thread {
             let provider = OpenAIResponsesProvider(
                 authenticator: authenticator,
                 model: { ModelSetting.current() },
                 promptCacheKey: "mac-os-agent-\(installationID.uuidString.lowercased())")
             let prompt = prompt
+            let usageLog = usageLog
+            let timeout: @Sendable () -> TimeInterval = { EpisodeTimeoutSetting.current() }
             loop = AgentLoop(
                 provider: provider, thread: thread,
                 tools: tools.tools,
                 instructions: { prompt.current() },
-                usageLog: usageLog)
-        } catch {
-            startupError = error
+                usageLog: usageLog,
+                episodeTimeout: timeout)
+            // An incognito episode runs the same tools over a store that lives only in memory.
+            // The usage log still gets its token counts, which hold no content.
+            makeIncognitoLoop = {
+                AgentLoop(
+                    provider: provider, thread: InMemoryThreadStore(),
+                    tools: tools.tools,
+                    instructions: { prompt.current(incognito: true) },
+                    usageLog: usageLog,
+                    episodeTimeout: timeout)
+            }
         }
 
-        session = AgentSession(loop: loop, authenticator: authenticator)
+        session = AgentSession(loop: loop, authenticator: authenticator, makeIncognitoLoop: makeIncognitoLoop)
         session.onStatusChange = { [weak self] in self?.updateStatusIcon() }
         panel = SummonPanel(session: session)
 
@@ -113,6 +130,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if session.isRunning {
             menu.addItem(item("Stop the Current Task", #selector(stopTask)))
         }
+        if session.canUseIncognito {
+            let incognito = item("Incognito", #selector(toggleIncognito))
+            incognito.state = session.isIncognito ? .on : .off
+            // The menu enables items with an action on its own, so a running task takes the action away.
+            if session.isRunning { incognito.action = nil }
+            menu.addItem(incognito)
+        }
         menu.addItem(.separator())
 
         switch session.signInState {
@@ -166,6 +190,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func openPanel() { panel.summon() }
     @objc func openSettings(_ sender: Any?) { settings.show() }
     @objc private func stopTask() { session.stop() }
+
+    @objc private func toggleIncognito() {
+        session.toggleIncognito()
+        panel.summon()
+    }
     @objc private func signIn() { session.signIn() }
     @objc private func cancelSignIn() { session.cancelSignIn() }
     @objc private func signOut() { session.signOut() }

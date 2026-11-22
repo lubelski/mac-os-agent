@@ -29,6 +29,25 @@ public enum ThreadItem: Sendable, Equatable, Codable {
     case toolCall(ToolCall)
     /// What running a tool produced. Every tool call gets exactly one result.
     case toolResult(ToolResult)
+    /// Marks the start of a new episode. Written just before the owner's first message in it.
+    /// The thread from before these markers existed has none, and its episodes are derived
+    /// from the pauses between entries instead. See `EpisodeTracker`.
+    case episodeStart(EpisodeStart)
+
+    public struct EpisodeStart: Sendable, Equatable, Codable {
+        public enum Reason: String, Sendable, Equatable, Codable {
+            /// The owner wrote after the previous episode had been idle longer than the timeout.
+            case timeout
+            /// The owner asked for a fresh start, with `/new` or by leaving incognito.
+            case requested
+        }
+
+        public var reason: Reason
+
+        public init(reason: Reason) {
+            self.reason = reason
+        }
+    }
 
     public struct AssistantMessage: Sendable, Equatable, Codable {
         public var text: String
@@ -97,6 +116,7 @@ public enum ThreadItem: Sendable, Equatable, Codable {
         case providerItem = "provider_item"
         case toolCall = "tool_call"
         case toolResult = "tool_result"
+        case episodeStart = "episode_start"
     }
 
     private struct UserText: Codable { var text: String }
@@ -109,6 +129,7 @@ public enum ThreadItem: Sendable, Equatable, Codable {
         case .providerItem: self = .providerItem(try container.decode(ProviderItem.self, forKey: .value))
         case .toolCall: self = .toolCall(try container.decode(ToolCall.self, forKey: .value))
         case .toolResult: self = .toolResult(try container.decode(ToolResult.self, forKey: .value))
+        case .episodeStart: self = .episodeStart(try container.decode(EpisodeStart.self, forKey: .value))
         }
     }
 
@@ -129,6 +150,9 @@ public enum ThreadItem: Sendable, Equatable, Codable {
             try container.encode(value, forKey: .value)
         case .toolResult(let value):
             try container.encode(Kind.toolResult, forKey: .type)
+            try container.encode(value, forKey: .value)
+        case .episodeStart(let value):
+            try container.encode(Kind.episodeStart, forKey: .type)
             try container.encode(value, forKey: .value)
         }
     }

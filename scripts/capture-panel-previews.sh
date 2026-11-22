@@ -5,6 +5,7 @@
 #   scripts/capture-panel-previews.sh [out-dir]             window captures, no backdrop
 #   scripts/capture-panel-previews.sh --backdrop [out-dir]  the panel over a busy page, which
 #                                                           shows the glass and its edges
+#   scripts/capture-panel-previews.sh --states "a b" [out-dir]  only the states named
 #
 # Preview runs never register the hotkey, open the thread, read the Keychain, or touch the
 # panel's saved frame.
@@ -17,9 +18,14 @@ if [[ "${1:-}" == "--backdrop" ]]; then
   shift
 fi
 
+STATES=(empty history running confirmation finished draft multiline-draft fresh-start scrollback incognito command-hint)
+if [[ "${1:-}" == "--states" ]]; then
+  read -r -a STATES <<<"$2"
+  shift 2
+fi
+
 BIN="build/mac-os-agent.app/Contents/MacOS/mac-os-agent"
 OUT="${1:-docs/screenshots}"
-STATES=(empty history running confirmation finished draft multiline-draft)
 mkdir -p "$OUT"
 
 # A small helper that prints the panel's window number for a process id.

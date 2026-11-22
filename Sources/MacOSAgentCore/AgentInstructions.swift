@@ -44,7 +44,8 @@ public enum AgentInstructions {
     }
 
     /// The part the app always sends after the editable part.
-    public static func fixed(skills: [SkillSummary], skillsFolder: URL) -> String {
+    /// - Parameter incognito: True for an incognito episode, which nothing is kept from.
+    public static func fixed(skills: [SkillSummary], skillsFolder: URL, incognito: Bool = false) -> String {
         let folder = skillsFolder.plainPath
         let list = skills.isEmpty
             ? "There are no skills yet."
@@ -59,9 +60,14 @@ public enum AgentInstructions {
             uninstalls, quits apps, or changes something that is hard to undo. The app also asks on \
             its own for commands that look destructive. If the person declines, do not try to reach \
             the same result another way. Say what you would have done.
-            - This is one long conversation that continues every time the person summons you. The app \
-            starts each of their messages with the local time it was sent, in square brackets. The \
-            time is not part of what they typed.
+            - The app starts each of the person's messages with the local time it was sent, in square \
+            brackets. The time is not part of what they typed.
+            - Your conversation with the person is one long thread, divided into episodes. A new \
+            episode starts when they come back after a while away, or when they ask for a fresh start. \
+            You see only the current episode. The earlier ones are kept but are not in view. When the \
+            person refers to something from before that you cannot see, such as "the file from \
+            yesterday" or "do that again", call \(SearchHistoryTool.name) to find it, and \
+            \(ReadEpisodeTool.name) to read more of an episode it finds. Do not guess what was said.\(incognito ? incognitoNote : "")
             - Skills are instructions for particular tasks. When a task matches one of the skills \
             listed below, call \(LoadSkillTool.name) with its name before you start, and follow it.
             - Each skill is a folder in \(folder) holding a SKILL.md file, and sometimes scripts or \
@@ -78,10 +84,16 @@ public enum AgentInstructions {
             """
     }
 
+    static let incognitoNote = """
+
+        - This episode is incognito. Nothing from it is kept: it is gone when it ends, and it will \
+        never turn up in \(SearchHistoryTool.name). You can still search the earlier episodes.
+        """
+
     /// The instructions for one request: the editable text, then the fixed part.
-    public static func assemble(editable: String, skills: [SkillSummary], skillsFolder: URL) -> String {
+    public static func assemble(editable: String, skills: [SkillSummary], skillsFolder: URL, incognito: Bool = false) -> String {
         let editable = editable.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fixed = fixed(skills: skills, skillsFolder: skillsFolder)
+        let fixed = fixed(skills: skills, skillsFolder: skillsFolder, incognito: incognito)
         return editable.isEmpty ? fixed : editable + "\n\n" + fixed
     }
 
@@ -142,10 +154,12 @@ public struct AgentPrompt: Sendable {
     }
 
     /// The full instructions as they stand now.
-    public func current() -> String {
+    /// - Parameter incognito: True for an incognito episode.
+    public func current(incognito: Bool = false) -> String {
         AgentInstructions.assemble(
             editable: instructions.load(),
             skills: skills.skills().filter(\.isAvailable).map { .init(name: $0.name, description: $0.description) },
-            skillsFolder: skills.folder)
+            skillsFolder: skills.folder,
+            incognito: incognito)
     }
 }

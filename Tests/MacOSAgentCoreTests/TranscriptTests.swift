@@ -39,13 +39,14 @@ import Testing
         ]
         let transcript = Transcript(entries: entries, calendar: Self.calendar)
         #expect(transcript.rows.map(\.kind) == [
-            .user(text: "turn on dark mode", date: earlier, showsTime: true),
+            .episodeStart(date: earlier),
+            .user(text: "turn on dark mode", date: earlier, showsTime: false),
             .tool(command: "osascript -e 'dark mode'", status: .finished, output: "[exit status 0]"),
             .assistant("Dark mode is on."),
             .user(text: "and back", date: Self.now, showsTime: true),
         ])
-        #expect(transcript.rows[1].id == "call_1")
-        #expect(transcript.rows[0].id == entries[0].id.uuidString)
+        #expect(transcript.rows[2].id == "call_1")
+        #expect(transcript.rows[1].id == entries[0].id.uuidString)
     }
 
     @Test func aCallWithoutAResultLoadsAsFinished() {
@@ -61,18 +62,18 @@ import Testing
         transcript.apply(entry(.userMessage(text: "list")))
         transcript.toolStarted("call_1")
         transcript.toolStarted("call_1")
-        #expect(transcript.rows.count == 2)
-        #expect(transcript.rows[1].kind == .tool(command: "", status: .preparing, output: nil))
+        #expect(transcript.rows.count == 3)
+        #expect(transcript.rows[2].kind == .tool(command: "", status: .preparing, output: nil))
 
         transcript.apply(entry(call("call_1", "ls")))
-        #expect(transcript.rows[1].kind == .tool(command: "ls", status: .preparing, output: nil))
+        #expect(transcript.rows[2].kind == .tool(command: "ls", status: .preparing, output: nil))
         transcript.toolRunning("call_1", command: "ls")
-        #expect(transcript.rows[1].kind == .tool(command: "ls", status: .running, output: nil))
+        #expect(transcript.rows[2].kind == .tool(command: "ls", status: .running, output: nil))
         transcript.setToolStatus("call_1", .waitingForConfirmation)
-        #expect(transcript.rows[1].kind == .tool(command: "ls", status: .waitingForConfirmation, output: nil))
+        #expect(transcript.rows[2].kind == .tool(command: "ls", status: .waitingForConfirmation, output: nil))
         transcript.apply(entry(.toolResult(.init(callID: "call_1", output: "a\n[exit status 0]"))))
-        #expect(transcript.rows[1].kind == .tool(command: "ls", status: .finished, output: "a\n[exit status 0]"))
-        #expect(transcript.rows.count == 2)
+        #expect(transcript.rows[2].kind == .tool(command: "ls", status: .finished, output: "a\n[exit status 0]"))
+        #expect(transcript.rows.count == 3)
     }
 
     @Test func aNewInstructionKeepsEarlierRows() {
@@ -81,7 +82,8 @@ import Testing
         transcript.appendNotice("Stopped.", id: "n")
         transcript.appendError("Offline", id: "e")
         #expect(transcript.rows.map(\.kind) == [
-            .user(text: "one", date: Self.now, showsTime: true),
+            .episodeStart(date: Self.now),
+            .user(text: "one", date: Self.now, showsTime: false),
             .assistant("first"),
             .user(text: "two", date: Self.now.addingTimeInterval(60), showsTime: false),
             .notice("Stopped."),
@@ -97,8 +99,8 @@ import Testing
         }
         var transcript = Transcript(entries: entries, calendar: Self.calendar)
         transcript.apply(entry(.toolResult(.init(callID: "call_7", output: "7\n[exit status 0]"))))
-        #expect(transcript.rows.count == 4_000)
-        #expect(transcript.rows[15].kind == .tool(command: "echo 7", status: .finished, output: "7\n[exit status 0]"))
+        #expect(transcript.rows.count == 4_001)
+        #expect(transcript.rows[16].kind == .tool(command: "echo 7", status: .finished, output: "7\n[exit status 0]"))
     }
 
     @Test func stretchesStartOnTheFirstMessageANewDayOrALongPause() {
@@ -121,6 +123,9 @@ import Testing
         #expect(TranscriptRow.gap(after: tool, before: tool) == .tight)
         #expect(TranscriptRow.gap(after: tool, before: reply) == .regular)
         #expect(TranscriptRow.gap(after: reply, before: user) == .exchange)
+        let separator = TranscriptRow(id: "s", kind: .episodeStart(date: Self.now))
+        #expect(TranscriptRow.gap(after: reply, before: separator) == .episode)
+        #expect(TranscriptRow.gap(after: separator, before: user) == .regular)
     }
 
     @Test(arguments: [

@@ -4,7 +4,7 @@ import Foundation
 public struct ModelRequest: Sendable {
     /// Standing instructions. They do not change within a conversation.
     public var instructions: String
-    /// The whole thread, oldest first.
+    /// The current episode, oldest first, without its marker.
     public var entries: [ThreadEntry]
     /// The fixed tool list.
     public var tools: [ToolDefinition]
