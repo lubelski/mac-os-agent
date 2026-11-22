@@ -90,6 +90,13 @@ public struct FindFilesTool: AgentTool {
     /// How many items to ask Spotlight for, before the newest are picked out.
     static let candidates = 500
 
+    /// How a kind reads in a row's summary, such as "Find images named …".
+    static let kindNouns: [String: String] = [
+        "folder": "folders", "image": "images", "movie": "movies", "audio": "audio files", "pdf": "PDFs",
+        "text": "text files", "document": "documents", "presentation": "presentations",
+        "spreadsheet": "spreadsheets", "archive": "archives", "application": "applications",
+    ]
+
     public static let kinds: [String: [String]] = [
         "folder": ["public.folder"],
         "image": ["public.image"],
@@ -137,7 +144,7 @@ public struct FindFilesTool: AgentTool {
 
     public func summary(arguments: JSONValue) -> String {
         var parts = ["Find"]
-        parts.append(arguments["kind"]?.stringValue.map { "\($0) items" } ?? "files")
+        parts.append(arguments["kind"]?.stringValue.flatMap { Self.kindNouns[$0] } ?? "files")
         if let name = arguments["name"]?.trimmedString, !name.isEmpty { parts.append("named \"\(name)\"") }
         if let content = arguments["content"]?.trimmedString, !content.isEmpty { parts.append("containing \"\(content)\"") }
         if let folder = arguments["folder"]?.trimmedString, !folder.isEmpty { parts.append("in \(folder)") }

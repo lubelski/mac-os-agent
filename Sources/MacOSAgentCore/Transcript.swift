@@ -116,15 +116,21 @@ public struct Transcript: Equatable, Sendable {
     /// A separator added by `beginEpisode(at:)` that no entry has claimed yet.
     private var pendingSeparator: Int?
     private let calendar: Calendar
+    /// What a tool call's row says, from the tools themselves.
+    private let summaries: ToolCallSummaries
 
-    public init(calendar: Calendar = .current) {
+    /// - Parameter summaries: The tools whose summaries the rows show. A call to a tool that is
+    ///   not among them shows the tool's name.
+    public init(calendar: Calendar = .current, summaries: ToolCallSummaries = .builtIn) {
         self.calendar = calendar
+        self.summaries = summaries
     }
 
     /// Builds the rows for a thread loaded from disk. A command that never got a result, because
     /// the app quit or the task stopped while it ran, is shown as finished rather than running.
-    public init(entries: some Sequence<ThreadEntry>, calendar: Calendar = .current) {
-        self.init(calendar: calendar)
+    /// Each tool call shows the summary its tool gives, as it did while it ran.
+    public init(entries: some Sequence<ThreadEntry>, calendar: Calendar = .current, summaries: ToolCallSummaries = .builtIn) {
+        self.init(calendar: calendar, summaries: summaries)
         for entry in entries { apply(entry) }
         for index in rows.indices {
             if case .tool(let command, let status, let output) = rows[index].kind, status != .finished {
@@ -189,7 +195,7 @@ public struct Transcript: Equatable, Sendable {
                 append(TranscriptRow(id: entry.id.uuidString, kind: .assistant(message.text)))
             }
         case .toolCall(let call):
-            let command = JSONValue.parse(call.arguments)?["command"]?.stringValue ?? call.name
+            let command = summaries.summary(of: call)
             toolFacts[call.callID, default: ToolCallFacts()].call = call
             toolFacts[call.callID]?.calledAt = entry.date
             if indexByID[call.callID] != nil {

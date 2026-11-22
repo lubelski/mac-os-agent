@@ -165,7 +165,7 @@ final class AgentSession {
     /// Loads the whole thread as history and checks for a stored sign-in.
     func start() async {
         if let loop, kind == .kept {
-            transcript = Transcript(entries: await loop.thread.entries)
+            transcript = Transcript(entries: await loop.thread.entries, summaries: ToolCallSummaries(loop.tools))
         }
         if let authenticator, await authenticator.isSignedIn() {
             signInState = .signedIn

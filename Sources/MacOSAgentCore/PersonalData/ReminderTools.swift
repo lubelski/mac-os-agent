@@ -167,7 +167,7 @@ public struct ChangeRemindersTool: AgentTool {
             if change["completed"]?.boolValue == true { return "Complete a reminder" }
             return "Change reminder\(title)"
         }
-        return "Change \(changes.count) reminders"
+        return changes.isEmpty ? "Change reminders" : "Change \(changes.count) reminders"
     }
 
     enum Kind: Equatable { case create, update, delete }

@@ -178,7 +178,7 @@ public struct ChangeEventsTool: AgentTool {
             if change["id"]?.trimmedString == nil { return "Create event\(title)" }
             return "Change event\(title)"
         }
-        return "Change \(changes.count) events"
+        return changes.isEmpty ? "Change events" : "Change \(changes.count) events"
     }
 
     enum Kind: Equatable { case create, update, delete }

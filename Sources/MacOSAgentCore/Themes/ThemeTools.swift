@@ -118,11 +118,13 @@ public struct ChangeThemeTool: AgentTool {
     public func summary(arguments: JSONValue) -> String {
         let id = arguments["theme_id"]?.trimmedString
         switch arguments["action"]?.stringValue {
-        case "apply": return "Apply the theme \(id ?? "")"
-        case "delete": return "Delete the theme \(id ?? "")"
+        case "apply": return id.flatMap { $0.isEmpty ? nil : "Apply the theme \($0)" } ?? "Apply a theme"
+        case "delete": return id.flatMap { $0.isEmpty ? nil : "Delete the theme \($0)" } ?? "Delete a theme"
         default:
-            let name = arguments["file"]?.stringValue.flatMap(JSONValue.parse)?["name"]?.stringValue
-            return "Save the theme \(name ?? id ?? "")"
+            let name = arguments["file"]?.stringValue.flatMap(JSONValue.parse)?["name"]?.trimmedString
+            let verb = arguments["action"]?.stringValue == "save_and_apply" ? "Save and apply" : "Save"
+            guard let named = [name, id].compactMap({ $0 }).first(where: { !$0.isEmpty }) else { return "\(verb) a theme" }
+            return "\(verb) the theme \(named)"
         }
     }
 

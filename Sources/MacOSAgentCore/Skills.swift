@@ -359,7 +359,8 @@ public struct LoadSkillTool: AgentTool {
     }
 
     public func summary(arguments: JSONValue) -> String {
-        "Load the \(arguments["name"]?.stringValue ?? "") skill"
+        guard let name = arguments["name"]?.trimmedString, !name.isEmpty else { return "Load a skill" }
+        return "Load the \(name) skill"
     }
 
     public func run(arguments: JSONValue, context: ToolRunContext) async -> String {
