@@ -155,10 +155,8 @@ struct InstructionsSettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("What the agent is told before every instruction. Changes apply from your next instruction.")
                 .foregroundStyle(.secondary)
-            TextEditor(text: $model.draft)
-                .font(.body)
+            PromptEditor(text: $model.draft)
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 120, maxHeight: .infinity)
-                .scrollContentBackground(.hidden)
                 .padding(8)
                 .background(.background.secondary, in: .rect(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
@@ -206,7 +204,8 @@ struct FullPromptView: View {
             Text("The full prompt").font(.headline)
             ScrollView {
                 Text(text)
-                    .font(.body.monospaced())
+                    .font(PromptText.font)
+                    .lineSpacing(PromptText.lineSpacing)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }

@@ -95,6 +95,7 @@ When a decision changes, move it between the lists here in the same pull request
   - The system prompt has two parts. The editable part is a file, `instructions.md` in Application Support, and the default applies until the owner saves an edit.
   - A fixed part always follows it. It covers what the app needs to work correctly: how the destructive flag and the go-ahead work, the time at the start of each message, that earlier episodes exist and how to search them, and how skills are found, loaded, and written. The incognito window has a fixed part of its own instead, described under Incognito.
   - The prompt is read once at the start of each instruction from the owner, so an edit applies from the next one. It comes out byte for byte the same when nothing changed, so the prompt cache holds.
+  - Settings shows the editable part and the full prompt in the system's monospaced font. The editor saves what is typed: smart quotes, smart dashes, text replacement, and autocorrection are off in it.
 - Skills
   - A skill is a folder in `skills/` in Application Support with a `SKILL.md` that has `name` and `description` front matter and then instructions, plus any scripts beside it. This is the Agent Skills format.
   - The prompt lists only the name and description of each skill that is on. The agent reads the rest with the `load_skill` tool when a task needs it.
