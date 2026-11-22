@@ -78,7 +78,15 @@ When a decision changes, move it between the lists here in the same pull request
   - It opens at the latest message and follows new output unless the owner has scrolled up.
   - The owner's messages and the agent's replies sit in quiet boxes on opposite sides. Commands are small secondary lines between them, with their output behind a disclosure. Inside an episode, a time label marks a message on a new day or after a pause of 30 minutes or more.
   - It stays light: a floating Liquid Glass panel with no title bar, sidebar, or conversation list. The text field has focus when it appears, Return sends, and Escape hides it.
+  - A slim bar across the top of the glass moves the panel. Its right end has three small controls: re-center, dock to the left, and dock to the right. Its left end is free for a state label or an episode title later. Double-clicking the bar does nothing.
+  - Re-center puts the panel back at 640 by 560 points, centered on the screen it is on.
+  - Docking puts the panel against the left or right edge of its screen, at the full height, with a small margin, and at its current width up to half the screen. Docked is a state: it lasts through hiding and relaunching, and the panel docks again on its screen when a display changes or is unplugged. The active dock's control is highlighted. Choosing it again undocks back to the frame from before docking. Re-center or dragging the panel away also undocks it. While docked, only the free edge resizes.
   - The text field is a standard Mac text view with everything the system gives one: the Edit menu's commands and shortcuts, the usual key bindings, input methods, spelling, text replacement, dictation, and the emoji picker. It grows with its text up to eight lines, then scrolls. Shift-Return and Option-Return add a line.
+- Showing and hiding
+  - The hotkey and a left click on the menu bar icon do the same thing. When the panel is hidden, they show it with keyboard focus. When it is showing but another app has focus, the first press gives it focus, so the owner can type straight away. A press while it has focus hides it.
+  - The panel stays up when the owner clicks or switches to another app. It hides only on the hotkey, the menu bar icon, Escape, or Command-W. It never takes focus on its own.
+  - It floats above ordinary windows, on every Space, and over full screen apps.
+  - A right click or Control-click on the icon opens the menu. So does activating the icon from the keyboard or with VoiceOver, and the menu's first item shows or hides the panel. VoiceOver also lists both as actions on the icon.
 - Progress and dismissal
   - Each command shows as it runs, and the reply streams into place.
   - The go-ahead card and the Stop button sit by the text field, outside the scrolling history.

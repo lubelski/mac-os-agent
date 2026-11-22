@@ -6,6 +6,9 @@
 #   scripts/capture-panel-previews.sh --backdrop [out-dir]  the panel over a busy page, which
 #                                                           shows the glass and its edges
 #   scripts/capture-panel-previews.sh --states "a b" [out-dir]  only the states named
+#   scripts/capture-panel-previews.sh --dock right [out-dir]    docked to that edge of the screen
+#
+# The options go in the order shown: --backdrop, then --dock, then --states.
 #
 # Preview runs never register the hotkey, open the thread, read the Keychain, or touch the
 # panel's saved frame.
@@ -16,6 +19,14 @@ BACKDROP=0
 if [[ "${1:-}" == "--backdrop" ]]; then
   BACKDROP=1
   shift
+fi
+
+DOCK=()
+SUFFIX=""
+if [[ "${1:-}" == "--dock" ]]; then
+  DOCK=(--preview-dock "$2")
+  SUFFIX="-docked-$2"
+  shift 2
 fi
 
 STATES=(empty history running confirmation finished draft multiline-draft fresh-start scrollback incognito command-hint)
@@ -45,15 +56,15 @@ for appearance in dark light; do
   for state in "${STATES[@]}"; do
     LOG="$(mktemp)"
     if [[ $BACKDROP == 1 ]]; then
-      "$BIN" --preview-panel "$state" --appearance "$appearance" --backdrop >"$LOG" &
+      "$BIN" --preview-panel "$state" --appearance "$appearance" --backdrop ${DOCK[@]+"${DOCK[@]}"} >"$LOG" &
     else
-      "$BIN" --preview-panel "$state" --appearance "$appearance" >"$LOG" &
+      "$BIN" --preview-panel "$state" --appearance "$appearance" ${DOCK[@]+"${DOCK[@]}"} >"$LOG" &
     fi
     PID=$!
     sleep 1.5
     if [[ $BACKDROP == 1 ]]; then
       RECT="$(awk '/^capture-rect / { print $2 }' "$LOG")"
-      FILE="$OUT/panel-$state-$appearance-backdrop.png"
+      FILE="$OUT/panel-$state$SUFFIX-$appearance-backdrop.png"
       if [[ -n "$RECT" ]]; then
         screencapture -x -R "$RECT" "$FILE"
         echo "Captured $FILE"
@@ -62,7 +73,7 @@ for appearance in dark light; do
       fi
     else
       ID="$("$HELPER" "$PID")"
-      FILE="$OUT/panel-$state-$appearance.png"
+      FILE="$OUT/panel-$state$SUFFIX-$appearance.png"
       if [[ -n "$ID" ]]; then
         screencapture -x -o -l "$ID" "$FILE"
         echo "Captured $FILE"
