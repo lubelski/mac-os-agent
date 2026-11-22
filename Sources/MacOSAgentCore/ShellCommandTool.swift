@@ -8,10 +8,13 @@ public struct ShellCommandTool: AgentTool {
     public var timeout: Duration
     /// The most output passed back to the model. Longer output keeps its start and end.
     public var outputLimit: Int
+    /// How long a stopped command has to exit after SIGTERM before everything it started gets SIGKILL.
+    public var killGracePeriod: Duration
 
-    public init(timeout: Duration = .seconds(120), outputLimit: Int = 16_000) {
+    public init(timeout: Duration = .seconds(120), outputLimit: Int = 16_000, killGracePeriod: Duration = .seconds(2)) {
         self.timeout = timeout
         self.outputLimit = outputLimit
+        self.killGracePeriod = killGracePeriod
     }
 
     public var definition: ToolDefinition {
@@ -66,52 +69,36 @@ public struct ShellCommandTool: AgentTool {
     }
 
     func execute(_ command: String) async -> String {
-        let process = Process()
-        process.executableURL = URL(filePath: "/bin/zsh")
-        process.arguments = ["-l", "-c", command]
-        // Commands start in the home folder, like a new Terminal window.
-        process.currentDirectoryURL = URL.homeDirectory
-        process.standardInput = FileHandle.nullDevice
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-
-        let output = OutputCollector()
-        pipe.fileHandleForReading.readabilityHandler = { handle in
-            output.append(handle.availableData)
-        }
-
-        let finished = AsyncStream<Int32>.makeStream()
-        process.terminationHandler = { finishedProcess in
-            finished.continuation.yield(finishedProcess.terminationStatus)
-            finished.continuation.finish()
-        }
+        let launched: LaunchedCommand
         do {
-            try process.run()
+            launched = try LaunchedCommand.start(command)
         } catch {
-            pipe.fileHandleForReading.readabilityHandler = nil
             return "Error: could not start zsh: \(error.localizedDescription)"
         }
 
+        let output = OutputCollector()
+        launched.output.readabilityHandler = { handle in
+            output.append(handle.availableData)
+        }
+
         let timeout = self.timeout
+        let gracePeriod = self.killGracePeriod
         let watchdog = Task {
             try await Task.sleep(for: timeout)
             output.markTimedOut()
-            process.terminate()
+            launched.stop(gracePeriod: gracePeriod)
         }
         let status = await withTaskCancellationHandler {
-            var status: Int32 = -1
-            for await value in finished.stream { status = value }
-            return status
+            await launched.exitStatus()
         } onCancel: {
-            process.terminate()
+            launched.stop(gracePeriod: gracePeriod)
         }
         watchdog.cancel()
 
         // A command can leave a background process holding the pipe open, so read what is
         // already there instead of waiting for the pipe to close.
         try? await Task.sleep(for: .milliseconds(100))
-        pipe.fileHandleForReading.readabilityHandler = nil
+        launched.output.readabilityHandler = nil
 
         var result = Self.limit(output.text, to: outputLimit)
         if result.isEmpty { result = "(no output)" }
@@ -129,6 +116,101 @@ public struct ShellCommandTool: AgentTool {
         let half = limit / 2
         let omitted = text.count - limit
         return String(text.prefix(half)) + "\n[… \(omitted) characters omitted …]\n" + String(text.suffix(half))
+    }
+}
+
+/// A zsh process started as the leader of its own process group, so stopping it reaches
+/// everything it started, not only zsh.
+///
+/// `Process` would do for starting zsh, but it has no documented way to choose the process
+/// group, so this uses `posix_spawn` with `POSIX_SPAWN_SETPGROUP`.
+private struct LaunchedCommand: Sendable {
+    /// zsh's process ID, which is also the ID of the process group it leads.
+    let processID: pid_t
+    /// The reading end of the pipe that carries both standard output and standard error.
+    let output: FileHandle
+    private let exit: AsyncStream<Int32>
+
+    static func start(_ command: String) throws -> LaunchedCommand {
+        var pipeEnds: [Int32] = [0, 0]
+        guard pipe(&pipeEnds) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let readEnd = pipeEnds[0]
+        let writeEnd = pipeEnds[1]
+        defer { close(writeEnd) }
+
+        var actions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&actions)
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+        posix_spawn_file_actions_adddup2(&actions, writeEnd, 1)
+        posix_spawn_file_actions_adddup2(&actions, writeEnd, 2)
+        // Commands start in the home folder, like a new Terminal window.
+        posix_spawn_file_actions_addchdir(&actions, URL.homeDirectory.path)
+
+        var attributes: posix_spawnattr_t?
+        posix_spawnattr_init(&attributes)
+        defer { posix_spawnattr_destroy(&attributes) }
+        // A new process group whose ID is zsh's own process ID. Every other descriptor is closed
+        // in the child, and signals start from their defaults and unblocked.
+        posix_spawnattr_setflags(&attributes, Int16(
+            POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK))
+        posix_spawnattr_setpgroup(&attributes, 0)
+        var allSignals = sigset_t()
+        sigfillset(&allSignals)
+        posix_spawnattr_setsigdefault(&attributes, &allSignals)
+        var noSignals = sigset_t()
+        sigemptyset(&noSignals)
+        posix_spawnattr_setsigmask(&attributes, &noSignals)
+
+        let arguments = ["/bin/zsh", "-l", "-c", command].map { strdup($0) }
+        defer { arguments.forEach { free($0) } }
+        var argv = arguments + [nil]
+
+        var processID: pid_t = 0
+        let result = posix_spawn(&processID, "/bin/zsh", &actions, &attributes, &argv, environ)
+        guard result == 0 else {
+            close(readEnd)
+            throw POSIXError(POSIXErrorCode(rawValue: result) ?? .EIO)
+        }
+
+        let exit = AsyncStream<Int32>.makeStream()
+        let launchedID = processID
+        DispatchQueue.global().async {
+            var status: Int32 = 0
+            while waitpid(launchedID, &status, 0) == -1 && errno == EINTR {}
+            exit.continuation.yield(Self.terminationStatus(status))
+            exit.continuation.finish()
+        }
+        return LaunchedCommand(
+            processID: launchedID,
+            output: FileHandle(fileDescriptor: readEnd, closeOnDealloc: true),
+            exit: exit.stream)
+    }
+
+    /// Waits for zsh to exit. Returns its exit code, or the signal that ended it.
+    func exitStatus() async -> Int32 {
+        var status: Int32 = -1
+        for await value in exit { status = value }
+        return status
+    }
+
+    /// Sends SIGTERM to the whole process group, then SIGKILL to whatever is left of it after
+    /// the grace period. Only for a command being stopped. A command that finished on its own
+    /// leaves its background processes alone.
+    func stop(gracePeriod: Duration) {
+        let group = processID
+        killpg(group, SIGTERM)
+        Task.detached {
+            try? await Task.sleep(for: gracePeriod)
+            // Fails harmlessly with ESRCH when every process in the group has exited.
+            killpg(group, SIGKILL)
+        }
+    }
+
+    /// The same value `Process.terminationStatus` gives: the exit code, or the signal number.
+    private static func terminationStatus(_ status: Int32) -> Int32 {
+        let signal = status & 0x7f
+        return signal == 0 ? (status >> 8) & 0xff : signal
     }
 }
 

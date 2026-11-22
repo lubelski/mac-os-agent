@@ -30,6 +30,116 @@ import Testing
         #expect(output.contains("quick"))
     }
 
+    @Test func aBackgroundProcessOutlivesACommandThatFinishedOnItsOwn() async throws {
+        let pidFile = Self.temporaryFile()
+        let output = await ShellCommandTool().run(
+            arguments: ["command": .string("sleep 30 & echo $! >> \(pidFile.path)"), "destructive": false], context: neverAsk)
+        #expect(output.hasSuffix("[exit status 0]"))
+        let child = try Self.processID(in: pidFile)
+        defer { kill(child, SIGKILL) }
+        // Well past the grace period, so a stray SIGKILL would have landed by now.
+        try await Task.sleep(for: .milliseconds(700))
+        #expect(Self.isRunning(child))
+    }
+
+    @Test func aTimeoutStopsWhatTheCommandStarted() async throws {
+        let pidFile = Self.temporaryFile()
+        let tool = ShellCommandTool(timeout: .milliseconds(300), killGracePeriod: .milliseconds(300))
+        let output = await tool.run(
+            arguments: ["command": .string(Self.survivesZshCommand(writingTo: pidFile)), "destructive": false], context: neverAsk)
+        #expect(output.contains("second limit"))
+        let child = try Self.processID(in: pidFile)
+        defer { kill(child, SIGKILL) }
+        #expect(await Self.exits(child, within: .seconds(3)))
+    }
+
+    @Test func aCommandThatIgnoresSIGTERMIsKilledAfterTheGracePeriod() async throws {
+        let pidFile = Self.temporaryFile()
+        let tool = ShellCommandTool(timeout: .milliseconds(300), killGracePeriod: .milliseconds(500))
+        let started = ContinuousClock.now
+        // zsh ignores SIGTERM and keeps starting short sleeps, so only SIGKILL ends it.
+        let output = await tool.run(
+            arguments: [
+                "command": .string("trap '' TERM; echo $$ >> \(pidFile.path); while true; do sleep 0.1; done"),
+                "destructive": false,
+            ],
+            context: neverAsk)
+        let elapsed = ContinuousClock.now - started
+        #expect(output.contains("second limit"))
+        #expect(output.hasSuffix("[exit status 9]"))
+        #expect(elapsed >= .milliseconds(700))
+        #expect(elapsed < .seconds(5))
+        let child = try Self.processID(in: pidFile)
+        defer { kill(child, SIGKILL) }
+        #expect(await Self.exits(child, within: .seconds(3)))
+    }
+
+    @Test func stoppingTheTaskStopsWhatTheCommandStarted() async throws {
+        let pidFile = Self.temporaryFile()
+        let tool = ShellCommandTool(killGracePeriod: .milliseconds(300))
+        let context = neverAsk
+        let task = Task {
+            await tool.run(
+                arguments: ["command": .string(Self.survivesZshCommand(writingTo: pidFile)), "destructive": false], context: context)
+        }
+        let child = try await Self.waitForProcessID(in: pidFile)
+        defer { kill(child, SIGKILL) }
+        task.cancel()
+        let output = await task.value as String
+        #expect(output.contains("The task was stopped"))
+        #expect(await Self.exits(child, within: .seconds(3)))
+    }
+
+    @Test func theCommandLeadsItsOwnProcessGroup() async {
+        let output = await ShellCommandTool().run(
+            arguments: ["command": "ps -o pid=,pgid= -p $$", "destructive": false], context: neverAsk)
+        let numbers = output.split(whereSeparator: \.isWhitespace).prefix(2).compactMap { Int32($0) }
+        #expect(numbers.count == 2)
+        #expect(numbers.first == numbers.last)
+        #expect(numbers.last != getpgrp())
+    }
+
+    /// zsh sends SIGHUP to its own jobs when it exits, which would hide a command that leaves
+    /// children behind. This background `sleep` ignores SIGHUP and is not zsh's job, like a
+    /// helper that a real command started.
+    private static func survivesZshCommand(writingTo pidFile: URL) -> String {
+        "/bin/sh -c 'trap \"\" HUP; sleep 30 & echo $! >> \(pidFile.path); wait'"
+    }
+
+    private static func temporaryFile() -> URL {
+        FileManager.default.temporaryDirectory.appending(path: "mac-os-agent-test-\(UUID().uuidString).pid")
+    }
+
+    private static func processID(in file: URL) throws -> pid_t {
+        let text = try String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        try? FileManager.default.removeItem(at: file)
+        return try #require(pid_t(text))
+    }
+
+    private static func waitForProcessID(in file: URL) async throws -> pid_t {
+        for _ in 0..<100 {
+            if let text = try? String(contentsOf: file, encoding: .utf8), text.hasSuffix("\n") {
+                return try processID(in: file)
+            }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        Issue.record("the command never wrote its background process ID")
+        return 0
+    }
+
+    private static func isRunning(_ processID: pid_t) -> Bool {
+        kill(processID, 0) == 0
+    }
+
+    private static func exits(_ processID: pid_t, within limit: Duration) async -> Bool {
+        let deadline = ContinuousClock.now + limit
+        while ContinuousClock.now < deadline {
+            if !isRunning(processID) { return true }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return false
+    }
+
     @Test func longOutputKeepsItsStartAndEnd() {
         let text = String(repeating: "a", count: 100) + String(repeating: "b", count: 100)
         let limited = ShellCommandTool.limit(text, to: 40)
