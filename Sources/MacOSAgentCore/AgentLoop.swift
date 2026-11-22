@@ -134,8 +134,11 @@ public final class AgentLoop: Sendable {
             if calls.isEmpty { return }
 
             for call in calls {
-                let output = await runTool(call, episodeID: episodeID, onEvent: onEvent, confirm: confirm)
-                await onEvent(.entryAdded(try await thread.append(.toolResult(.init(callID: call.callID, output: output)))))
+                let (output, details) = await runTool(call, episodeID: episodeID, onEvent: onEvent, confirm: confirm)
+                // The details are the app's own notes for the inspector. The model only ever
+                // reads the call id and the output, so they leave the request unchanged.
+                let result = ThreadItem.ToolResult(callID: call.callID, output: output, details: details)
+                await onEvent(.entryAdded(try await thread.append(.toolResult(result))))
                 await onEvent(.toolFinished(callID: call.callID))
                 try Task.checkCancellation()
             }
@@ -148,14 +151,48 @@ public final class AgentLoop: Sendable {
         episodeID: UUID?,
         onEvent: @Sendable (AgentEvent) async -> Void,
         confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
-    ) async -> String {
+    ) async -> (String, ToolRunDetails?) {
         guard let tool = tools.first(where: { $0.definition.name == call.name }) else {
-            return "Error: there is no tool named \(call.name)."
+            return ("Error: there is no tool named \(call.name).", nil)
         }
         guard let arguments = JSONValue.parse(call.arguments), case .object = arguments else {
-            return "Error: the arguments were not a JSON object."
+            return ("Error: the arguments were not a JSON object.", ToolRunDetails(source: tool.source.title))
         }
         await onEvent(.toolRunning(callID: call.callID, summary: tool.summary(arguments: arguments)))
-        return await tool.run(arguments: arguments, context: ToolRunContext(callID: call.callID, episodeID: episodeID, confirm: confirm))
+
+        let report = ToolRunReport()
+        let startDate = Date()
+        let started = ContinuousClock.now
+        // The go-ahead is timed and its answer noted here, so every tool that asks gets the same record.
+        let timedConfirm: @Sendable (ConfirmationRequest) async -> Bool = { request in
+            let asked = ContinuousClock.now
+            let approved = await confirm(request)
+            let waited = Self.seconds(ContinuousClock.now - asked)
+            report.note { details in
+                details.goAhead = approved ? .approved : .declined
+                details.waitedSeconds = (details.waitedSeconds ?? 0) + waited
+            }
+            return approved
+        }
+        let context = ToolRunContext(callID: call.callID, episodeID: episodeID, report: report, confirm: timedConfirm)
+        let output = await tool.run(arguments: arguments, context: context)
+        let elapsed = Self.seconds(ContinuousClock.now - started)
+        report.note { details in
+            details.started = startDate
+            details.seconds = elapsed
+            details.source = tool.source.title
+            if Task.isCancelled, details.stopped == nil { details.stopped = true }
+            if let waited = details.waitedSeconds { details.waitedSeconds = Self.rounded(waited) }
+        }
+        return (output, report.details)
+    }
+
+    private static func seconds(_ duration: Duration) -> Double {
+        rounded(Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18)
+    }
+
+    /// To the millisecond, which is as fine as the inspector shows and keeps the thread line short.
+    private static func rounded(_ seconds: Double) -> Double {
+        (seconds * 1000).rounded() / 1000
     }
 }
