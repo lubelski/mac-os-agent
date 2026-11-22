@@ -136,17 +136,15 @@ private struct EpisodeRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(item.episode.startDate.formatted(date: .abbreviated, time: .shortened))
-                Spacer(minLength: 4)
-                Text(EpisodeDetailView.length(item.episode))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text(item.episode.startDate.formatted(date: .abbreviated, time: .shortened))
+                .lineLimit(1)
             Text(item.match ?? item.episode.preview)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
+            Text(EpisodeDetailView.length(item.episode))
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 2)
     }
