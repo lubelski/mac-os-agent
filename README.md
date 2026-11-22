@@ -12,8 +12,11 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
 - `scripts/bundle.sh` builds `build/mac-os-agent.app`, signed ad hoc. `scripts/bundle.sh --install` moves it to `~/Applications` and launches it.
 - Run only the bundle, not `swift run`. The bundle has the `Info.plist` that keeps the app out of the Dock.
 - Press Option-Shift-Space to show or hide the panel. The chord is set in `Sources/mac-os-agent/SummonHotKey.swift`.
-- Use "Sign in with ChatGPT" in the menu bar menu before the first instruction.
+- Use "Sign in with ChatGPT" in the menu bar menu or in Settings before the first instruction.
+- Settings opens from the menu bar menu, or with Command-comma while one of the app's windows is in front.
 - `scripts/capture-panel-previews.sh` shows the panel in a few stand-in states and captures each one, for pull request screenshots. `--backdrop` captures it over a busy page instead, which shows the glass and its edges. Each preview quits on its own after a few seconds and never takes keyboard focus.
+- `scripts/capture-settings-previews.sh` does the same for each Settings pane, against a temporary data folder with sample skills.
+- `--data-folder <path>` points the app at another folder instead of `~/Library/Application Support/mac-os-agent/`, for checking a build without touching the real thread.
 
 ## Decided
 
@@ -31,12 +34,24 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
   - The loop talks to models through a small provider interface, with one implementation per provider.
   - The first and only provider for now is OpenAI, using "Sign in with ChatGPT" and the Responses API. There is no API key to manage.
   - The app registers as its own client at sign-in. It does not reuse the Codex CLI's client or the ChatGPT backend.
-  - The default model is `gpt-6-luna`, the fastest GPT-6 model, with low reasoning effort. The model is a setting in the menu bar menu.
+  - The default model is `gpt-6-luna`, the fastest GPT-6 model, with low reasoning effort. The model is a setting in the menu bar menu and in Settings, and both read the same preference.
 - Its own tools
   - The agent runs with a set of tools that it can modify itself.
   - The tool list sent to the model stays fixed within a conversation, because a list that changes breaks prompt caching.
   - Built-in tools are a fixed, ordered list. New built-in tools go at the end. Tools from other sources will go after the built-ins, sorted by name.
-  - The built-in tools are a shell command and three app tools: search the installed apps by a loose name, open an app or bring it to the front, and list the running apps.
+  - The built-in tools are a shell command, three app tools (search the installed apps by a loose name, open an app or bring it to the front, and list the running apps), and a tool that loads a skill.
+- Settings
+  - A standard Settings window with General, Instructions, and Skills panes. An MCP pane comes next, in its own pull request.
+  - General holds the sign-in, the model, and the summon shortcut, which is shown but not editable yet.
+- Instructions the owner can edit
+  - The system prompt has two parts. The editable part is a file, `instructions.md` in Application Support, and the default applies until the owner saves an edit.
+  - A fixed part always follows it. It covers what the app needs to work correctly: how the destructive flag and the go-ahead work, the time at the start of each message, and how skills are found, loaded, and written.
+  - The prompt is read once at the start of each instruction from the owner, so an edit applies from the next one. It comes out byte for byte the same when nothing changed, so the prompt cache holds.
+- Skills
+  - A skill is a folder in `skills/` in Application Support with a `SKILL.md` that has `name` and `description` front matter and then instructions, plus any scripts beside it. This is the Agent Skills format.
+  - The prompt lists only the name and description of each skill that is on. The agent reads the rest with the `load_skill` tool when a task needs it.
+  - The owner can turn skills on and off, make a new one, and open the folder from Settings. Skills that are off are listed in `skill-settings.json`, so a new skill is on from the start.
+  - The agent can write and improve skills itself with the shell tool. This is how it extends what it can do. A new or changed skill is listed from the owner's next instruction.
 - Apps through native tools
   - The app tools use Launch Services, NSWorkspace, and Spotlight directly instead of the shell, because shell lookups with `mdfind` were slow and missed apps.
   - A search reads the standard app folders, caches each folder until it changes, and asks Spotlight only when nothing matches closely.
@@ -63,8 +78,7 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
 
 ## Proposed, not yet agreed
 
-- Add a second fixed tool, "run one of my scripts", and let new abilities be scripts on disk.
-- Make the tools folder a local git repo with no remote, so every self-edit is a commit that can be reverted.
+- Make the skills folder a local git repo with no remote, so every self-edit is a commit that can be reverted.
 - Topic chunking and self-modification come after a week of real use of the first slice.
 
 ## Open

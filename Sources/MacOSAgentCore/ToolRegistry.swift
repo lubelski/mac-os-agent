@@ -34,14 +34,19 @@ public enum BuiltInTools {
         SearchApplicationsTool.name,
         OpenApplicationTool.name,
         ListRunningApplicationsTool.name,
+        LoadSkillTool.name,
     ]
 
-    public static func make(applicationWorkspace: any ApplicationWorkspace = SystemApplicationWorkspace()) -> [any AgentTool] {
+    public static func make(
+        applicationWorkspace: any ApplicationWorkspace = SystemApplicationWorkspace(),
+        skills: SkillLibrary = SkillLibrary()
+    ) -> [any AgentTool] {
         let tools: [any AgentTool] = [
             ShellCommandTool(),
             SearchApplicationsTool(workspace: applicationWorkspace),
             OpenApplicationTool(workspace: applicationWorkspace),
             ListRunningApplicationsTool(workspace: applicationWorkspace),
+            LoadSkillTool(library: skills),
         ]
         assert(tools.map(\.definition.name) == names)
         return tools

@@ -30,14 +30,16 @@ public final class AgentLoop: Sendable {
     public let provider: any ModelProvider
     public let thread: ThreadStore
     public let tools: [any AgentTool]
-    public let instructions: String
+    /// Read once at the start of each instruction from the person, so an edit in Settings or a
+    /// new skill applies from the next instruction and the text stays the same while one runs.
+    public let instructions: @Sendable () async -> String
     public let maximumModelReplies: Int
 
     public init(
         provider: any ModelProvider,
         thread: ThreadStore,
         tools: [any AgentTool],
-        instructions: String = AgentInstructions.standing,
+        instructions: @escaping @Sendable () async -> String = { AgentInstructions.defaultPrompt },
         maximumModelReplies: Int = 40
     ) {
         self.provider = provider
@@ -45,6 +47,15 @@ public final class AgentLoop: Sendable {
         self.tools = tools
         self.instructions = instructions
         self.maximumModelReplies = maximumModelReplies
+    }
+
+    public convenience init(
+        provider: any ModelProvider, thread: ThreadStore, tools: [any AgentTool], instructions: String,
+        maximumModelReplies: Int = 40
+    ) {
+        self.init(
+            provider: provider, thread: thread, tools: tools, instructions: { instructions },
+            maximumModelReplies: maximumModelReplies)
     }
 
     /// Handles one instruction from the person. Returns when the model has finished, and
@@ -65,6 +76,7 @@ public final class AgentLoop: Sendable {
 
         await onEvent(.entryAdded(try await thread.append(.userMessage(text: userText))))
         let definitions = tools.map(\.definition)
+        let instructions = await self.instructions()
 
         for _ in 0..<maximumModelReplies {
             try Task.checkCancellation()
