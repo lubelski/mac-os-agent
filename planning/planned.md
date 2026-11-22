@@ -1,0 +1,38 @@
+# Planned
+
+What is not built yet: proposals waiting for agreement, open questions, and work nobody has started. When one is settled and built, move it to [decided.md](decided.md) in the same pull request.
+
+## Proposed, not yet agreed
+
+- Make the skills folder a local git repo with no remote, so every self-edit is a commit that can be reverted.
+- Self-modification comes after a week of real use of the first slice.
+- More habits from terminal coding agents, as switches in Settings, Behaviors:
+  - Control-R searches the owner's earlier messages backward as they type, as in a shell.
+  - Escape twice clears the field. Escape today dismisses a suggestion, then closes the inspector, then hides the panel, so the second press would need to change meaning only when the field has text.
+  - A leading `!` runs the rest of the line as a shell command with no model call, through the shell tool, so the go-ahead and the destructive check apply, and shows it as a `Bash` row. Not in the incognito window. Undecided: how the run is kept so the agent knows of it next time. A saved action's run is kept as the owner's message with an `action` record and a note for the model, but that record names a saved action and says the run was pre-approved, which a `!` command is not. Either it gets a record kind of its own, or the action record is widened to a typed command with a real go-ahead.
+- One typed parameter per saved action, such as the 40 in "volume 40": the rest of the typed text, checked against a declared type, filled into one argument. The file has room for it: a top-level `parameters` list, and an argument value of the form `{"$parameter": "level"}`, in a file marked `"format": 2`, which this version lists with a problem instead of running the placeholder as written. A stored call with a parameter is the same piece the agent-built controls idea needs (a slider or field that fills one argument of a fixed call), so the two should share it.
+
+## Open
+
+- Which ChatGPT plans and models the sign-in token covers, and what OpenAI's terms say about third-party apps using it. Neither has been checked.
+- Whether a new episode should start with a short summary of the recent ones, and whether the agent should name episodes by topic. For now it starts with nothing from before and searches when it needs to.
+
+## Not started
+
+Ideas the owner has raised that nobody has designed or built yet.
+
+- More kinds of instant action. Instant actions for apps and saved actions are built. Other kinds, such as System Settings panes, recent files, web addresses, and skills, are not.
+- Interfaces the agent builds itself: a small markup language for forms and other inputs shown in the panel, with the go-ahead card as the first case, and later visualizations such as maps.
+- Suggestions in the empty space of a fresh episode. What they contain is not decided. The slot for them exists: `FreshStartContent` in `Sources/mac-os-agent/HistoryView.swift` is shown at the bottom of a fresh page and is empty for now.
+- MCP servers, managed from a Settings section above Debugging, with each server's tools as a group in Tools.
+- Summoning by double-tapping Option. Shelved in favor of a key chord for now. The stored trigger has room for it as another kind.
+- More native system tools, each left out of the first set for the reason given:
+  - Volume, mute, and brightness. Volume needs CoreAudio device code and brightness has no public API for built-in displays.
+  - Dark mode, Focus, Night Shift, and other appearance settings. There is no public API to change them, only AppleScript through System Events, which needs Automation permission.
+  - Moving files to the Trash, renaming, and making folders with FileManager. Useful and easy, but they change the owner's files and want the go-ahead and undo design worked out first.
+  - Notifications and scheduled alerts from the agent with UserNotifications. A new permission prompt.
+  - Window layout, such as tiling the front windows. Needs Accessibility permission.
+  - Screenshots and reading the screen. Needs Screen Recording permission.
+  - Contacts, Mail, Messages, Music, Photos, and Notes. Each needs a permission of its own or Automation, and Notes and Mail have no public framework.
+  - Battery, disk, and network status. Readable without permission, but the shell already answers these quickly with `pmset`, `df`, and `networksetup`.
+  - Location and weather. A new permission class.
