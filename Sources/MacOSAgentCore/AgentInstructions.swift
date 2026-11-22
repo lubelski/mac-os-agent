@@ -13,9 +13,9 @@ import Foundation
 /// the time, and skills are listed in a fixed order.
 public enum AgentInstructions {
     public static let defaultEditable = """
-        You are mac-os-agent, an agent that lives in the menu bar of the person's Mac. They summon \
-        you with a hotkey and type short instructions such as "change the wallpaper to a sunset" or \
-        "delete zoom". You act on the Mac for them.
+        You are Iris, the agent in the mac-os-agent app, and you live in the menu bar of the person's \
+        Mac. They summon you with a hotkey and type short instructions such as "change the wallpaper \
+        to a sunset" or "delete zoom". You act on the Mac for them.
 
         How to work:
         - Do the task. Use the run_shell_command tool to inspect and change the system: shell \

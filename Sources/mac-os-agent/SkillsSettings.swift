@@ -93,7 +93,7 @@ struct SkillsSettingsView: View {
                         ContentUnavailableView {
                             Label("No Skills Yet", systemImage: "puzzlepiece.extension")
                         } description: {
-                            Text("Make one with New Skill, or ask the agent to write one.")
+                            Text("Make one with New Skill, or ask Iris to write one.")
                         }
                     } else if model.filteredSkills.isEmpty {
                         ContentUnavailableView.search(text: model.filter)
@@ -138,7 +138,7 @@ struct SkillsSettingsView: View {
                     VStack(spacing: 12) {
                         ContentUnavailableView(
                             "No Skill Selected", systemImage: "puzzlepiece.extension",
-                            description: Text("Skills teach the agent particular tasks. It can write new ones itself."))
+                            description: Text("Skills teach Iris particular tasks. It can write new ones itself."))
                         Button("Show Skills Folder in Finder") { model.revealInFinder() }
                     }
                     .padding(.bottom, 40)
@@ -227,7 +227,7 @@ struct SkillDetailView: View {
                         get: { skill.isEnabled }, set: { model.setEnabled($0, skill) }))
                         .labelsHidden()
                         .toggleStyle(.switch)
-                        .help(skill.isEnabled ? "On: listed in the agent's instructions" : "Off: the agent does not see it")
+                        .help(skill.isEnabled ? "On: listed in Iris's instructions" : "Off: Iris does not see it")
                 }
                 if let problem = skill.problem {
                     Label(problem, systemImage: "exclamationmark.triangle.fill")

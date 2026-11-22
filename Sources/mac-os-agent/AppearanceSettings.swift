@@ -27,7 +27,7 @@ struct AppearanceSettingsView: View {
                 let own = model.ownEntries
                 let readable = own.filter { $0.theme != nil }
                 if readable.isEmpty {
-                    Text("None yet. Duplicate a theme, put a theme file in the themes folder, or ask the agent to make one.")
+                    Text("None yet. Duplicate a theme, put a theme file in the themes folder, or ask Iris to make one.")
                         .foregroundStyle(.secondary)
                 } else {
                     grid(readable)

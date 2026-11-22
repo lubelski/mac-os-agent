@@ -30,6 +30,12 @@ private func library(_ root: URL) -> SkillLibrary {
         #expect(!store.isCustomized)
     }
 
+    @Test func theDefaultNamesTheAgentIris() {
+        #expect(AgentInstructions.defaultEditable.hasPrefix(
+            "You are Iris, the agent in the mac-os-agent app, and you live in the menu bar of the person's Mac."))
+        #expect(!AgentInstructions.defaultEditable.contains("You are mac-os-agent"))
+    }
+
     @Test func editsAreKeptByteForByte() throws {
         let store = InstructionsStore(fileURL: temporaryFolder().appending(path: "instructions.md"))
         let text = "Be brief.\n\n  Indented line with trailing spaces   \n"

@@ -153,7 +153,7 @@ struct InstructionsSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("What the agent is told before every instruction. Changes apply from your next instruction.")
+            Text("What Iris is told before every instruction. Changes apply from your next instruction.")
                 .foregroundStyle(.secondary)
             PromptEditor(text: $model.draft)
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 120, maxHeight: .infinity)
