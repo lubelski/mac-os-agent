@@ -609,7 +609,7 @@ final class WindowRecorder {
         #expect(SummonPanel.ToggleAction.given(isVisible: panel.isPresented, isKey: panel.isKeyWindow) == .show)
     }
 
-    @Test func theCloseButtonHidesThePanelAsEscapeDoes() throws {
+    @Test func hidePanelInTheMenuHidesThePanelAsEscapeDoes() throws {
         let (panel, defaults) = try makePanel()
         defer { cleanUp(defaults) }
         panel.summon()
@@ -682,26 +682,49 @@ final class WindowRecorder {
     // MARK: - The top bar
 
     @Test func theBarsSymbolsExist() {
-        for name in ["xmark"] + PanelPreset.allCases.map(\.symbol) {
+        for name in [PanelMenuButton.symbol, KeepOnTopMark.symbol] + PanelPreset.allCases.map(\.symbol) {
             #expect(NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil, "\(name)")
         }
     }
 
-    @Test func theLayoutMenuListsThePresetsWithACheckOnTheCurrentOne() {
+    @Test func thePanelMenuListsThePresetsWithACheckOnTheCurrentOneThenHide() {
         var chosen: [PanelPreset] = []
-        let layout = LayoutMenu(current: .slideOverRight) { chosen.append($0) }
+        var closes = 0
+        let layout = PanelMenu(current: .slideOverRight, choose: { chosen.append($0) }, close: { closes += 1 })
         let items = layout.menu.items
-        #expect(items.map(\.title) == ["Centered", "Slide Over Left", "Slide Over Right"])
-        #expect(items.map(\.state) == [.off, .off, .on])
-        #expect(items.allSatisfy { $0.keyEquivalent.isEmpty && $0.isEnabled && $0.image != nil })
+        #expect(items.map(\.title) == ["Centered", "Slide Over Left", "Slide Over Right", "", PanelMenu.hideTitle])
+        #expect(items[3].isSeparatorItem)
+        let presets = Array(items.prefix(3))
+        #expect(presets.map(\.state) == [.off, .off, .on])
+        #expect(presets.allSatisfy { $0.keyEquivalent.isEmpty && $0.isEnabled && $0.image != nil })
         layout.chosen(items[1])
         #expect(chosen == [.slideOverLeft])
+        // Hide shows Command-W, which does the same.
+        #expect(items[4].keyEquivalent == "w" && items[4].keyEquivalentModifierMask == .command)
+        layout.closed(items[4])
+        #expect(closes == 1)
     }
 
-    @Test func choosingFromTheLayoutMenuMovesThePanel() throws {
+    @Test func theMainPanelsMenuHasKeepOnTopBetweenThePresetsAndHide() {
+        let layout = PanelMenu(current: .centered, setKeepsOnTop: { _ in })
+        #expect(layout.menu.items.map(\.title) == [
+            "Centered", "Slide Over Left", "Slide Over Right", "", PanelMenu.keepOnTopTitle, "", PanelMenu.hideTitle])
+    }
+
+    /// The incognito window has no layouts, and Escape never closes it, so its menu holds only
+    /// Close and Discard.
+    @Test func theIncognitoMenuHasOnlyCloseAndDiscard() {
+        var closes = 0
+        let menu = PanelMenu(current: nil, close: { closes += 1 })
+        #expect(menu.menu.items.map(\.title) == [PanelMenu.closeAndDiscardTitle])
+        menu.closed(menu.menu.items[0])
+        #expect(closes == 1)
+    }
+
+    @Test func choosingFromThePanelMenuMovesThePanel() throws {
         let (panel, defaults) = try makePanel()
         defer { cleanUp(defaults) }
-        let layout = LayoutMenu(current: panel.placement.preset, choose: panel.placement.choose)
+        let layout = PanelMenu(current: panel.placement.preset, choose: panel.placement.choose)
         layout.chosen(layout.menu.items[2])
         #expect(panel.placement.preset == .slideOverRight)
         #expect(PanelGeometry.isInSlideOver(panel.panelFrame, at: .right, in: laptop))
@@ -719,8 +742,8 @@ final class WindowRecorder {
         #expect(harness.panel.firstResponder === editor)
     }
 
-    /// The bar moves the panel everywhere except over its controls: the close button at the
-    /// left, and the layout menu at the right.
+    /// The bar moves the panel everywhere except over its one control in the main panel, the
+    /// menu at the right. The name in the middle passes the pointer through to it.
     @Test func theBarMovesThePanelExceptOverItsControls() async throws {
         let harness = try PanelHarness(draft: "")
         await harness.settle()
@@ -733,14 +756,109 @@ final class WindowRecorder {
             let point = content.convert(CGPoint(x: x, y: y), to: content.superview)
             return content.hitTest(point)
         }
-        // The middle of the bar, and just after the close button, where labels will go.
+        // The middle of the bar, under the name, and the left end, where the close button was.
         #expect(hit(x: content.bounds.midX) === drag)
+        #expect(hit(x: PanelTopBar.sidePadding + TopBarButton.size / 2) === drag)
         #expect(hit(x: PanelTopBar.sidePadding + TopBarButton.size + 30) === drag)
-        // The close button and the layout menu.
-        for x in [PanelTopBar.sidePadding + TopBarButton.size / 2, content.bounds.maxX - PanelTopBar.sidePadding - TopBarButton.size / 2] {
-            let view = hit(x: x)
-            #expect(view != nil)
-            #expect(view !== drag)
-        }
+        // The menu.
+        let view = hit(x: content.bounds.maxX - PanelTopBar.sidePadding - TopBarButton.size / 2)
+        #expect(view != nil)
+        #expect(view !== drag)
+    }
+
+    /// A double click on the bar puts the panel back in its layout's default frame.
+    @Test func aDoubleClickOnTheBarResetsThePanel() async throws {
+        let harness = try PanelHarness(draft: "")
+        await harness.settle()
+        let panel = try #require(harness.panel as? SummonPanel)
+        let drag = try #require(harness.views(named: "DragView").first as? WindowDragArea.DragView)
+        var resets = 0
+        panel.placement.resetToDefault = { resets += 1 }
+        let event = try #require(NSEvent.mouseEvent(
+            with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
+            windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: 2, pressure: 1))
+        drag.mouseDown(with: event)
+        #expect(resets == 1)
+    }
+
+    // MARK: - Back to the default frame
+
+    @Test func resettingACenteredPanelPutsItAtTheDefaultSizeInTheMiddleAndForgetsTheFrame() throws {
+        let (panel, defaults) = try makePanel()
+        defer { cleanUp(defaults) }
+        // A frame from before slide over is remembered, then the owner moves and resizes.
+        panel.choose(.slideOverLeft)
+        panel.choose(.centered)
+        #expect(defaults.string(forKey: SummonPanel.centeredFrameKey) != nil)
+        panel.setFrame(CGRect(x: 40, y: 60, width: 900, height: 700), display: false)
+        panel.placement.resetToDefault()
+        #expect(panel.placement.preset == .centered)
+        #expect(panel.frame == PanelGeometry.defaultFrame(size: SummonPanel.defaultSize, in: laptop))
+        #expect(defaults.string(forKey: SummonPanel.centeredFrameKey) == nil)
+        #expect(defaults.string(forKey: SummonPanel.presetKey) == PanelPreset.centered.rawValue)
+    }
+
+    @Test func resettingStaysOnTheScreenThePanelIsOn() throws {
+        let (panel, defaults) = try makePanel()
+        defer { cleanUp(defaults) }
+        panel.setFrame(CGRect(x: 2400, y: 300, width: 500, height: 400), display: false)
+        panel.resetToDefaultPlace()
+        #expect(panel.frame == PanelGeometry.defaultFrame(size: SummonPanel.defaultSize, in: StandInScreens.external.visible))
+    }
+
+    @Test(arguments: PanelEdge.allCases)
+    func resettingASlideOverPanelGoesBackToTheDefaultWidthAndRemembersThat(_ edge: PanelEdge) throws {
+        // A centered panel smaller than the default, so the slide over width starts away from it.
+        let (panel, defaults) = try makePanel(frame: CGRect(x: 300, y: 200, width: 500, height: 400))
+        defer { cleanUp(defaults) }
+        panel.choose(PanelPreset(slideOver: edge))
+        var wider = panel.frame
+        wider.size.width += 220
+        if edge == .right { wider.origin.x -= 220 }
+        panel.setFrame(wider, display: false)
+        #expect(defaults.double(forKey: SummonPanel.slideOverWidthKey) == 720)
+        panel.resetToDefaultPlace()
+        #expect(panel.placement.preset == PanelPreset(slideOver: edge))
+        #expect(panel.panelFrame == slideOver(edge, width: SummonPanel.defaultSize.width))
+        #expect(defaults.double(forKey: SummonPanel.slideOverWidthKey) == 640)
+        // The default width stays after Centered and back, and on the next launch.
+        panel.choose(.centered)
+        panel.choose(PanelPreset(slideOver: edge))
+        #expect(panel.panelFrame == slideOver(edge, width: SummonPanel.defaultSize.width))
+        let (relaunched, _) = try makePanel(defaults: defaults, frame: nil)
+        #expect(relaunched.panelFrame == slideOver(edge, width: SummonPanel.defaultSize.width))
+    }
+
+    @Test func resettingDuringASlideFinishesItFirst() throws {
+        let (panel, defaults) = try makePanel()
+        defer { cleanUp(defaults) }
+        panel.choose(.slideOverRight)
+        panel.summon()
+        #expect(panel.slide != nil)
+        panel.resetToDefaultPlace()
+        #expect(panel.slide == nil)
+        #expect(panel.glassFrameOnScreen == panel.panelFrame)
+        #expect(panel.panelFrame == slideOver(.right, width: SummonPanel.defaultSize.width))
+    }
+
+    /// The incognito window goes back to its opening size beside the main panel, and writes
+    /// nothing.
+    @Test func resettingTheIncognitoWindowPutsItBackBesideTheMainPanel() throws {
+        let (main, defaults) = try makePanel()
+        defer { cleanUp(defaults) }
+        let session = try #require(PanelPreview.session(named: "empty"))
+        let standIn = standIn
+        let incognito = SummonPanel(
+            session: session, role: .incognito, remembersFrame: false, placementDefaults: defaults,
+            screens: { standIn.screens }, mouseLocation: { standIn.mouse })
+        incognito.orderIn = { _, _ in }
+        incognito.orderAway = { _ in }
+        incognito.mainPanelFrame = { main.panelFrame }
+        let before = defaults.dictionaryRepresentation().keys.sorted()
+        incognito.setFrame(CGRect(x: 50, y: 50, width: 700, height: 300), display: false)
+        incognito.placement.resetToDefault()
+        let size = CGSize(width: SummonPanel.incognitoSize.width, height: SummonPanel.incognitoSize.height)
+        #expect(incognito.frame == PanelGeometry.besideFrame(size: size, beside: main.panelFrame, in: laptop))
+        #expect(defaults.dictionaryRepresentation().keys.sorted() == before)
     }
 }

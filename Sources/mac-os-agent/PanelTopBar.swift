@@ -11,9 +11,12 @@ final class PanelPlacement {
     var preset: PanelPreset = .centered
     /// Moves the panel to a preset.
     var choose: (PanelPreset) -> Void = { _ in }
-    /// The close button. The main panel hides, as Escape does, and its task keeps going. The
-    /// incognito window closes and discards its conversation.
+    /// The panel menu's last item, as Command-W does. The main panel hides, as Escape does, and
+    /// its task keeps going. The incognito window closes and discards its conversation.
     var close: () -> Void = {}
+    /// A double click on the bar: back to the default frame of the current layout, forgetting
+    /// the owner's moves and resizes in it.
+    var resetToDefault: () -> Void = {}
     /// False for the incognito window, which has no layouts.
     var offersLayouts = true
     /// Keep on Top is on: the panel stays above other apps' windows without focus.
@@ -45,20 +48,23 @@ final class PanelPlacement {
 }
 
 /// The slim bar across the top of the glass. The whole bar moves the panel, apart from its
-/// controls. It has two areas, a leading one and a trailing one, each a row of small items:
+/// controls, and a double click on it puts the panel back in its layout's default frame. The
+/// pointer stays the arrow over it. It has three areas:
 ///
-/// - `leading` starts with the close button. In the incognito window the incognito label and
-///   the Clear control follow it. Later this is room for an episode title. Plain text or a
-///   small mark, so the bar stays quiet.
-/// - `trailing` holds the layout menu, after a quiet pin mark while Keep on Top is on, so a
-///   panel that will not go behind other windows explains itself. A new control is one more
-///   `TopBarButton` in that row, before the layout menu.
+/// - `title`, in the middle of the bar: the agent's name from Settings, General. It is
+///   centered on the whole bar, not on the room between the other two areas, and it is cut
+///   short before it would reach them. In the incognito window the incognito label follows
+///   the name. Its font and weight never change.
+/// - `leading`: empty in the main panel, and the Clear control in the incognito window. Later
+///   this is room for an episode title.
+/// - `trailing`: the panel menu, an ellipsis, after a quiet pin mark while Keep on Top is on,
+///   so a panel that will not go behind other windows explains itself. A new control is one
+///   more `TopBarButton` in that row, before the menu.
 ///
-/// A label in either area takes `.allowsHitTesting(false)`, so dragging it still moves the
-/// panel. A control does not. Double-clicking the bar does nothing: the panel has no zoom and
-/// no minimize, and hiding it on a double click would be easy to do by accident.
+/// A label takes `.allowsHitTesting(false)`, so dragging it still moves the panel and a double
+/// click on it still resets the frame. A control does not.
 struct PanelTopBar: View {
-    /// What the incognito window's bar adds after the close button.
+    /// What the incognito window's bar adds.
     struct Incognito {
         /// False while there is nothing to clear.
         var canClear: Bool
@@ -71,45 +77,64 @@ struct PanelTopBar: View {
     nonisolated(unsafe) static var hostsAppKitViews = true
     /// The space from the panel's side to the control at each end.
     static let sidePadding: CGFloat = 12
+    /// The least space between the title and the controls at either side.
+    static let titleGap: CGFloat = 8
     /// Set for the incognito window.
     var incognito: Incognito?
     @Environment(PanelPlacement.self) private var placement: PanelPlacement?
+    @AgentName private var agentName
+    @State private var leadingWidth: CGFloat = 0
+    @State private var trailingWidth: CGFloat = 0
 
     var body: some View {
         HStack(spacing: 0) {
             leading
+                .onGeometryChange(for: CGFloat.self, of: \.size.width) { leadingWidth = $0 }
             Spacer(minLength: 12)
                 .allowsHitTesting(false)
             trailing
+                .onGeometryChange(for: CGFloat.self, of: \.size.width) { trailingWidth = $0 }
         }
         .padding(.horizontal, Self.sidePadding)
         .frame(height: Self.height)
         .frame(maxWidth: .infinity)
-        .background { if Self.hostsAppKitViews { WindowDragArea() } }
+        .overlay {
+            // The same room off both sides keeps the title centered on the whole bar.
+            title
+                .padding(.horizontal, Self.sidePadding + max(leadingWidth, trailingWidth) + Self.titleGap)
+        }
+        .background { if Self.hostsAppKitViews { WindowDragArea(onDoubleClick: { placement?.resetToDefault() }) } }
     }
 
-    /// The close button, then labels. Give a label here `.allowsHitTesting(false)`, so dragging
-    /// it moves the panel.
+    /// The agent's name, and in the incognito window the incognito label after it.
+    private var title: some View {
+        HStack(spacing: 6) {
+            Text(agentName)
+                .font(Self.titleFont)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .accessibilityAddTraits(.isHeader)
+            if incognito != nil {
+                IncognitoLabel()
+                    .layoutPriority(1)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// One font in every state, so nothing shifts when the panel gains or loses focus.
+    static let titleFont = Font.system(size: 12, weight: .medium)
+
+    /// Give a label here `.allowsHitTesting(false)`, so dragging it moves the panel.
     @ViewBuilder
     private var leading: some View {
-        if let placement {
-            HStack(spacing: 8) {
-                TopBarButton(
-                    symbol: "xmark",
-                    label: incognito == nil ? "Close" : "Close and Discard",
-                    help: incognito == nil
-                        ? "Hide the panel. A running task keeps going."
-                        : "Close this window. Everything in it is discarded.",
-                    action: placement.close)
-                if let incognito {
-                    IncognitoLabel()
-                    TopBarTextButton(
-                        title: "Clear",
-                        help: "Discard this conversation and start a new one. The window stays open.",
-                        isEnabled: incognito.canClear,
-                        action: incognito.clear)
-                }
-            }
+        if placement != nil, let incognito {
+            TopBarTextButton(
+                title: "Clear",
+                help: "Discard this conversation and start a new one. The window stays open.",
+                isEnabled: incognito.canClear,
+                action: incognito.clear)
         }
     }
 
@@ -120,9 +145,7 @@ struct PanelTopBar: View {
                 if placement.keepsOnTop {
                     KeepOnTopMark(turnOff: placement.setKeepsOnTop.map { set in { set(false) } })
                 }
-                if placement.offersLayouts {
-                    LayoutMenuButton(placement: placement)
-                }
+                PanelMenuButton(placement: placement)
             }
         }
     }
@@ -237,58 +260,75 @@ struct KeepOnTopMark: View {
     }
 }
 
-/// The one control for the panel's layout. It shows the current preset's symbol and opens a
-/// standard menu of the presets under it.
-struct LayoutMenuButton: View {
+/// The panel menu's control: an ellipsis that opens a standard menu under it. In the main
+/// panel the menu has the layouts, Keep on Top, and Hide Panel. In the incognito window it has
+/// only Close and Discard, its one pointer route to closing, since Escape never closes it.
+struct PanelMenuButton: View {
+    static let symbol = "ellipsis"
     let placement: PanelPlacement
     @State private var anchor = MenuAnchor()
 
     var body: some View {
         TopBarButton(
-            symbol: placement.preset.symbol,
-            label: "Layout",
-            help: "Layout: \(placement.preset.title)",
+            symbol: Self.symbol,
+            label: placement.offersLayouts ? "Panel Menu" : "Window Menu",
+            help: placement.offersLayouts ? "Layout: \(placement.preset.title), Keep on Top, and Hide" : "Close and Discard",
             action: {
-                anchor.popUp(LayoutMenu(
-                    current: placement.preset, choose: placement.choose,
-                    keepsOnTop: placement.keepsOnTop, setKeepsOnTop: placement.setKeepsOnTop))
+                anchor.popUp(PanelMenu(
+                    current: placement.offersLayouts ? placement.preset : nil, choose: placement.choose,
+                    keepsOnTop: placement.keepsOnTop, setKeepsOnTop: placement.setKeepsOnTop,
+                    close: placement.close))
             })
             .background { if PanelTopBar.hostsAppKitViews { MenuAnchorView(anchor: anchor) } }
-            .accessibilityValue(placement.preset.title)
-            .accessibilityHint("Opens a menu of layouts")
+            .accessibilityValue(placement.offersLayouts ? placement.preset.title : "")
+            .accessibilityHint(placement.offersLayouts ? "Opens a menu of layouts and Hide" : "Opens a menu with Close and Discard")
     }
 }
 
-/// The layout menu: one item per preset, in `PanelPreset.allCases` order, with a check on the
-/// current one. A new preset shows up here on its own. Below a separator, Keep on Top, checked
-/// while it is on. It is one setting for every preset.
+/// The panel menu. In the main panel: one item per preset, in `PanelPreset.allCases` order,
+/// with a check on the current one, so a new preset shows up here on its own. Below a
+/// separator, Keep on Top, checked while it is on. It is one setting for every preset. Below
+/// another, Hide Panel, which does what Command-W and Escape do.
 ///
-/// No item has a keyboard shortcut. The standard ones for placing a window, Fn-Control with
-/// an arrow, belong to the system's window tiling and mean half the screen, not slide over.
+/// In the incognito window, which has no layouts and never writes Keep on Top, only Close and
+/// Discard, which does what Command-W does: it closes at once with no task running, and asks
+/// first with one.
+///
+/// No layout item has a keyboard shortcut. The standard ones for placing a window, Fn-Control
+/// with an arrow, belong to the system's window tiling and mean half the screen, not slide
+/// over. The last item shows Command-W, which it matches.
 @MainActor
-final class LayoutMenu: NSObject {
-    let menu = NSMenu(title: "Layout")
+final class PanelMenu: NSObject {
+    let menu = NSMenu(title: "Panel")
     private let choose: (PanelPreset) -> Void
     private let keepsOnTop: Bool
     private let setKeepsOnTop: ((Bool) -> Void)?
+    private let close: () -> Void
     static let keepOnTopTitle = "Keep on Top"
+    static let hideTitle = "Hide Panel"
+    static let closeAndDiscardTitle = "Close and Discard"
 
+    /// - Parameter current: the current preset, or nil for a window with no layouts.
     init(
-        current: PanelPreset, choose: @escaping (PanelPreset) -> Void,
-        keepsOnTop: Bool = false, setKeepsOnTop: ((Bool) -> Void)? = nil
+        current: PanelPreset?, choose: @escaping (PanelPreset) -> Void = { _ in },
+        keepsOnTop: Bool = false, setKeepsOnTop: ((Bool) -> Void)? = nil,
+        close: @escaping () -> Void = {}
     ) {
         self.choose = choose
         self.keepsOnTop = keepsOnTop
         self.setKeepsOnTop = setKeepsOnTop
+        self.close = close
         super.init()
         menu.autoenablesItems = false
-        for preset in PanelPreset.allCases {
-            let item = NSMenuItem(title: preset.title, action: #selector(chosen(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = preset.rawValue
-            item.state = preset == current ? .on : .off
-            item.image = NSImage(systemSymbolName: preset.symbol, accessibilityDescription: nil)
-            menu.addItem(item)
+        if let current {
+            for preset in PanelPreset.allCases {
+                let item = NSMenuItem(title: preset.title, action: #selector(chosen(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = preset.rawValue
+                item.state = preset == current ? .on : .off
+                item.image = NSImage(systemSymbolName: preset.symbol, accessibilityDescription: nil)
+                menu.addItem(item)
+            }
         }
         if setKeepsOnTop != nil {
             menu.addItem(.separator())
@@ -298,6 +338,16 @@ final class LayoutMenu: NSObject {
             item.toolTip = "Stay above other apps' windows without focus. Settings still comes in front."
             menu.addItem(item)
         }
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
+        let item = NSMenuItem(
+            title: current == nil ? Self.closeAndDiscardTitle : Self.hideTitle,
+            action: #selector(closed(_:)), keyEquivalent: "w")
+        item.keyEquivalentModifierMask = .command
+        item.target = self
+        item.toolTip = current == nil
+            ? "Close this window. Everything in it is discarded."
+            : "Hide the panel. A running task keeps going."
+        menu.addItem(item)
     }
 
     @objc func toggledKeepOnTop(_ sender: NSMenuItem) {
@@ -308,6 +358,10 @@ final class LayoutMenu: NSObject {
         guard let raw = sender.representedObject as? String, let preset = PanelPreset(rawValue: raw) else { return }
         choose(preset)
     }
+
+    @objc func closed(_ sender: NSMenuItem) {
+        close()
+    }
 }
 
 /// The AppKit view under a SwiftUI control, so a menu can open just below the control.
@@ -317,13 +371,13 @@ final class MenuAnchor {
 
     /// Opens the menu under the control and waits until it closes. The panel keeps keyboard
     /// focus, and whatever had it inside the panel, such as the text field, has it again after.
-    func popUp(_ layoutMenu: LayoutMenu) {
+    func popUp(_ panelMenu: PanelMenu) {
         guard let view, let window = view.window else { return }
         let wasKey = window.isKeyWindow
         let responder = window.firstResponder
         let below = NSPoint(x: 0, y: view.isFlipped ? view.bounds.maxY + 4 : view.bounds.minY - 4)
-        // The menu's items target `layoutMenu`, which lives until this returns.
-        layoutMenu.menu.popUp(positioning: nil, at: below, in: view)
+        // The menu's items target `panelMenu`, which lives until this returns.
+        panelMenu.menu.popUp(positioning: nil, at: below, in: view)
         Self.restoreFocus(in: window, wasKey: wasKey, responder: responder)
     }
 
@@ -349,20 +403,32 @@ private struct MenuAnchorView: NSViewRepresentable {
 }
 
 /// The part of the bar that moves the panel. AppKit's own window drag, so it works in a panel
-/// that never activates the app.
+/// that never activates the app. The pointer stays the arrow over it. A double click calls
+/// `onDoubleClick` instead of starting a drag.
 struct WindowDragArea: NSViewRepresentable {
-    final class DragView: NSView {
-        override func mouseDown(with event: NSEvent) {
-            window?.performDrag(with: event)
-        }
+    var onDoubleClick: () -> Void = {}
 
-        override func resetCursorRects() {
-            addCursorRect(bounds, cursor: .openHand)
+    final class DragView: NSView {
+        var onDoubleClick: () -> Void = {}
+
+        override func mouseDown(with event: NSEvent) {
+            if event.clickCount == 2 {
+                onDoubleClick()
+                return
+            }
+            window?.performDrag(with: event)
         }
 
         override var mouseDownCanMoveWindow: Bool { true }
     }
 
-    func makeNSView(context: Context) -> DragView { DragView() }
-    func updateNSView(_ nsView: DragView, context: Context) {}
+    func makeNSView(context: Context) -> DragView {
+        let view = DragView()
+        view.onDoubleClick = onDoubleClick
+        return view
+    }
+
+    func updateNSView(_ nsView: DragView, context: Context) {
+        nsView.onDoubleClick = onDoubleClick
+    }
 }

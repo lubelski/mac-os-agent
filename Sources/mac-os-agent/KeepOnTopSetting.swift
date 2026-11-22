@@ -3,7 +3,7 @@ import MacOSAgentCore
 
 /// Keep on Top: whether the summoned panels stay above other apps' windows when they do not
 /// have focus. Off by default. It is one setting for every layout preset and for both the
-/// main panel and the incognito window, and only the main panel's layout menu changes it.
+/// main panel and the incognito window, and only the main panel's top bar menu changes it.
 /// The app's own windows, such as Settings, still come in front of a panel kept on top. See
 /// `PanelLayering`.
 ///
