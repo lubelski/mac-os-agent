@@ -33,10 +33,11 @@ public enum AgentPaths {
         applicationSupport.appending(path: "instructions.md")
     }
 
-    /// What the agent knows in every episode, one fact per list item. Missing until the first
-    /// memory is saved. Private: never logged, and Debugging shows only its count and size.
-    public static var memoryFile: URL {
-        applicationSupport.appending(path: "memory.md")
+    /// The agent's memory: `core.md`, topic files, `archive/`, and `journal.jsonl`. See
+    /// `MemoryLayout`. Missing until the first change. Private: never logged, and Debugging
+    /// shows only counts and sizes.
+    public static var memoryFolder: URL {
+        applicationSupport.appending(path: "memory", directoryHint: .isDirectory)
     }
 
     /// One folder per skill, each with a `SKILL.md`.

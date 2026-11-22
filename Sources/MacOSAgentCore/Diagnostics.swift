@@ -181,6 +181,33 @@ public final class ProblemLog: Sendable {
     }
 }
 
+/// How big memory is: the sizes of core and the block, and how many topic files there are.
+/// Never what any of it says.
+public struct MemoryCounts: Sendable, Equatable {
+    public var coreCharacters: Int
+    public var topicFiles: Int
+    public var archivedFiles: Int
+    /// The block at the end of the instructions, in characters.
+    public var blockCharacters: Int
+    public var journalEntries: Int
+
+    public init(coreCharacters: Int = 0, topicFiles: Int = 0, archivedFiles: Int = 0, blockCharacters: Int = 0, journalEntries: Int = 0) {
+        self.coreCharacters = coreCharacters
+        self.topicFiles = topicFiles
+        self.archivedFiles = archivedFiles
+        self.blockCharacters = blockCharacters
+        self.journalEntries = journalEntries
+    }
+
+    /// The counts for this memory folder, with the block as the next request sends it.
+    public init(_ library: MemoryLibrary, block: MemoryBlock.Contents?) {
+        self.init(
+            coreCharacters: library.core().characters, topicFiles: library.topics().count,
+            archivedFiles: library.archived().count, blockCharacters: block?.characters ?? 0,
+            journalEntries: library.journal.entries().count)
+    }
+}
+
 public struct SkillCounts: Sendable, Equatable {
     public var total: Int
     /// On and without problems, so listed in the instructions.
@@ -201,6 +228,7 @@ public struct DiagnosticsReport: Sendable, Equatable {
     public var prompt: PromptInfo
     public var tools: Int
     public var skills: SkillCounts
+    public var memories: MemoryCounts
     public var thread: ThreadFileInfo
     public var recentRequests: [UsageRecord]
     public var today: UsageTotals
@@ -211,8 +239,8 @@ public struct DiagnosticsReport: Sendable, Equatable {
     public init(
         date: Date = Date(), build: BuildInfo, system: String = ProcessInfo.processInfo.operatingSystemVersionString,
         dataFolder: URL, model: String, signIn: SignInStatus?, instructions: String, tools: [ToolDefinition],
-        skills: [Skill], threadFile: URL, usageLog: UsageLog, problems: [DiagnosticProblem],
-        calendar: Calendar = .current
+        skills: [Skill], memories: MemoryCounts = MemoryCounts(), threadFile: URL, usageLog: UsageLog,
+        problems: [DiagnosticProblem], calendar: Calendar = .current
     ) {
         self.date = date
         self.build = build
@@ -226,6 +254,7 @@ public struct DiagnosticsReport: Sendable, Equatable {
         self.skills = SkillCounts(
             total: skills.count, on: skills.filter(\.isAvailable).count,
             withProblems: skills.filter { $0.problem != nil }.count)
+        self.memories = memories
         thread = ThreadFileInfo.read(threadFile)
         recentRequests = Array(records.suffix(Self.recentRequestLimit).reversed())
         var today = UsageTotals()
@@ -270,6 +299,7 @@ public struct DiagnosticsReport: Sendable, Equatable {
         lines.append("- Changed since the last request: \(prompt.changedSinceLastRequest ? "yes" : "no")")
         lines.append("- Tools: \(tools)")
         lines.append("- Skills: \(skills.total), \(skills.on) on, \(skills.withProblems) with problems")
+        lines.append("- Memory: core \(memories.coreCharacters) characters, \(memories.topicFiles) topic files, \(memories.archivedFiles) archived, block \(memories.blockCharacters) characters, \(memories.journalEntries) journal entries")
         lines.append("")
         lines.append("Thread")
         lines.append("- File: \(thread.path)")

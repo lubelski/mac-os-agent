@@ -109,17 +109,20 @@ public enum AgentInstructions {
             - When the person runs a quick action, their message holds an <action_run> record of what ran \
             and what came of it, instead of text for you to answer. If they refer to it later, such \
             as "undo that", it is what they mean.
-            - Memories are short facts you keep from one episode to the next. They are listed at the \
-            end of these instructions. Save one with \(ChangeMemoryTool.name) when the person asks you \
-            to remember something, or tells you a lasting fact about themselves or how they want \
-            things done, such as their home address, a preference, a name for a thing, or where \
-            something lives on this Mac. Do not save what matters only to the task at hand. Never save \
-            a password, a card number, or another secret, even when asked, and say why: memories are \
-            kept in a plain file and sent with every request. Write each memory as one sentence that \
-            makes sense on its own. When a fact changes, change the memory that holds it instead of \
-            adding one that contradicts it. When the person asks you to forget something, remove it. \
-            Say briefly in your reply when you saved, changed, or removed a memory. Call \
-            \(ReadMemoriesTool.name) when the list says some are left out.
+            - Your memory, shown at the end of these instructions, is yours to manage with \
+            \(ReadMemoryTool.name) and \(ChangeMemoryTool.name). Save to it when the person asks you to \
+            remember something, or states a lasting fact about themselves or how they want things done. \
+            Do not save what only matters to the current task.
+            - Core is for what you need in most episodes, and for every standing rule or prohibition, \
+            since you only see a topic file when you read it. Topic files are for long or \
+            subject-specific material. Give each a description that says when to read it.
+            - Read a topic file when its description matches the request. Check what exists before you \
+            write, and update a memory rather than add one that duplicates or contradicts it. When core \
+            nears its cap, move its least general items to topic files.
+            - Never store passwords, card numbers, or other secrets, even when asked, and say why: \
+            memory is a plain file sent with every request.
+            - When the person says to forget something, remove it. Say briefly in your reply what you \
+            remembered, changed, or forgot.
 
             \(list)
             """
@@ -138,7 +141,7 @@ public enum AgentInstructions {
         \(SearchApplicationsTool.name), \(OpenApplicationTool.name), and \
         \(ListRunningApplicationsTool.name). You cannot run shell commands, read or change files, \
         reminders, calendar events, the clipboard, or settings, load skills, change themes, \
-        search or read earlier conversations, or read or save memories, even when the text above \
+        search or read earlier conversations, or read or change memory, even when the text above \
         mentions tools for them.
         - Answer questions from what you know. When a request needs something you cannot do \
         here, say so plainly in a sentence and suggest asking in the main panel instead. Never \
@@ -148,8 +151,8 @@ public enum AgentInstructions {
         """
 
     /// The instructions for one request: the editable text, then the fixed part, then the
-    /// block of memories when there is one. The block is last so that everything before it
-    /// stays a cached prefix when only the memories change.
+    /// memory block when there is one. The block is last so that everything before it stays a
+    /// cached prefix when only memory changes.
     public static func assemble(
         editable: String, skills: [SkillSummary], skillsFolder: URL, memoryBlock: String? = nil
     ) -> String {
@@ -232,7 +235,7 @@ public struct InstructionsStore: Sendable {
 public struct AgentPrompt: Sendable {
     public var instructions: InstructionsStore
     public var skills: SkillLibrary
-    /// The memory file, whose block ends the main panel's instructions. Nil sends no block,
+    /// The memory folder, whose block ends the main panel's instructions. Nil sends no block,
     /// as in tests that do not need one. The incognito window never gets one.
     public var memories: MemoryLibrary?
     /// The block as the current episode's first request read it. Shared by copies of this
@@ -256,29 +259,35 @@ public struct AgentPrompt: Sendable {
 
     /// The full instructions for a request in this episode. Read once per request, so the name
     /// and the skills in them stay the same through the request's tool calls. The memory block
-    /// at the end is read at the episode's first request and kept for the rest of it.
+    /// at the end is taken at the episode's first request and kept for the rest of it.
     public func current(episodeID: UUID?) -> String {
         assemble(memoryBlock: memoryContents(episodeID: episodeID)?.text)
     }
 
-    /// The episode's memory block: the one its first request read, or a fresh read for a new
-    /// episode. Nil when this prompt has no memory file.
+    /// The episode's memory block: the one its first request took, or a fresh one for a new
+    /// episode. Nil when this prompt has no memory.
     public func memoryContents(episodeID: UUID?) -> MemoryBlock.Contents? {
         guard let memories else { return nil }
-        return memorySnapshot.contents(for: episodeID) { MemoryBlock.contents(memories.memories()) }
+        return memorySnapshot.contents(for: episodeID) { MemoryBlock.contents(memories) }
     }
 
     /// The block the next request in the current episode would send, without taking a
-    /// snapshot: the one already taken, or the file as it is now before any request.
+    /// snapshot: the one already taken, or the folder as it is now before any request.
     public func latestMemoryContents() -> MemoryBlock.Contents? {
         guard let memories else { return nil }
-        return memorySnapshot.latest ?? MemoryBlock.contents(memories.memories())
+        return memorySnapshot.latest?.contents ?? MemoryBlock.contents(memories)
     }
 
-    /// The instructions as Debugging shows them: the block replaced by its count and size.
+    /// The instructions the next request in the current episode would send, for the
+    /// fingerprint and length Debugging shows. Never shown as text.
+    public func currentAsNextSent() -> String {
+        assemble(memoryBlock: latestMemoryContents()?.text)
+    }
+
+    /// The instructions as Debugging shows them: the block replaced by its size.
     public func currentForDisplay() -> String {
         guard let contents = latestMemoryContents() else { return current() }
-        return assemble(memoryBlock: MemoryBlock.placeholder(count: contents.included.count, characters: contents.text.count))
+        return assemble(memoryBlock: MemoryBlock.placeholder(contents))
     }
 
     private func assemble(memoryBlock: String?) -> String {

@@ -73,6 +73,12 @@ final class AgentSession {
     /// The saved actions as they were when the running task started, to tell afterwards which
     /// ones it added or changed.
     @ObservationIgnored private var actionsAtTaskStart: [SavedActionEntry]?
+    /// The memory folder the main panel's agent reads and writes. Nil in the incognito window,
+    /// which keeps nothing.
+    @ObservationIgnored var memories: MemoryLibrary?
+    /// How long the memory journal was when the running task started, to tell afterwards what
+    /// the task remembered, changed, or forgot.
+    @ObservationIgnored private var memoryJournalAtTaskStart: Int?
     /// What Return does for the draft without the model, such as opening an app.
     @ObservationIgnored var instantActions = InstantActions()
     /// Set by the window: hides it the normal way, and shows it again.
@@ -576,6 +582,7 @@ final class AgentSession {
             menuAtTaskStart = skillCommands.menu
         }
         if !isIncognito { actionsAtTaskStart = instantActions.actionLibrary?.entries() }
+        if !isIncognito { memoryJournalAtTaskStart = memories?.journal.entries().count }
 
         // The task holds the session strongly until it ends. Discarding an incognito
         // conversation cancels it, and anything it reports after that is dropped.
@@ -658,6 +665,7 @@ final class AgentSession {
         resolveConfirmation(false)
         announceSkillCommandChanges()
         announceActionChanges()
+        announceMemoryChanges()
         onStatusChange?()
         switch ending {
         case .finished: sendNextQueued()
@@ -773,6 +781,17 @@ final class AgentSession {
         actionsAtTaskStart = nil
         instantActions.reloadActions()
         if let notice = SavedActionLibrary.changeNotice(from: before, to: library.entries()) {
+            transcript.appendNotice(notice)
+        }
+    }
+
+    /// After a task that changed memory, a quiet line by the text field says so, such as
+    /// "Remembered in core." Only the agent's own changes count, not one made in Settings or an
+    /// editor while the task ran.
+    private func announceMemoryChanges() {
+        guard let before = memoryJournalAtTaskStart, let memories else { return }
+        memoryJournalAtTaskStart = nil
+        if let notice = MemoryLibrary.changeNotice(Array(memories.journal.entries().dropFirst(before))) {
             transcript.appendNotice(notice)
         }
     }

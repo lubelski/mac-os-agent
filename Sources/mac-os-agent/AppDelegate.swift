@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let usageLog = UsageLog()
     /// Created at launch, so it checks on its own schedule. In a build with no feed it does nothing.
     private var updater: AppUpdater!
+    /// Journals a change made to the memory folder outside the app, such as in an editor.
+    private var memoryWatcher: FolderWatcher?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Before anything reads the quick actions folder, which used to be `actions/`.
@@ -64,7 +66,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         session.instantActions = .live(summaries: tools.summaries)
         // The skills the owner can invoke with a slash, kept live as the folder changes.
         session.skillCommands = SkillCommandsModel(library: prompt.skills)
+        session.memories = prompt.memories
         panel = SummonPanel(session: session)
+        // A change made while the app was not running, or while it runs, is journaled as made
+        // outside the app, so the history has no holes.
+        if let memories = prompt.memories {
+            memories.reconcile()
+            memoryWatcher = FolderWatcher(folder: memories.folder) { memories.reconcile() }
+        }
 
         incognito = IncognitoWindowController(makeSession: { [weak self] in
             let incognito = AgentSession(incognito: makeIncognitoLoop, signedIn: self?.session.signInState == .signedIn)

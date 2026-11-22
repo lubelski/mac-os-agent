@@ -4,10 +4,9 @@ extension ToolSource {
     public static let memory = ToolSource(id: "memory", title: "Memory")
 }
 
-/// Lists every saved memory with its id and the day it was saved, including any the block at
-/// the end of the instructions leaves out.
-public struct ReadMemoriesTool: AgentTool {
-    public static let name = "read_memories"
+/// Reads memory as it is now: core and the index of topic files, or one file.
+public struct ReadMemoryTool: AgentTool {
+    public static let name = "read_memory"
 
     public let library: MemoryLibrary
 
@@ -20,29 +19,62 @@ public struct ReadMemoriesTool: AgentTool {
     public var definition: ToolDefinition {
         ToolDefinition(
             name: Self.name,
-            description: "List every saved memory with its id and the day it was saved, including any left out of the instructions.",
-            parameters: Schema.object([:]))
+            description: "Read your memory as it is now: core and the list of topic files, or one file.",
+            parameters: Schema.object([
+                "file": Schema.nullableString("\"core\" or a topic file's name for that file. Null for core and the full list of topic files."),
+            ]))
     }
 
-    public func summary(arguments: JSONValue) -> String { "Read the memories" }
+    public func summary(arguments: JSONValue) -> String {
+        guard let file = arguments["file"]?.trimmedString, !file.isEmpty else { return "Read memory" }
+        return "Read memory: \(file)"
+    }
 
     public func run(arguments: JSONValue, context: ToolRunContext) async -> String {
-        let memories = library.memories()
-        guard !memories.isEmpty else { return "There are no memories yet. They are kept in \(library.fileURL.plainPath)." }
-        var lines = ["\(memories.count == 1 ? "1 memory" : "\(memories.count) memories") in \(library.fileURL.plainPath), as id, day saved, text:"]
-        lines += memories.map { memory in
-            memory.saved.map { "- [\(memory.id)] \($0): \(memory.text)" } ?? "- [\(memory.id)] \(memory.text)"
+        library.reconcile()
+        if let name = arguments["file"]?.trimmedString, !name.isEmpty {
+            guard let file = library.file(named: name), file.kind != .archived else {
+                return "Error: " + MemoryLibrary.missing(name).description
+            }
+            if file.kind == .core {
+                return file.text.isEmpty ? "core.md is empty." : "core.md, \(file.characters.formatted()) characters:\n\(file.text)"
+            }
+            var lines = ["\(file.id).md, \(file.characters.formatted()) characters."]
+            if let problem = file.problem {
+                lines.append("Its front matter cannot be read: \(problem) The whole file:")
+                lines.append(file.text)
+            } else {
+                lines.append("Description: \(file.description ?? "")")
+                lines.append(file.body.isEmpty ? "Its body is empty." : file.body)
+            }
+            return lines.joined(separator: "\n")
+        }
+        // Everything, with no cap, so what the block leaves out can be read here.
+        let core = library.core()
+        let topics = library.topics()
+        var lines = ["Memory as it is now. core.md, \(core.characters.formatted()) characters:"]
+        lines.append(core.text.isEmpty ? "(empty)" : core.text.trimmingCharacters(in: .newlines))
+        lines.append("")
+        if topics.isEmpty {
+            lines.append("There are no topic files.")
+        } else {
+            lines.append("Topic files, as name (changed, characters): description:")
+            for file in topics {
+                let changed = file.modified.map { MemoryBlock.day($0, calendar: .current) } ?? "unknown"
+                let description = file.problem.map { "(Its front matter cannot be read: \($0))" } ?? file.description ?? ""
+                lines.append("- \(file.id) (\(changed), \(file.characters.formatted())): \(description)")
+            }
         }
         return lines.joined(separator: "\n")
     }
 }
 
-/// Adds, changes, or removes one memory. None of it asks for a go-ahead: a memory is one line
-/// the person asked for or can see in the reply, Settings lists them all, and the tool call
-/// that removed one keeps its text in the thread.
+/// Changes memory with one local edit: a new topic file, a replaced, removed, or added piece of
+/// text, a description, a name, or an archive. None asks for a go-ahead: every change is in the
+/// journal and can be restored from Settings, and a deleted file goes to the archive.
 public struct ChangeMemoryTool: AgentTool {
     public static let name = "change_memory"
-    public static let operations = ["add", "change", "remove"]
+    public static let operations = ["create", "replace", "remove", "append", "set_description", "rename", "delete"]
 
     public let library: MemoryLibrary
 
@@ -56,24 +88,31 @@ public struct ChangeMemoryTool: AgentTool {
         ToolDefinition(
             name: Self.name,
             description: """
-                Add a memory, change one's text, or remove one. A memory is one sentence that makes \
-                sense on its own, known in every later episode. A changed memory gets a new id.
+                Change your memory with one edit. create: a new topic file (file, description, text). \
+                replace: exact old_text in a file becomes text. remove: delete exact old_text. append: add \
+                text at the end. set_description, rename (new_name), and delete, which archives a topic file.
                 """,
             parameters: Schema.object([
                 "operation": ["type": "string", "enum": .array(Self.operations.map { .string($0) })],
-                "memory_id": Schema.nullableString("The memory to change or remove. Null to add."),
-                "text": Schema.nullableString("For add and change, the memory's whole text. Null to remove."),
+                "file": Schema.string("\"core\" or a topic file's name: lowercase letters, digits, and hyphens."),
+                "old_text": Schema.nullableString("For replace and remove, the exact text now in the file, matching once. Null otherwise."),
+                "text": Schema.nullableString("For create, the body. For replace, the new text. For append, the text to add. Null otherwise."),
+                "description": Schema.nullableString("For create and set_description, one line saying when to read the file. Null otherwise."),
+                "new_name": Schema.nullableString("For rename, the new name. Null otherwise."),
             ]))
     }
 
     public func summary(arguments: JSONValue) -> String {
-        let id = arguments["memory_id"]?.trimmedString.flatMap { $0.isEmpty ? nil : $0 }
+        let file = arguments["file"]?.trimmedString.flatMap { $0.isEmpty ? nil : $0 } ?? "memory"
         switch arguments["operation"]?.stringValue {
-        case "remove": return id.map { "Forget the memory \($0)" } ?? "Forget a memory"
-        case "change": return id.map { "Change the memory \($0)" } ?? "Change a memory"
-        default:
-            guard let text = arguments["text"]?.trimmedString, !text.isEmpty else { return "Remember something" }
-            return "Remember: \(AgentInstructions.singleLine(text))"
+        case "create": return "Remember in a new file: \(file)"
+        case "append": return "Remember in \(file)"
+        case "replace": return "Update \(file)"
+        case "remove": return "Forget something in \(file)"
+        case "set_description": return "Describe \(file)"
+        case "rename": return "Rename \(file) to \(arguments["new_name"]?.trimmedString ?? "")"
+        case "delete": return "Forget \(file)"
+        default: return "Change memory"
         }
     }
 
@@ -81,24 +120,37 @@ public struct ChangeMemoryTool: AgentTool {
         guard let operation = arguments["operation"]?.stringValue, Self.operations.contains(operation) else {
             return "Error: operation must be one of \(Self.operations.joined(separator: ", "))."
         }
-        let id = arguments["memory_id"]?.trimmedString.flatMap { $0.isEmpty ? nil : $0 }
+        guard let file = arguments["file"]?.trimmedString, !file.isEmpty else { return "Error: \(operation) needs a file." }
+        let oldText = arguments["old_text"]?.stringValue
         let text = arguments["text"]?.stringValue
+        let description = arguments["description"]?.stringValue
+        let newName = arguments["new_name"]?.stringValue
+        let change: MemoryLibrary.Change
+        switch operation {
+        case "create":
+            guard let description else { return "Error: create needs a description that says when to read the file." }
+            change = .create(name: file, description: description, body: text ?? "")
+        case "replace":
+            guard let oldText, let text else { return "Error: replace needs old_text and text." }
+            change = .replace(file: file, old: oldText, new: text)
+        case "remove":
+            guard let oldText else { return "Error: remove needs old_text, the exact text to remove." }
+            change = .remove(file: file, text: oldText)
+        case "append":
+            guard let text else { return "Error: append needs text." }
+            change = .append(file: file, text: text)
+        case "set_description":
+            guard let description else { return "Error: set_description needs a description." }
+            change = .setDescription(file: file, description: description)
+        case "rename":
+            guard let newName else { return "Error: rename needs new_name." }
+            change = .rename(file: file, newName: newName)
+        default:
+            change = .delete(file: file)
+        }
         do {
-            switch operation {
-            case "add":
-                guard let text else { return "Error: add needs the memory's text." }
-                let memory = try library.add(text)
-                return "Saved memory \(memory.id): \(memory.text)"
-            case "change":
-                guard let id, let memory = library.find(id) else { return "Error: there is no memory \(id ?? "with no id"). Call \(ReadMemoriesTool.name) for the list." }
-                guard let text else { return "Error: change needs the memory's new text." }
-                let (old, new) = try library.change(id: memory.id, to: text)
-                return "Changed memory \(old.id), which said: \(old.text)\nIt is now \(new.id): \(new.text)"
-            default:
-                guard let id, let memory = library.find(id) else { return "Error: there is no memory \(id ?? "with no id"). Call \(ReadMemoriesTool.name) for the list." }
-                let removed = try library.remove(id: memory.id)
-                return "Removed memory \(removed.id), which said: \(removed.text)"
-            }
+            let result = try library.apply(change, cause: .episode(context.episodeID))
+            return result.summary + " It is in the memory block from the next episode.\n" + library.sizeNote()
         } catch {
             return "Error: \(String(describing: error))"
         }

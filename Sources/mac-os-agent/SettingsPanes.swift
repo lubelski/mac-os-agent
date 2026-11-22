@@ -182,7 +182,8 @@ final class InstructionsSettingsModel {
         AgentInstructions.assemble(
             editable: draft,
             skills: prompt.skills.skills().filter(\.isAvailable).map { .init(name: $0.name, description: $0.description) },
-            skillsFolder: prompt.skills.folder)
+            skillsFolder: prompt.skills.folder,
+            memoryBlock: prompt.latestMemoryContents().map(MemoryBlock.placeholder))
     }
 }
 
@@ -203,7 +204,8 @@ struct InstructionsSettingsView: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
             Text("""
                 The app always adds its own rules after this text: how the go-ahead for destructive \
-                commands works, the time at the start of each message, and the list of skills.
+                commands works, the time at the start of each message, the list of skills, and \
+                last, the memory block from Settings, Memory.
                 """)
                 .font(.callout)
                 .foregroundStyle(.secondary)

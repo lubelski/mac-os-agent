@@ -41,9 +41,10 @@ final class DebuggingSettingsModel {
                 dataFolder: AgentPaths.applicationSupport,
                 model: ModelSetting.current(defaults),
                 signIn: signIn,
-                instructions: prompt.current(),
+                instructions: prompt.currentAsNextSent(),
                 tools: tools.definitions,
                 skills: prompt.skills.skills(),
+                memories: prompt.memories.map { MemoryCounts($0, block: prompt.latestMemoryContents()) } ?? MemoryCounts(),
                 threadFile: AgentPaths.threadFile,
                 usageLog: usageLog,
                 problems: problems.problems)
@@ -88,7 +89,8 @@ struct DebuggingSettingsView: View {
         }
         .onAppear { model.reload() }
         .sheet(isPresented: $showingFullPrompt) {
-            FullPromptView(text: model.prompt.current())
+            // The memory block is private, so it is shown only as its count and size.
+            FullPromptView(text: model.prompt.currentForDisplay())
         }
     }
 
@@ -134,6 +136,7 @@ struct DebuggingSettingsView: View {
                 LabeledContent("Unchanged since", value: Self.time(report.prompt.unchangedSince, none: "Not recorded yet"))
                 LabeledContent("Tools", value: "\(report.tools)")
                 LabeledContent("Skills", value: "\(report.skills.total), \(report.skills.on) on, \(report.skills.withProblems) with problems")
+                LabeledContent("Memory", value: "Core \(report.memories.coreCharacters.formatted()) characters, \(report.memories.topicFiles) topic files, block \(report.memories.blockCharacters.formatted()) characters")
                 HStack {
                     Spacer()
                     Button("Show Full Prompt…") { showingFullPrompt = true }
