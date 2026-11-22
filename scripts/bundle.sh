@@ -56,8 +56,17 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# There is no signing identity on this Mac, so sign ad hoc.
-codesign --force --sign - "$APP"
+# Sign with this Mac's development certificate when it has one, so every build has the same
+# identity and macOS keeps the Keychain and permission grants it gave an earlier build.
+# Without the certificate, sign ad hoc. AGENTS.md says how to create it.
+SIGNING_IDENTITY="${MAC_OS_AGENT_SIGNING_IDENTITY:-mac-os-agent development}"
+if security find-certificate -c "$SIGNING_IDENTITY" >/dev/null 2>&1; then
+  codesign --force --sign "$SIGNING_IDENTITY" "$APP"
+  echo "Signed with \"$SIGNING_IDENTITY\""
+else
+  codesign --force --sign - "$APP"
+  echo "Signed ad hoc. macOS will ask again for Keychain and permission access after each build."
+fi
 codesign --verify --strict "$APP"
 echo "Built $APP ($GIT_COMMIT)"
 

@@ -26,9 +26,17 @@ Read `README.md` first for what the product is, then `ROADMAP.md`, which records
 
 ## Previews and captures
 
-- `scripts/bundle.sh` builds `build/mac-os-agent.app`, signed ad hoc, without installing it.
+- `scripts/bundle.sh` builds `build/mac-os-agent.app` without installing it.
 - `scripts/capture-panel-previews.sh` shows the panel in a few stand-in states and captures each one, for pull request screenshots. `--backdrop` captures it over a busy page instead, which shows the glass and its edges.
 - `scripts/capture-settings-previews.sh` does the same for each Settings section, against a temporary data folder with sample skills, usage lines, and a thread file. `--preview-settings <section>` shows one section, and `--preview-item <name>` selects a skill or tool in it.
 - Each preview quits on its own after a few seconds and never takes keyboard focus. Check that none is left running when you finish.
 - `--data-folder <path>` points the app at another folder instead of `~/Library/Application Support/mac-os-agent/`. Use it for every manual check. The owner's real thread is private.
 - The summon chord is set in `Sources/mac-os-agent/SummonHotKey.swift`.
+
+## Signing
+
+- `scripts/bundle.sh` signs the app with a certificate named `mac-os-agent development` when the login keychain has one, and ad hoc when it does not. `MAC_OS_AGENT_SIGNING_IDENTITY` names a different certificate.
+- The certificate is self-signed and exists only to give every build the same identity. macOS ties Keychain access and permission grants (Reminders, Calendar, Automation) to that identity, so with it they survive a rebuild. With ad hoc signing each build is a new app to macOS and it asks again.
+- The certificate is machine setup, not part of this repo. Creating one adds a private key to the owner's keychain, so do it only when the owner asks. The steps are: make a key and a self-signed certificate with the code signing extended key usage, bundle them as a PKCS #12 file, import it with `security import <file> -k ~/Library/Keychains/login.keychain-db -T /usr/bin/codesign`, and delete the key files.
+- `security find-identity -v` does not list it, because a self-signed certificate is not trusted. `codesign` signs with it anyway.
+- Debugging in Settings shows how the running build is signed.
