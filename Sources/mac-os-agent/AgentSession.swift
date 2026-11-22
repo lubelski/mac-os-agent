@@ -326,8 +326,8 @@ final class AgentSession {
     /// Lets go of the incognito conversation: its task, its loop and store, its rows, and the draft.
     private func endConversation() {
         pendingDiscard = nil
-        resolveConfirmation(false)
         task?.cancel()
+        resolveConfirmation(false)
         task = nil
         isRunning = false
         streamingText = ""
@@ -443,7 +443,10 @@ final class AgentSession {
                     onEvent: { event in await self.handle(event, in: conversation) },
                     confirm: { request in await self.requestConfirmation(request, in: conversation) })
             } catch is CancellationError {
-                update(conversation) { $0.appendNotice("Stopped.") }
+                update(conversation) {
+                    $0.stopUnfinishedTools()
+                    $0.appendNotice("Stopped.")
+                }
             } catch {
                 appendError(error, in: conversation)
             }
@@ -462,10 +465,11 @@ final class AgentSession {
         change(&transcript)
     }
 
-    /// Stops the running task. Hiding the main panel does not call this.
+    /// Stops the running task. Hiding the main panel does not call this. The task is cancelled
+    /// before a waiting go-ahead is answered, so the tool sees a stop and not the owner declining.
     func stop() {
-        resolveConfirmation(false)
         task?.cancel()
+        resolveConfirmation(false)
     }
 
     func resolveConfirmation(_ approved: Bool) {

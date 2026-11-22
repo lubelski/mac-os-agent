@@ -6,7 +6,7 @@ import Testing
 @Suite struct RebuiltToolRowTests {
     /// One call to each built-in tool, in registry order, and the line its row should show.
     static let calls: [(name: String, arguments: JSONValue, row: String)] = [
-        (ShellCommandTool.name, ["command": "du -sh ~/Movies", "destructive": false], "du -sh ~/Movies"),
+        (ShellCommandTool.name, ["command": "du -sh ~/Movies", "destructive": false], "Bash du -sh ~/Movies"),
         (SearchApplicationsTool.name, ["query": "zoom"], "Search applications for \"zoom\""),
         (OpenApplicationTool.name, ["bundle_identifier_or_path": "/Applications/Safari.app"], "Open Safari"),
         (ListRunningApplicationsTool.name, [:], "List running applications"),
@@ -87,6 +87,7 @@ import Testing
     @Test func summariesStayShortWithoutTheirArguments() {
         let summaries = ToolCallSummaries.builtIn
         let empty: [String: String] = [
+            ShellCommandTool.name: "Bash",
             LoadSkillTool.name: "Load a skill",
             SearchHistoryTool.name: "Search history",
             ReadEpisodeTool.name: "Read an episode",
@@ -101,6 +102,9 @@ import Testing
         }
         #expect(summaries.summary(name: ChangeThemeTool.name, arguments: #"{"action":"delete","theme_id":"paper"}"#) == "Delete the theme paper")
         #expect(summaries.summary(name: ChangeRemindersTool.name, arguments: #"{"changes":[{"id":"x","delete":true}]}"#) == "Delete a reminder")
+        #expect(summaries.summary(name: ShellCommandTool.name, arguments: #"{"command":"  "}"#) == "Bash")
+        // A command keeps its lines, so the inspector and Copy Command have it as written.
+        #expect(summaries.summary(name: ShellCommandTool.name, arguments: #"{"command":"cd ~\nls"}"#) == "Bash cd ~\nls")
         // No summary is a dump of the arguments.
         for call in Self.calls {
             let line = summaries.summary(name: call.name, arguments: call.arguments.encodedString())

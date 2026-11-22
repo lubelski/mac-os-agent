@@ -1,18 +1,18 @@
 import Foundation
 
-/// How a command reads on its one-line row in the panel, and what a failed command's second
-/// line says. Presentation only: nothing here runs a command or judges whether it is safe.
+/// How a tool call reads on its one-line row in the panel, and what a failed call's second
+/// line says. Presentation only: nothing here runs a call or judges whether it is safe.
 ///
 /// This follows the tool rows of the owner's Pi customizations (`lib/ui/tool-signal.ts` in
-/// agent-customizations). Program names draw in the text color and everything else stays dim,
-/// and anything the simple lexer cannot read with confidence falls back to dim text instead
-/// of a guessed parse.
+/// agent-customizations). Every row is its tool's summary, which starts with what the call
+/// does or the tool's name, such as `Open Safari`, `Search history for "dark mode"`, or
+/// `Bash du -sh ~/Movies`. That first word draws in the text color and the rest stays dim.
 public enum ToolSignal {
     /// The two levels of a row's text.
     public enum Tone: Equatable, Sendable {
-        /// The part a reader scans for, such as the program a command runs.
+        /// The part a reader scans for: the word that names what the call does.
         case text
-        /// Arguments, operators, and everything else.
+        /// What it does it to, such as a command line, an app, or a search.
         case dim
     }
 
@@ -34,83 +34,27 @@ public enum ToolSignal {
         return String(scalars).split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
-    /// A path under the home folder shown with `~` in place of the home folder.
-    public static func compactPath(_ path: String, home: String) -> String {
+    /// A tool call's summary as segments, on one line: its first word, which names what the
+    /// call does, as `.text`, and the rest as `.dim`. Whole literal paths under the home folder
+    /// in the rest shorten to `~`.
+    public static func summary(_ summary: String, home: String = NSHomeDirectory()) -> [Segment] {
+        let line = cleanSummary(summary)
+        guard !line.isEmpty else { return [] }
+        guard let space = line.firstIndex(of: " ") else { return [Segment(.text, line)] }
+        let rest = String(line[space...])
+        return [Segment(.text, String(line[..<space])), Segment(.dim, compactPaths(in: rest, home: home))]
+    }
+
+    /// Every whole word, bare or quoted, that is a path under the home folder, with `~` in
+    /// place of the home folder. A path inside a word, such as in a web address, is left alone.
+    static func compactPaths(in text: String, home: String) -> String {
         var root = home
         while root.hasSuffix("/") { root.removeLast() }
-        guard !root.isEmpty, path == root || path.hasPrefix(root + "/") else { return path }
-        return "~" + path.dropFirst(root.count)
-    }
-
-    private static let wrappers: Set<String> = ["sudo", "env", "time", "exec", "nohup", "xargs"]
-    private static let keywords: Set<String> = [
-        "if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done", "case", "esac", "function", "select", "!",
-    ]
-    private static let unsupported = CharacterSet(charactersIn: "\n\r$`\\#<>(){}")
-    private static let tokenPattern = try! NSRegularExpression(
-        pattern: #"\s+|&&|\|\||[|;]|(?:[^\s'"|;&]+|'[^']*'|"[^"]*")+|."#)
-
-    /// A shell command as segments. Only simple literal pipelines and lists are styled: the
-    /// program of each part draws as `.text`, and its arguments, assignments, wrappers such as
-    /// `sudo`, and the operators between parts stay `.dim`. Expansions, redirections,
-    /// comments, escapes, compound syntax, unfinished quotes, and options on a wrapper fall
-    /// back to one dim segment. Whole literal paths under the home folder shorten to `~`.
-    public static func command(_ command: String, home: String = NSHomeDirectory()) -> [Segment] {
-        let command = command.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallback = [Segment(.dim, cleanSummary(command))]
-        if command.unicodeScalars.contains(where: unsupported.contains) { return fallback }
-        let range = NSRange(command.startIndex..., in: command)
-        let tokens = tokenPattern.matches(in: command, range: range).compactMap { Range($0.range, in: command).map { String(command[$0]) } }
-        if tokens.contains(where: { $0 == "&" || $0 == "'" || $0 == "\"" || keywords.contains($0) }) { return fallback }
-
-        var expectsProgram = true
-        var segments: [Segment] = []
-        for token in tokens {
-            if token.allSatisfy(\.isWhitespace) {
-                segments.append(Segment(.dim, " "))
-                continue
-            }
-            if ["&&", "||", "|", ";"].contains(token) {
-                expectsProgram = true
-                segments.append(Segment(.dim, token))
-                continue
-            }
-            let isAssignment = token.range(of: #"^[A-Za-z_][A-Za-z0-9_]*="#, options: .regularExpression) != nil
-            let isWrapper = wrappers.contains(token)
-            if expectsProgram && token.hasPrefix("-") { return fallback }
-            let isProgram = expectsProgram && !isAssignment && !isWrapper
-            if isProgram { expectsProgram = false }
-            let tone: Tone = isProgram ? .text : .dim
-            // Only a whole literal path word shortens, never a URL, an option, or part of a word.
-            let quote = token.first == "\"" || token.first == "'" ? String(token.first!) : ""
-            let literal = !quote.isEmpty && token.count >= 2 && token.hasSuffix(quote) ? String(token.dropFirst().dropLast()) : token
-            if !literal.contains("'"), !literal.contains("\""), literal.hasPrefix("/") {
-                segments.append(Segment(tone, quote + compactPath(cleanSummary(literal), home: home) + quote))
-            } else {
-                segments.append(Segment(tone, cleanSummary(token)))
-            }
-        }
-        return merged(trimmed(segments))
-    }
-
-    /// Joins neighbors of the same tone, so the view builds as few text runs as it can.
-    static func merged(_ segments: [Segment]) -> [Segment] {
-        var result: [Segment] = []
-        for segment in segments where !segment.text.isEmpty {
-            if let last = result.last, last.tone == segment.tone {
-                result[result.count - 1].text += segment.text
-            } else {
-                result.append(segment)
-            }
-        }
-        return result
-    }
-
-    private static func trimmed(_ segments: [Segment]) -> [Segment] {
-        var segments = segments
-        while let first = segments.first, first.text.allSatisfy(\.isWhitespace) { segments.removeFirst() }
-        while let last = segments.last, last.text.allSatisfy(\.isWhitespace) { segments.removeLast() }
-        return segments
+        guard !root.isEmpty, text.contains(root) else { return text }
+        let pattern = #"(?<=^|[\s"'=])"# + NSRegularExpression.escapedPattern(for: root) + #"(?=/|$|[\s"'])"#
+        guard let expression = try? NSRegularExpression(pattern: pattern) else { return text }
+        return expression.stringByReplacingMatches(
+            in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "~")
     }
 
     private static let diagnosticPattern = try! NSRegularExpression(

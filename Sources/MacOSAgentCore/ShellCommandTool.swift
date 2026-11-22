@@ -66,8 +66,16 @@ public struct ShellCommandTool: AgentTool {
         "[Stopped after the \(seconds) second limit.]"
     }
 
+    /// The name its rows show, before the command, as other tools' rows start with theirs.
+    /// Only the panel shows it. The model knows the tool as `run_shell_command`.
+    public static let displayName = "Bash"
+
+    /// `Bash` and the command as written, with its lines, such as `Bash du -sh ~/Movies`.
     public func summary(arguments: JSONValue) -> String {
-        arguments["command"]?.stringValue ?? "(no command)"
+        guard let command = arguments["command"]?.stringValue,
+              !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return Self.displayName }
+        return "\(Self.displayName) \(command)"
     }
 
     public func run(arguments: JSONValue, context: ToolRunContext) async -> String {
@@ -80,7 +88,8 @@ public struct ShellCommandTool: AgentTool {
         if let reason = DestructiveCommandCheck.reasonToConfirm(command: command, markedDestructive: markedDestructive) {
             let approved = await context.confirm(
                 ConfirmationRequest(callID: context.callID, command: command, reason: reason))
-            if !approved {
+            // Stopping the task answers a waiting go-ahead with no, which is not the owner declining.
+            if !approved, !Task.isCancelled {
                 return Self.declinedOutput
             }
         }

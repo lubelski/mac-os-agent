@@ -84,7 +84,11 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
         guard let output else { return .unknown }
         // The native tools that ask, such as Reminders and quitting an app, start this way.
         if output == ShellCommandTool.declinedOutput || output.hasPrefix("The owner declined.") { return .declined }
-        if output == ShellCommandTool.stoppedBeforeRunningOutput || output.contains(ShellCommandTool.stoppedWhileRunningNote) {
+        // The shell tool's outputs, the loop's for a call that never ran or never finished, and
+        // the native tools', which all start the same way.
+        if output == ShellCommandTool.stoppedBeforeRunningOutput || output.contains(ShellCommandTool.stoppedWhileRunningNote)
+            || output == AgentLoop.unfinishedOutput || output.hasPrefix("The task was stopped before ")
+        {
             return .stopped
         }
         if output.hasSuffix("[exit status 0]") { return .succeeded }
@@ -231,6 +235,18 @@ public struct Transcript: Equatable, Sendable {
         updateTool(callID) { existing, status, _ in
             existing = command
             if status == .preparing { status = .running }
+        }
+    }
+
+    /// After a stopped task: a call row that is still preparing, running, or waiting, such as
+    /// one the model began writing when its reply was cut off, reads as stopped. The loop
+    /// answers every call that reached the thread, so this only touches rows it never wrote.
+    public mutating func stopUnfinishedTools() {
+        for index in rows.indices {
+            if case .tool(let command, let status, let output) = rows[index].kind, status != .finished {
+                rows[index].kind = .tool(
+                    command: command, status: .finished, output: output ?? AgentLoop.stoppedBeforeRunningOutput)
+            }
         }
     }
 

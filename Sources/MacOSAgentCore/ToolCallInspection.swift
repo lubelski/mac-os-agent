@@ -130,7 +130,8 @@ public struct InspectedToolCall: Equatable, Sendable {
     static let stoppedOutputs: Set<String> = [
         ShellCommandTool.stoppedBeforeRunningOutput,
         "The task was stopped before anything was changed.",
-        "This command did not finish. The app quit or the task was stopped while it ran.",
+        AgentLoop.unfinishedOutput,
+        AgentLoop.stoppedBeforeRunningOutput,
     ]
 
     /// When the call started: when the tool began, or when the model wrote the call.

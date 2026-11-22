@@ -377,6 +377,7 @@ public struct ReservedShortcut: Hashable, Sendable {
     public static let appMenu: [ReservedShortcut] = [
         .init(",", .command, "Settings"),
         .init("w", .command, "Close"),
+        .init(".", .command, "Stop"),
         .init("q", .command, "Quit"),
         .init("h", .command, "Hide"),
         .init("h", [.command, .option], "Hide Others"),

@@ -8,51 +8,38 @@ import Testing
         segments.map { $0.tone == .text ? "<\($0.text)>" : $0.text }.joined()
     }
 
-    @Test func programsDrawInTheTextToneAndTheRestStaysDim() {
-        #expect(render(ToolSignal.command("pmset -g batt", home: home)) == "<pmset> -g batt")
-        #expect(render(ToolSignal.command("brew list --cask 2>/dev/null | grep -i notion", home: home))
-            == "brew list --cask 2>/dev/null | grep -i notion")
-        #expect(render(ToolSignal.command("brew list --cask | grep -i notion", home: home)) == "<brew> list --cask | <grep> -i notion")
+    @Test func everySummaryDrawsItsFirstWordInTheTextToneAndTheRestDim() {
+        #expect(render(ToolSignal.summary("Open Safari", home: home)) == "<Open> Safari")
+        #expect(render(ToolSignal.summary(#"Search history for "dark mode""#, home: home)) == #"<Search> history for "dark mode""#)
+        #expect(render(ToolSignal.summary("List running applications", home: home)) == "<List> running applications")
     }
 
-    @Test func quotedWordsAndOperatorsWithoutSpacesAreRead() {
-        let rendered = render(ToolSignal.command(#"CI=1 env git status&&printf "a|b";cat /Users/owner/file"#, home: home))
-        #expect(rendered == #"CI=1 env <git> status&&<printf> "a|b";<cat> ~/file"#)
+    /// The shell tool's row reads as every other row does: its name, then the command, with no
+    /// part of the command drawn apart from the rest.
+    @Test func theShellRowIsBashThenTheCommand() {
+        let summary = ShellCommandTool().summary(arguments: ["command": "brew list --cask | grep -i notion", "destructive": false])
+        #expect(summary == "Bash brew list --cask | grep -i notion")
+        #expect(render(ToolSignal.summary(summary, home: home)) == "<Bash> brew list --cask | grep -i notion")
+        // Syntax the old command lexer gave up on reads the same way.
+        #expect(render(ToolSignal.summary("Bash echo $(whoami) > ~/out", home: home)) == "<Bash> echo $(whoami) > ~/out")
+        #expect(render(ToolSignal.summary("Bash", home: home)) == "<Bash>")
     }
 
-    @Test func wrappersAreDimAndTheProgramAfterThemIsNot() {
-        #expect(render(ToolSignal.command("sudo npm test | head", home: home)) == "sudo <npm> test | <head>")
-    }
-
-    @Test(arguments: [
-        "sudo -u root npm test", "env -C /tmp npm test", "echo $(whoami)", "echo `pwd`", "cat <<EOF",
-        #"echo "unfinished"#, "if true; then echo ok; fi", "echo hi > file", #"echo a\ b"#, "echo x # comment",
-        "sleep 5 &",
-    ])
-    func syntaxItCannotReadFallsBackToDim(command: String) {
-        #expect(ToolSignal.command(command, home: home) == [ToolSignal.Segment(.dim, command)])
-    }
-
-    @Test func multipleLinesFallBackToOneDimLine() {
-        #expect(ToolSignal.command("echo hi\ncat file", home: home) == [ToolSignal.Segment(.dim, "echo hi cat file")])
+    @Test func aSummaryIsOneLine() {
+        #expect(render(ToolSignal.summary("Bash cd ~/Desktop\nls -la", home: home)) == "<Bash> cd ~/Desktop ls -la")
+        #expect(ToolSignal.summary("   ", home: home).isEmpty)
     }
 
     @Test func onlyWholeHomePathsShorten() {
-        #expect(render(ToolSignal.command("open /Users/owner/Desktop/Receipts", home: home)) == "<open> ~/Desktop/Receipts")
-        #expect(render(ToolSignal.command("/Users/owner/bin/tool run", home: home)) == "<~/bin/tool> run")
-        #expect(render(ToolSignal.command("ls /Users/owner-too/a", home: home)) == "<ls> /Users/owner-too/a")
-        #expect(render(ToolSignal.command("open https://example.com/Users/owner", home: home)) == "<open> https://example.com/Users/owner")
-        #expect(render(ToolSignal.command(#"ls "/Users/owner/My Files""#, home: home)) == #"<ls> "~/My Files""#)
-    }
-
-    @Test func compactPathKeepsOtherPaths() {
-        #expect(ToolSignal.compactPath("/Users/owner", home: home + "/") == "~")
-        #expect(ToolSignal.compactPath("/Applications/Notion.app", home: home) == "/Applications/Notion.app")
-        #expect(ToolSignal.compactPath("/Users/owner/a", home: "") == "/Users/owner/a")
-    }
-
-    @Test func emptyCommandHasNoSegments() {
-        #expect(ToolSignal.command("   ", home: home).isEmpty)
+        #expect(render(ToolSignal.summary("Bash open /Users/owner/Desktop/Receipts", home: home)) == "<Bash> open ~/Desktop/Receipts")
+        #expect(render(ToolSignal.summary("Bash /Users/owner/bin/tool run", home: home)) == "<Bash> ~/bin/tool run")
+        #expect(render(ToolSignal.summary("Bash ls /Users/owner-too/a", home: home)) == "<Bash> ls /Users/owner-too/a")
+        #expect(render(ToolSignal.summary("Bash open https://example.com/Users/owner", home: home)) == "<Bash> open https://example.com/Users/owner")
+        #expect(render(ToolSignal.summary(#"Bash ls "/Users/owner/My Files""#, home: home)) == #"<Bash> ls "~/My Files""#)
+        #expect(render(ToolSignal.summary("Bash cd /Users/owner", home: home + "/")) == "<Bash> cd ~")
+        #expect(render(ToolSignal.summary("Bash ls /Users/owner/a", home: "")) == "<Bash> ls /Users/owner/a")
+        // The first word is a name, never a path to shorten.
+        #expect(render(ToolSignal.summary("Open /Applications/Notion.app", home: home)) == "<Open> /Applications/Notion.app")
     }
 
     @Test func failureSummaryPrefersAnExplicitErrorLine() {

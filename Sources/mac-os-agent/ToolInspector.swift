@@ -70,9 +70,12 @@ final class ToolInspectorWindow: NSPanel {
     /// Places the window again, after the owner resized it.
     var onResize: () -> Void = {}
     let inspector: ToolInspector
+    /// The panel's session, for Stop while the inspector is key.
+    private let session: AgentSession
 
     init(inspector: ToolInspector, session: AgentSession, defaults: UserDefaults?) {
         self.inspector = inspector
+        self.session = session
         self.defaults = defaults
         let stored = defaults?.double(forKey: Self.widthKey) ?? 0
         preferredWidth = stored >= PanelGeometry.inspectorMinimumWidth ? stored : Self.defaultWidth
@@ -161,6 +164,16 @@ final class ToolInspectorWindow: NSPanel {
     /// Escape in the inspector closes it.
     override func cancelOperation(_ sender: Any?) {
         inspector.close()
+    }
+
+    /// Stop in the main menu, Command-Period, while the inspector is key: stops its panel's task.
+    @objc func stopTask(_ sender: Any?) {
+        session.stop()
+    }
+
+    override func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == MainMenu.stopTaskAction { return session.isRunning }
+        return super.validateMenuItem(item)
     }
 
     /// Command-W closes the inspector rather than beeping.

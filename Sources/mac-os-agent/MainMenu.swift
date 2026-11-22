@@ -19,6 +19,7 @@ enum MainMenu {
         let main = NSMenu()
         main.addItem(submenu: appMenu())
         main.addItem(submenu: editMenu())
+        main.addItem(submenu: taskMenu())
         main.addItem(submenu: windowMenu())
         return main
     }
@@ -62,6 +63,26 @@ enum MainMenu {
         menu.addItem(submenu: transformationsMenu())
         menu.addItem(submenu: speechMenu())
         return menu
+    }
+
+    /// Stops the task of the window in front: the main panel's, or the incognito window's own.
+    /// Each window answers it through the responder chain, and the item is enabled only while
+    /// that window's task runs, so with no task, or with Settings in front, it does nothing.
+    static let stopTaskAction = Selector(("stopTask:"))
+
+    /// Command-Period, the standard Mac shortcut for cancelling what is under way. While no task
+    /// runs the item is disabled, and a disabled item still takes its key equivalent, so the
+    /// press never reaches the window as Escape, which would hide the panel.
+    static func taskMenu() -> NSMenu {
+        let menu = NSMenu(title: "Task")
+        menu.addItem(withTitle: "Stop", action: stopTaskAction, keyEquivalent: ".")
+        return menu
+    }
+
+    /// Whether a key press is Command-Period, with no other modifier.
+    static func isStopShortcut(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function, .capsLock])
+        return event.type == .keyDown && flags == .command && event.charactersIgnoringModifiers == "."
     }
 
     static func windowMenu() -> NSMenu {
