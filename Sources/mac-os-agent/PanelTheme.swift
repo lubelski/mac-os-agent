@@ -293,13 +293,15 @@ extension View {
     /// it: the palette for the views inside, the text levels and accent, the surface, and the
     /// window held to a theme's only appearance.
     func themedPanel(incognito: Bool = false) -> some View {
-        modifier(ThemedPanelRoot(model: ThemeModel.shared, incognito: incognito))
+        modifier(ThemedPanelRoot(incognito: incognito))
     }
 }
 
 private struct ThemedPanelRoot: ViewModifier {
-    let model: ThemeModel
     let incognito: Bool
+    /// A model of its own for an offscreen render, which must not read the owner's themes
+    /// folder. The app sets none, and the panel draws from the shared model.
+    @Environment(ThemeModel.self) private var injectedModel: ThemeModel?
     /// The panel's place, to square the corners on a side flush against the screen's edge.
     /// The inspector has none, so its corners are always rounded.
     @Environment(PanelPlacement.self) private var placement: PanelPlacement?
@@ -308,6 +310,7 @@ private struct ThemedPanelRoot: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {
+        let model = injectedModel ?? ThemeModel.shared
         let theme = model.activeTheme
         let palette = PanelPalette(
             theme: theme, dark: colorScheme == .dark, increasedContrast: contrast == .increased,
