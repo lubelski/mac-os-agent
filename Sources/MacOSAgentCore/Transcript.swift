@@ -3,8 +3,11 @@ import Foundation
 /// One row of the history the panel shows.
 public struct TranscriptRow: Identifiable, Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
-        /// Something the owner typed. `showsTime` is true when the message starts a new
-        /// stretch of the thread, so the panel labels it with its time.
+        /// The start of an episode, shown as a quiet separator with its date and time.
+        case episodeStart(date: Date)
+        /// Something the owner typed. `showsTime` is true when the message starts a new day or
+        /// follows a long pause inside an episode, so the panel labels it with its time. The
+        /// first message of an episode has the episode's separator instead.
         case user(text: String, date: Date, showsTime: Bool)
         case assistant(String)
         case tool(command: String, status: ToolStatus, output: String?)
@@ -42,6 +45,10 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
         if case .user = kind { true } else { false }
     }
 
+    public var isEpisodeStart: Bool {
+        if case .episodeStart = kind { true } else { false }
+    }
+
     /// How much room goes above a row, which is what groups the history into exchanges.
     public enum Gap: Equatable, Sendable {
         /// The first row.
@@ -52,10 +59,14 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
         case regular
         /// Above the owner's message that starts the next exchange.
         case exchange
+        /// Above an episode's separator.
+        case episode
     }
 
     public static func gap(after previous: TranscriptRow?, before row: TranscriptRow) -> Gap {
         guard let previous else { return .none }
+        if row.isEpisodeStart { return .episode }
+        if previous.isEpisodeStart { return .regular }
         if row.isUser { return .exchange }
         if previous.isTool && row.isTool { return .tight }
         return .regular
@@ -72,13 +83,23 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
 /// The whole thread turned into display rows. Rows are only appended or updated in place,
 /// never removed, so a row's index stays valid and lookups by call id stay cheap on a long
 /// thread.
+///
+/// Each episode starts with an `episodeStart` row. The panel shows the rows from the current
+/// episode's separator on as a fresh page, with the earlier ones above it.
 public struct Transcript: Equatable, Sendable {
     /// A gap this long between two of the owner's messages starts a new stretch with a time label.
     public static let quietGap: TimeInterval = 30 * 60
 
     public private(set) var rows: [TranscriptRow] = []
+    /// The row of the current episode's separator. Nil before anything was added.
+    public private(set) var currentEpisodeStartRow: Int?
     private var indexByID: [String: Int] = [:]
     private var lastUserDate: Date?
+    private var tracker = EpisodeTracker()
+    /// Activity in the current episode, for deciding whether it has timed out.
+    private var currentEpisodeHasActivity = false
+    /// A separator added by `beginEpisode(at:)` that no entry has claimed yet.
+    private var pendingSeparator: Int?
     private let calendar: Calendar
 
     public init(calendar: Calendar = .current) {
@@ -101,11 +122,51 @@ public struct Transcript: Equatable, Sendable {
         lhs.rows == rhs.rows
     }
 
+    /// When the current episode last had activity.
+    public var lastActivity: Date? { tracker.lastActivity }
+
+    /// Whether the owner writing at `now` would start a new episode. Matches the rule the
+    /// agent loop uses, so the panel opens fresh exactly when the next message will start one.
+    public func currentEpisodeHasTimedOut(now: Date, timeout: TimeInterval) -> Bool {
+        guard pendingSeparator == nil, currentEpisodeHasActivity, let lastActivity else { return false }
+        return now.timeIntervalSince(lastActivity) >= timeout
+    }
+
+    /// Whether a fresh episode has been started in the panel that no message has filled yet.
+    public var hasPendingEpisode: Bool { pendingSeparator != nil }
+
+    /// Starts a fresh page in the panel before any entry exists for it, such as after `/new`.
+    /// The next entry that starts an episode takes this separator over instead of adding its own.
+    public mutating func beginEpisode(at date: Date) {
+        guard pendingSeparator == nil else { return }
+        let id = "episode-pending-\(UUID().uuidString)"
+        append(TranscriptRow(id: id, kind: .episodeStart(date: date)))
+        pendingSeparator = rows.count - 1
+        currentEpisodeStartRow = rows.count - 1
+        lastUserDate = nil
+    }
+
     /// Adds one thread entry.
     public mutating func apply(_ entry: ThreadEntry) {
+        if tracker.observe(entry) {
+            if let pending = pendingSeparator {
+                rows[pending].kind = .episodeStart(date: entry.date)
+            } else {
+                append(TranscriptRow(id: "episode-\(entry.id.uuidString)", kind: .episodeStart(date: entry.date)))
+                currentEpisodeStartRow = rows.count - 1
+            }
+            lastUserDate = nil
+            currentEpisodeHasActivity = false
+        }
+        pendingSeparator = nil
+        if case .episodeStart = entry.item {} else { currentEpisodeHasActivity = true }
+
         switch entry.item {
+        case .episodeStart:
+            break
         case .userMessage(let text):
-            let showsTime = Self.startsNewStretch(previous: lastUserDate, current: entry.date, calendar: calendar)
+            let showsTime = lastUserDate != nil
+                && Self.startsNewStretch(previous: lastUserDate, current: entry.date, calendar: calendar)
             lastUserDate = entry.date
             append(TranscriptRow(id: entry.id.uuidString, kind: .user(text: text, date: entry.date, showsTime: showsTime)))
         case .assistantMessage(let message):
@@ -200,6 +261,21 @@ public enum TranscriptTimeLabel {
             return "\(date.formatted(base)), \(time)"
         }
         return date.formatted(base.year())
+    }
+
+    /// The label on an episode's separator, which always has the time: "Today 9:41 AM",
+    /// "Yesterday 9:41 AM", "Monday 9:41 AM", "Nov 3, 9:41 AM", and "Nov 3, 2025, 9:41 AM".
+    public static func episodeText(for date: Date, now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
+        var calendar = calendar
+        calendar.locale = locale
+        let time = date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: locale, calendar: calendar, timeZone: calendar.timeZone))
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day ?? 0
+        if days <= 0 { return "Today \(time)" }
+        if calendar.component(.year, from: date) != calendar.component(.year, from: now) {
+            let day = date.formatted(Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone).month(.abbreviated).day().year())
+            return "\(day), \(time)"
+        }
+        return text(for: date, now: now, calendar: calendar, locale: locale)
     }
 
     /// The full date and time, for the tooltip on every message.

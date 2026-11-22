@@ -8,7 +8,10 @@ import SwiftUI
 /// real thread, the Keychain, or the panel's saved frame.
 @MainActor
 enum PanelPreview {
-    static let names = ["empty", "running", "confirmation", "finished", "history", "draft", "multiline-draft"]
+    static let names = [
+        "empty", "running", "confirmation", "finished", "history", "draft", "multiline-draft",
+        "fresh-start", "scrollback", "incognito", "command-hint",
+    ]
 
     static func session(named name: String) -> AgentSession? {
         switch name {
@@ -41,6 +44,28 @@ enum PanelPreview {
                 ? "find the screenshot I took this morning"
                 : "make a folder on the desktop called Receipts\nmove every PDF from Downloads with “receipt” in its name into it\nthen open the folder in Finder\nand tell me how many you moved"
             return session
+        case "fresh-start", "command-hint":
+            // The panel summoned after the last episode timed out: an empty page, with the
+            // earlier episodes above it.
+            var thread = StandInThread(now: Date())
+            thread.earlierExchanges()
+            let session = AgentSession(previewEntries: thread.entries, freshStart: true)
+            if name == "command-hint" { session.draft = "/" }
+            return session
+        case "scrollback":
+            // The same history scrolled to its top, which shows the separators between episodes.
+            var thread = StandInThread(now: Date())
+            thread.earlierExchanges()
+            let session = AgentSession(previewEntries: thread.entries, freshStart: true)
+            session.previewStartsAtTop = true
+            return session
+        case "incognito":
+            var thread = StandInThread(now: Date())
+            thread.earlierExchanges()
+            var incognito = StandInThread(now: Date())
+            incognito.user("what's a good farewell gift for a coworker who loves hiking", minutesAgo: 1)
+            incognito.reply("A packable rain shell or a national parks pass are both easy to give and get used a lot.")
+            return AgentSession(previewEntries: thread.entries, incognitoEntries: incognito.entries)
         case "finished":
             var thread = StandInThread(now: Date())
             thread.user("change the wallpaper to a sunset", minutesAgo: 2)

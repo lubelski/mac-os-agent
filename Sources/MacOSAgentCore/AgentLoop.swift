@@ -24,11 +24,13 @@ public enum AgentLoopError: Error, Equatable, LocalizedError {
     }
 }
 
-/// The agent loop: send the thread to the model, stream the reply, run the tools it asks
-/// for, add the results, and repeat until the model replies without asking for a tool.
+/// The agent loop: send the current episode to the model, stream the reply, run the tools it
+/// asks for, add the results, and repeat until the model replies without asking for a tool.
+///
+/// The loop runs the same against the kept thread and an incognito episode held in memory.
 public final class AgentLoop: Sendable {
     public let provider: any ModelProvider
-    public let thread: ThreadStore
+    public let thread: any ThreadStorage
     public let tools: [any AgentTool]
     /// Read once at the start of each instruction from the person, so an edit in Settings or a
     /// new skill applies from the next instruction and the text stays the same while one runs.
@@ -36,14 +38,17 @@ public final class AgentLoop: Sendable {
     public let maximumModelReplies: Int
     /// Where each request's token counts go. Nil keeps no record.
     public let usageLog: UsageLog?
+    /// How long an episode can sit idle before the owner's next message starts a new one.
+    public let episodeTimeout: @Sendable () -> TimeInterval
 
     public init(
         provider: any ModelProvider,
-        thread: ThreadStore,
+        thread: any ThreadStorage,
         tools: [any AgentTool],
         instructions: @escaping @Sendable () async -> String = { AgentInstructions.defaultPrompt },
         maximumModelReplies: Int = 40,
-        usageLog: UsageLog? = nil
+        usageLog: UsageLog? = nil,
+        episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) }
     ) {
         self.provider = provider
         self.thread = thread
@@ -51,10 +56,11 @@ public final class AgentLoop: Sendable {
         self.instructions = instructions
         self.maximumModelReplies = maximumModelReplies
         self.usageLog = usageLog
+        self.episodeTimeout = episodeTimeout
     }
 
     public convenience init(
-        provider: any ModelProvider, thread: ThreadStore, tools: [any AgentTool], instructions: String,
+        provider: any ModelProvider, thread: any ThreadStorage, tools: [any AgentTool], instructions: String,
         maximumModelReplies: Int = 40
     ) {
         self.init(
@@ -64,11 +70,26 @@ public final class AgentLoop: Sendable {
 
     /// Handles one instruction from the person. Returns when the model has finished, and
     /// throws `CancellationError` when the surrounding task is cancelled.
+    ///
+    /// - Parameter startsNewEpisode: True when the owner asked for a fresh start, such as with
+    ///   `/new`. A new episode also starts on its own when the current one has timed out.
     public func run(
         _ userText: String,
+        startsNewEpisode: Bool = false,
+        now: Date = Date(),
         onEvent: @escaping @Sendable (AgentEvent) async -> Void,
         confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
     ) async throws {
+        // A fresh start is recorded as a marker just before the message, so the thread stays
+        // append-only. An episode with nothing in it yet needs none.
+        if let current = await thread.currentEpisode, current.hasActivity {
+            let timedOut = current.hasTimedOut(now: now, timeout: episodeTimeout())
+            if startsNewEpisode || timedOut {
+                let marker = ThreadItem.episodeStart(.init(reason: startsNewEpisode ? .requested : .timeout))
+                await onEvent(.entryAdded(try await thread.append(marker, date: now)))
+            }
+        }
+
         // A call left without a result, because the app quit or a task was stopped, would make
         // the next request invalid. Answer it at the end of the thread instead of editing history.
         for call in await thread.unansweredToolCalls() {
@@ -78,14 +99,18 @@ public final class AgentLoop: Sendable {
             await onEvent(.entryAdded(entry))
         }
 
-        await onEvent(.entryAdded(try await thread.append(.userMessage(text: userText))))
+        await onEvent(.entryAdded(try await thread.append(.userMessage(text: userText), date: now)))
         let definitions = tools.map(\.definition)
         let instructions = await self.instructions()
         let fingerprint = PromptFingerprint.make(instructions: instructions, tools: definitions)
+        let episodeID = await thread.currentEpisode?.id
 
         for _ in 0..<maximumModelReplies {
             try Task.checkCancellation()
-            let request = ModelRequest(instructions: instructions, entries: await thread.entries, tools: definitions)
+            // Only the current episode goes to the model. Within it the request only grows at
+            // the end, so the prompt cache holds from one request to the next.
+            let request = ModelRequest(
+                instructions: instructions, entries: await thread.contents.currentEpisodeEntries, tools: definitions)
             var calls: [ThreadItem.ToolCall] = []
             let started = ContinuousClock.now
             for try await event in provider.streamReply(to: request) {
@@ -109,7 +134,7 @@ public final class AgentLoop: Sendable {
             if calls.isEmpty { return }
 
             for call in calls {
-                let output = await runTool(call, onEvent: onEvent, confirm: confirm)
+                let output = await runTool(call, episodeID: episodeID, onEvent: onEvent, confirm: confirm)
                 await onEvent(.entryAdded(try await thread.append(.toolResult(.init(callID: call.callID, output: output)))))
                 await onEvent(.toolFinished(callID: call.callID))
                 try Task.checkCancellation()
@@ -120,6 +145,7 @@ public final class AgentLoop: Sendable {
 
     private func runTool(
         _ call: ThreadItem.ToolCall,
+        episodeID: UUID?,
         onEvent: @Sendable (AgentEvent) async -> Void,
         confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
     ) async -> String {
@@ -130,6 +156,6 @@ public final class AgentLoop: Sendable {
             return "Error: the arguments were not a JSON object."
         }
         await onEvent(.toolRunning(callID: call.callID, summary: tool.summary(arguments: arguments)))
-        return await tool.run(arguments: arguments, context: ToolRunContext(callID: call.callID, confirm: confirm))
+        return await tool.run(arguments: arguments, context: ToolRunContext(callID: call.callID, episodeID: episodeID, confirm: confirm))
     }
 }

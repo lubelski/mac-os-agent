@@ -2,8 +2,9 @@ import AppKit
 import MacOSAgentCore
 import SwiftUI
 
-/// The panel's content on Liquid Glass: a strip to move it by, the thread's history, the
-/// go-ahead card when one is pending, and the text field at the bottom.
+/// The panel's content on Liquid Glass: a strip to move it by, the incognito indicator while
+/// one is on, the thread's history, the go-ahead card when one is pending, the command hint,
+/// and the text field at the bottom.
 struct SummonView: View {
     @Bindable var session: AgentSession
     var onDismiss: () -> Void = {}
@@ -17,17 +18,23 @@ struct SummonView: View {
             DragHandle()
                 .frame(height: 14)
                 .frame(maxWidth: .infinity)
+            if session.isIncognito {
+                IncognitoIndicator()
+            }
             HistoryView(session: session, now: now)
             if let request = session.pendingConfirmation {
                 ConfirmationCard(request: request, session: session)
                     .padding(.horizontal, 12)
                     .padding(.bottom, 10)
             }
+            CommandHint(suggestions: SlashCommand.suggestions(for: session.draft))
             Divider().opacity(0.5)
             inputRow
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .glassEffect(.regular, in: .rect(cornerRadius: SummonPanel.cornerRadius))
+        // A faint tint on the glass, with the indicator, keeps incognito in sight the whole time.
+        .glassEffect(session.isIncognito ? .regular.tint(IncognitoIndicator.tint) : .regular,
+                     in: .rect(cornerRadius: SummonPanel.cornerRadius))
         .onChange(of: session.focusRequest, initial: true) {
             now = Date()
             focusRequest += 1
@@ -40,10 +47,10 @@ struct SummonView: View {
 
     private var inputRow: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "sparkle")
+            Image(systemName: session.isIncognito ? IncognitoIndicator.symbol : "sparkle")
                 .font(.system(size: 15))
                 .foregroundStyle(.secondary)
-                .frame(height: InputField.rowHeight)
+                .frame(width: 18, height: InputField.rowHeight)
             InputField(
                 text: $session.draft,
                 placeholder: Self.placeholder,
@@ -80,15 +87,33 @@ struct SummonView: View {
 
 // MARK: - History
 
-/// The whole thread, oldest at the top. It opens at the latest row and follows new rows while
-/// the owner is at the bottom. Once they scroll up it stays where they put it, and a button
-/// takes them back down.
+/// The whole thread, oldest at the top, read as episodes. The current episode is a page at
+/// least as tall as the view, so a fresh episode opens on an empty page with the earlier ones
+/// above it, out of view until the owner scrolls up.
+///
+/// It opens at the latest row and follows new rows while the owner is at the bottom. Once they
+/// scroll up it stays where they put it, and a button takes them back down. Rows are built
+/// lazily as they scroll into view, so a long thread scrolls smoothly.
 private struct HistoryView: View {
     let session: AgentSession
     let now: Date
-    @State private var position = ScrollPosition(edge: .bottom)
+    @State private var position: ScrollPosition
     /// Whether new content keeps the view at the bottom.
-    @State private var followsLatest = true
+    @State private var followsLatest: Bool
+    /// The height of the visible area, which the current episode's page fills at least.
+    @State private var containerHeight: CGFloat = 0
+    private let startsAtTop: Bool
+
+    init(session: AgentSession, now: Date) {
+        self.session = session
+        self.now = now
+        startsAtTop = session.previewStartsAtTop
+        _position = State(initialValue: ScrollPosition(edge: startsAtTop ? .top : .bottom))
+        _followsLatest = State(initialValue: !startsAtTop)
+    }
+
+    private static let topPadding: CGFloat = 4
+    private static let bottomPadding: CGFloat = 14
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Within this distance of the end counts as at the bottom.
@@ -101,28 +126,44 @@ private struct HistoryView: View {
     }
 
     var body: some View {
-        let rows = session.transcript.rows
+        let transcript = session.visibleTranscript
+        let rows = transcript.rows
+        let pageStart = min(transcript.currentEpisodeStartRow ?? 0, rows.count)
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(rows.indices, id: \.self) { index in
-                    let row = rows[index]
-                    RowView(row: row, now: now)
-                        .padding(.top, Self.spacing(TranscriptRow.gap(after: index > 0 ? rows[index - 1] : nil, before: row)))
+                // Earlier episodes.
+                ForEach(0..<pageStart, id: \.self) { index in
+                    row(index, in: rows)
                 }
-                StreamingReply(session: session, after: rows.last)
+                // The current episode's page.
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(pageStart..<rows.count, id: \.self) { index in
+                        row(index, in: rows)
+                    }
+                    StreamingReply(session: session, after: rows.last)
+                }
+                // With the padding below it, the page fills the view exactly, so nothing of the
+                // episode before it shows at the top.
+                .frame(minHeight: max(0, containerHeight - Self.bottomPadding), alignment: .top)
+                .overlay {
+                    if rows.count - pageStart <= 1, session.streamingText.isEmpty {
+                        EmptyPageNote(hasEarlierEpisodes: pageStart > 0, isEmptyThread: !session.isIncognito && rows.allSatisfy(\.isEpisodeStart))
+                    }
+                }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 4)
-            .padding(.bottom, 14)
+            .padding(.top, Self.topPadding)
+            .padding(.bottom, Self.bottomPadding)
         }
         .scrollPosition($position)
-        .defaultScrollAnchor(.bottom, for: .initialOffset)
+        .defaultScrollAnchor(startsAtTop ? .top : .bottom, for: .initialOffset)
         .onScrollGeometryChange(for: Metrics.self) { geometry in
             Metrics(
                 visibleBottom: geometry.visibleRect.maxY,
                 contentHeight: geometry.contentSize.height,
                 containerHeight: geometry.containerSize.height)
         } action: { old, new in
+            containerHeight = new.containerHeight
             if old.contentHeight != new.contentHeight || old.containerHeight != new.containerHeight {
                 // The content grew, a row opened, or the panel was resized.
                 if followsLatest { position.scrollTo(edge: .bottom) }
@@ -135,6 +176,9 @@ private struct HistoryView: View {
         .onChange(of: rows.count) {
             if rows.last?.isUser == true { jumpToLatest(animated: false) }
         }
+        // A fresh page, from a timeout, `/new`, or incognito starting or ending, opens at its top.
+        .onChange(of: transcript.currentEpisodeStartRow) { jumpToLatest(animated: false) }
+        .onChange(of: session.isIncognito) { jumpToLatest(animated: false) }
         .overlay(alignment: .bottomTrailing) {
             if !followsLatest {
                 Button {
@@ -150,13 +194,12 @@ private struct HistoryView: View {
                 .padding(12)
             }
         }
-        .overlay {
-            if rows.isEmpty {
-                Text("Everything you ask stays in this one thread.")
-                    .font(.callout)
-                    .foregroundStyle(.tertiary)
-            }
-        }
+    }
+
+    private func row(_ index: Int, in rows: [TranscriptRow]) -> some View {
+        let row = rows[index]
+        return RowView(row: row, now: now)
+            .padding(.top, Self.spacing(TranscriptRow.gap(after: index > 0 ? rows[index - 1] : nil, before: row)))
     }
 
     private func jumpToLatest(animated: Bool) {
@@ -174,6 +217,101 @@ private struct HistoryView: View {
         case .tight: 2
         case .regular: 10
         case .exchange: 22
+        case .episode: 30
+        }
+    }
+}
+
+/// What an empty page says: where the thread is for a new one, and that earlier episodes are
+/// above for a fresh start. An incognito page says nothing, since the indicator does.
+private struct EmptyPageNote: View {
+    let hasEarlierEpisodes: Bool
+    let isEmptyThread: Bool
+
+    var body: some View {
+        if hasEarlierEpisodes {
+            Label("Earlier episodes are above", systemImage: "arrow.up")
+                .font(.callout)
+                .foregroundStyle(.tertiary)
+        } else if isEmptyThread {
+            Text("Everything you ask stays in this one thread.")
+                .font(.callout)
+                .foregroundStyle(.tertiary)
+        }
+    }
+}
+
+/// The quiet line between episodes: the date and time the episode started, between two hairlines.
+private struct EpisodeSeparator: View {
+    let date: Date
+    let now: Date
+
+    var body: some View {
+        HStack(spacing: 10) {
+            hairline
+            Text(TranscriptTimeLabel.episodeText(for: date, now: now))
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .fixedSize()
+            hairline
+        }
+        .padding(.horizontal, 24)
+        .help(TranscriptTimeLabel.fullText(for: date))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Episode started \(TranscriptTimeLabel.fullText(for: date))")
+    }
+
+    private var hairline: some View {
+        Rectangle()
+            .fill(.primary.opacity(0.1))
+            .frame(height: 1)
+            .frame(maxWidth: .infinity)
+    }
+}
+
+/// Shows for as long as an incognito episode is on, above the history.
+private struct IncognitoIndicator: View {
+    static let symbol = "eye.slash"
+    static let tint = Color.indigo.opacity(0.14)
+
+    var body: some View {
+        Label("Incognito. Nothing from this episode is kept.", systemImage: Self.symbol)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(.primary.opacity(0.07), in: .capsule)
+            .padding(.bottom, 6)
+            .frame(maxWidth: .infinity)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// The commands that match what the owner is typing, such as `/new` after a slash. It shows
+/// nothing until the text starts with a slash.
+private struct CommandHint: View {
+    let suggestions: [SlashCommand]
+
+    var body: some View {
+        if !suggestions.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(suggestions, id: \.self) { command in
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(command.name)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(minWidth: 80, alignment: .leading)
+                        Text(command.summary)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 44)
+            .padding(.trailing, 16)
+            .padding(.vertical, 8)
+            .accessibilityElement(children: .combine)
         }
     }
 }
@@ -198,6 +336,8 @@ private struct RowView: View {
 
     var body: some View {
         switch row.kind {
+        case .episodeStart(let date):
+            EpisodeSeparator(date: date, now: now)
         case .user(let text, let date, let showsTime):
             OwnerMessage(text: text, date: date, showsTime: showsTime, now: now)
         case .assistant(let text):

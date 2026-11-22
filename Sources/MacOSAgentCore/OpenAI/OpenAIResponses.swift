@@ -81,6 +81,10 @@ public enum OpenAIResponses {
                     "call_id": .string(result.callID),
                     "output": .string(result.output),
                 ])
+            case .episodeStart:
+                // The loop sends only the current episode and leaves its marker out. A marker
+                // carries nothing for the model in any case.
+                continue
             }
         }
         return items

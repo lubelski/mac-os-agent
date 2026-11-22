@@ -35,11 +35,16 @@ public enum BuiltInTools {
         OpenApplicationTool.name,
         ListRunningApplicationsTool.name,
         LoadSkillTool.name,
+        SearchHistoryTool.name,
+        ReadEpisodeTool.name,
     ]
 
+    /// - Parameter history: The kept thread, which the history tools search and read. Incognito
+    ///   episodes use the same tools, so they can search the past without adding to it.
     public static func make(
         applicationWorkspace: any ApplicationWorkspace = SystemApplicationWorkspace(),
-        skills: SkillLibrary = SkillLibrary()
+        skills: SkillLibrary = SkillLibrary(),
+        history: ThreadStore? = nil
     ) -> [any AgentTool] {
         let tools: [any AgentTool] = [
             ShellCommandTool(),
@@ -47,6 +52,8 @@ public enum BuiltInTools {
             OpenApplicationTool(workspace: applicationWorkspace),
             ListRunningApplicationsTool(workspace: applicationWorkspace),
             LoadSkillTool(library: skills),
+            SearchHistoryTool(history: history),
+            ReadEpisodeTool(history: history),
         ]
         assert(tools.map(\.definition.name) == names)
         return tools

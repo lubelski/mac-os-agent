@@ -22,6 +22,12 @@ public enum AgentPaths {
         applicationSupport.appending(path: "thread.jsonl")
     }
 
+    /// The full text index that search over past episodes reads. A copy of the thread that is
+    /// rebuilt from it whenever it is missing or out of step, so it is always safe to delete.
+    public static var historyIndexFile: URL {
+        applicationSupport.appending(path: "history-index.sqlite")
+    }
+
     /// The agent's standing instructions as the person edited them. Missing until the first edit.
     public static var instructionsFile: URL {
         applicationSupport.appending(path: "instructions.md")
