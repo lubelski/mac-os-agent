@@ -50,6 +50,8 @@ final class AgentSession {
     @ObservationIgnored var previewStartsAtTop = false
     /// For a preview of the fresh-start slot: stand-in lines that show how content lays out.
     @ObservationIgnored var previewFreshStartContent: [String]?
+    /// For a preview of the hover controls: shows them all, since a capture has no pointer.
+    @ObservationIgnored var previewRevealsControls = false
     /// True after a fresh start in the panel, until the next message starts the episode.
     @ObservationIgnored private var startsNewEpisode = false
     @ObservationIgnored private var incognitoLastActivity = Date.distantPast

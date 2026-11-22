@@ -92,6 +92,13 @@ When a decision changes, move it between the lists here in the same pull request
   - Rows of one exchange sit close together, commands in a run closer still, and each exchange starts a little further down.
   - It opens at the latest message and follows new output unless the owner has scrolled up.
   - The owner's messages and the agent's replies sit in quiet boxes on opposite sides. The owner's have a faint accent tint, and the agent's a neutral tint strong enough to stand apart from the glass. Inside an episode, a time label marks a message on a new day or after a pause of 30 minutes or more.
+  - The agent's replies are GitHub Flavored Markdown: paragraphs, emphasis, inline code, fenced code blocks, lists, task lists, quotes, links, headings kept close to the text size, rules, strikethrough, and tables. The owner's messages stay plain text.
+    - Foundation's own parser reads it (`AttributedString(markdown:)` with full syntax), and the panel draws it with native, selectable text. There is no Markdown package.
+    - A single line break in a reply stays a line break, as before.
+    - Code blocks keep their lines and scroll sideways. Tables keep their columns aligned as written, wrap a long column at a fixed width, and scroll sideways inside the reply when wider than it.
+    - While a reply streams, its unfinished end is completed before parsing, so it keeps its shape as the rest arrives: an open code fence stays code, a table's header row is a table at once, and open emphasis, code spans, and links are closed or held back.
+    - The default instructions encourage Markdown where it helps, including tables for tabular answers, and still ask for short replies.
+  - Messages can be copied. A quiet `copy` control shows beside a message under the pointer and copies a reply's Markdown as written, or the owner's text. A code block has its own `copy` control after its label for just the code. A message's context menu has Copy, Copy as Plain Text for replies, Share, and Speak. A command's context menu has Copy Command and Copy Output.
   - The conversation uses no icons and no status colors. Its marks are characters in the text color, at secondary and tertiary levels, taken from the owner's Pi customizations in agent-customizations.
     - A command is one small line that starts with `›`, or `✗` when it failed. The program draws in the secondary level and its arguments in the tertiary. Clicking the line opens its output below it.
     - A command that needs words gets one more line starting with `└`, beneath the start of the command: why it failed, that it is running, that it is waiting for a go-ahead, or that it never ran because the owner declined or the task stopped. A command that never ran is struck through.
