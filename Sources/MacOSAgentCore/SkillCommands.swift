@@ -89,12 +89,12 @@ public struct SlashCommandMenu: Sendable, Equatable {
     }
 
     /// What Settings says about invoking a skill with a slash, or nil for a broken skill, whose
-    /// problem is shown instead.
-    public static func commandStatus(for skill: Skill) -> String? {
+    /// problem is shown instead. `agentName` is the agent's name from `AgentNameSetting`.
+    public static func commandStatus(for skill: Skill, agentName: String = AgentNameSetting.defaultName) -> String? {
         guard skill.problem == nil else { return nil }
         let slashName = "/" + skill.name
         if !skill.isUserInvocable {
-            return "Not offered as a slash command. Its SKILL.md has \(SkillDocument.userInvocableKey): false, so only the agent uses it."
+            return "Not offered as a slash command. Its SKILL.md has \(SkillDocument.userInvocableKey): false, so only \(AgentNameSetting.resolve(agentName)) uses it."
         }
         if let clash = builtInClash(for: skill.name) {
             return "Not offered as a slash command, because \(clash.name) is one of the app's own commands. Rename the skill to invoke it with a slash."

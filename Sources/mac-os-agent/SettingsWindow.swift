@@ -236,7 +236,10 @@ enum SettingsPreview {
         let session = AgentSession(previewEntries: [])
         // Preferences of their own, so the model picker never reads or writes the real setting.
         let defaults = UserDefaults(suiteName: "dev.lubelski.mac-os-agent.preview") ?? .standard
-        let prompt = AgentPrompt()
+        // The default instructions take the agent's name from the same preferences.
+        let prompt = AgentPrompt(instructions: InstructionsStore(agentName: {
+            AgentNameSetting.current(UserDefaults(suiteName: "dev.lubelski.mac-os-agent.preview") ?? .standard)
+        }))
         let problems = ProblemLog()
         problems.record(
             "Request", "OpenAI API error (429): The usage limit for this plan was reached. Try again in 12 minutes.",

@@ -82,6 +82,7 @@ final class SkillsSettingsModel {
 struct SkillsSettingsView: View {
     @Bindable var model: SkillsSettingsModel
     @State private var creating = false
+    @AgentName private var agentName
 
     var body: some View {
         HStack(spacing: 0) {
@@ -93,7 +94,7 @@ struct SkillsSettingsView: View {
                         ContentUnavailableView {
                             Label("No Skills Yet", systemImage: "puzzlepiece.extension")
                         } description: {
-                            Text("Make one with New Skill, or ask Iris to write one.")
+                            Text("Make one with New Skill, or ask \(agentName) to write one.")
                         }
                     } else if model.filteredSkills.isEmpty {
                         ContentUnavailableView.search(text: model.filter)
@@ -138,7 +139,7 @@ struct SkillsSettingsView: View {
                     VStack(spacing: 12) {
                         ContentUnavailableView(
                             "No Skill Selected", systemImage: "puzzlepiece.extension",
-                            description: Text("Skills teach Iris particular tasks. It can write new ones itself."))
+                            description: Text("Skills teach \(agentName) particular tasks. It can write new ones itself."))
                         Button("Show Skills Folder in Finder") { model.revealInFinder() }
                     }
                     .padding(.bottom, 40)
@@ -208,6 +209,7 @@ struct SkillDetailView: View {
     let skill: Skill
     let contents: SkillContents?
     let model: SkillsSettingsModel
+    @AgentName private var agentName
 
     var body: some View {
         ScrollView {
@@ -227,7 +229,7 @@ struct SkillDetailView: View {
                         get: { skill.isEnabled }, set: { model.setEnabled($0, skill) }))
                         .labelsHidden()
                         .toggleStyle(.switch)
-                        .help(skill.isEnabled ? "On: listed in Iris's instructions" : "Off: Iris does not see it")
+                        .help(skill.isEnabled ? "On: listed in \(agentName)'s instructions" : "Off: \(agentName) does not see it")
                 }
                 if let problem = skill.problem {
                     Label(problem, systemImage: "exclamationmark.triangle.fill")
@@ -240,7 +242,7 @@ struct SkillDetailView: View {
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if let status = SlashCommandMenu.commandStatus(for: skill) {
+                if let status = SlashCommandMenu.commandStatus(for: skill, agentName: agentName) {
                     Text(status)
                         .font(.callout)
                         .foregroundStyle(.secondary)
