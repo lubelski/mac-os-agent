@@ -51,8 +51,14 @@ final class SettingsNavigation {
     static let key = "SettingsSelectedSection"
 
     var section: SettingsSection {
-        didSet { defaults.set(section.rawValue, forKey: Self.key) }
+        didSet {
+            defaults.set(section.rawValue, forKey: Self.key)
+            didChange?(section)
+        }
     }
+
+    /// Called after the section changes, so the window can title itself with it.
+    @ObservationIgnored var didChange: ((SettingsSection) -> Void)?
 
     @ObservationIgnored private let defaults: UserDefaults
 
@@ -75,14 +81,19 @@ struct SettingsModels {
     let debugging: DebuggingSettingsModel
 }
 
-/// The window's content: a sidebar of sections and the selected section beside it, in the
-/// style of System Settings.
+/// The window's content: a sidebar of sections and the selected section beside it. The window's
+/// own title bar spans both and says the section's name.
 struct SettingsRootView: View {
+    /// The sidebar's width. It is fixed: the sidebar cannot be dragged wider or collapsed.
+    static let sidebarWidth: CGFloat = 200
+
     let models: SettingsModels
     @Bindable var navigation: SettingsNavigation
 
     var body: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
+        // A plain row rather than a split view, so the sidebar keeps its width: it cannot be
+        // dragged or collapsed, and there is no sidebar button.
+        HStack(spacing: 0) {
             List(selection: Binding<SettingsSection?>(
                 get: { navigation.section },
                 set: { if let section = $0 { navigation.section = section } }
@@ -99,14 +110,13 @@ struct SettingsRootView: View {
                     .tag(section)
                 }
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
-            .toolbar(removing: .sidebarToggle)
-        } detail: {
+            .listStyle(.sidebar)
+            .frame(width: Self.sidebarWidth)
+            Divider()
             // A minimum of zero keeps a section's ideal size, such as a long line in the
             // instructions editor, from pushing the window or the sidebar around.
             detail
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .navigationTitle(navigation.section.title)
         }
     }
 
@@ -142,6 +152,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     static let frameName = "SettingsWindow"
 
     let models: SettingsModels
+    let titleBar = SettingsTitleBar()
     private var hasBeenShown = false
 
     /// - Parameter remembersFrame: False for previews, so they never write the owner's saved frame.
@@ -168,23 +179,29 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let hosting = NSHostingController(rootView: root)
         // The window keeps its own size, so switching sections never resizes it.
         hosting.sizingOptions = []
-        // The split view's toolbar and the section's title go to the window, as in System Settings.
-        hosting.sceneBridgingOptions = [.toolbars, .title]
+        // The window's title and title bar are set below, not by SwiftUI.
+        hosting.sceneBridgingOptions = []
 
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: Self.defaultSize),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
+        // A title bar across the whole window, above the sidebar and the section, with a hairline
+        // under it. The content starts below it. The system draws a window's own title at the
+        // leading edge, so the title is hidden and the toolbar's one centered item says it.
+        window.titleVisibility = .hidden
+        window.toolbar = titleBar.toolbar
+        window.toolbarStyle = .unifiedCompact
+        window.titlebarSeparatorStyle = .line
         window.contentViewController = hosting
         window.setContentSize(Self.defaultSize)
         window.contentMinSize = Self.minimumSize
-        // A toolbar gives the split view its full-height Liquid Glass sidebar. SwiftUI fills it.
-        window.toolbar = NSToolbar(identifier: "Settings")
-        window.toolbarStyle = .unified
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenNone]
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.delegate = self
+        showTitle(of: models.navigation.section)
+        models.navigation.didChange = { [weak self] in self?.showTitle(of: $0) }
         if remembersFrame {
             hasBeenShown = window.setFrameUsingName(Self.frameName)
             window.setFrameAutosaveName(Self.frameName)
@@ -193,6 +210,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Titles the window with the section's name.
+    private func showTitle(of section: SettingsSection) {
+        window?.title = section.title
+        titleBar.title = section.title
+    }
 
     /// Shows the window in front of everything and gives it focus. The app has no Dock icon,
     /// so it has to activate itself first or the window would open behind the frontmost app.
@@ -223,6 +246,47 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         models.debugging.reload()
         models.history.reload()
         models.tools.reloadAccess()
+    }
+}
+
+/// The Settings window's title bar: a compact toolbar with nothing in it but the title, centered
+/// on the whole window. The window's own title stays set, for the Window menu and VoiceOver.
+@MainActor
+final class SettingsTitleBar: NSObject, NSToolbarDelegate {
+    static let titleItem = NSToolbarItem.Identifier("SettingsTitle")
+
+    let toolbar = NSToolbar(identifier: "Settings")
+    let label = NSTextField(labelWithString: "")
+
+    var title: String {
+        get { label.stringValue }
+        set { label.stringValue = newValue }
+    }
+
+    override init() {
+        super.init()
+        // The font the system uses for a window's title.
+        label.font = .titleBarFont(ofSize: 0)
+        label.textColor = .windowFrameTextColor
+        label.lineBreakMode = .byTruncatingTail
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        toolbar.allowsUserCustomization = false
+        toolbar.centeredItemIdentifiers = [Self.titleItem]
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [Self.titleItem] }
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [Self.titleItem] }
+
+    func toolbar(
+        _ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        let item = NSToolbarItem(itemIdentifier: identifier)
+        item.view = label
+        item.isBordered = false
+        item.visibilityPriority = .high
+        return item
     }
 }
 
