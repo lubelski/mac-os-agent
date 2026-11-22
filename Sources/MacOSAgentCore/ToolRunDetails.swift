@@ -46,16 +46,6 @@ public struct ToolRunDetails: Sendable, Equatable, Codable {
         self.stopped = stopped
         self.fullCharacters = fullCharacters
     }
-
-    /// The same details with every field the other has set taken from it.
-    func merging(_ other: ToolRunDetails) -> ToolRunDetails {
-        ToolRunDetails(
-            started: other.started ?? started, seconds: other.seconds ?? seconds,
-            waitedSeconds: other.waitedSeconds ?? waitedSeconds, goAhead: other.goAhead ?? goAhead,
-            source: other.source ?? source, exitStatus: other.exitStatus ?? exitStatus,
-            timedOut: other.timedOut ?? timedOut, stopped: other.stopped ?? stopped,
-            fullCharacters: other.fullCharacters ?? fullCharacters)
-    }
 }
 
 /// Where a running tool notes what it knows about its run, such as a command's exit status.

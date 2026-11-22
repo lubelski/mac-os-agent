@@ -22,6 +22,7 @@ public enum ToolCallInput {
         var depth = 0
         var index = 0
         var previous: Character = " "
+        var afterOperator = false
         while index < characters.count {
             let character = characters[index]
             let next: Character? = index + 1 < characters.count ? characters[index + 1] : nil
@@ -62,10 +63,17 @@ public enum ToolCallInput {
                     }
                     parts.append(current.trimmingCharacters(in: .whitespaces))
                     current = op + " "
+                    afterOperator = true
+                    previous = character
+                    index += 1
+                    continue
+                case " " where afterOperator:
+                    break
                 default:
                     current.append(character)
                 }
             }
+            if character != " " { afterOperator = false }
             previous = character
             index += 1
         }

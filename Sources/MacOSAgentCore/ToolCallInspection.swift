@@ -115,13 +115,14 @@ public struct InspectedToolCall: Equatable, Sendable {
         case .failed: return .failed
         case .unknown: break
         }
-        if Self.declinedOutputs.contains(output) { return .declined }
-        if Self.stoppedOutputs.contains(output) { return .stopped }
+        if Self.declinedOutputs.contains(output) || output.hasPrefix("The owner declined.") { return .declined }
+        if Self.stoppedOutputs.contains(output) || output.hasPrefix("The task was stopped before ") { return .stopped }
         if let status = details?.exitStatus { return status == 0 ? .succeeded : .failed }
         return output.hasPrefix("Error") ? .failed : .succeeded
     }
 
-    /// Outputs the native tools give when the owner declines, beside the shell tool's own.
+    /// Outputs the native tools give when the owner declines, beside the shell tool's own. Any
+    /// output that starts `The owner declined.` counts too.
     static let declinedOutputs: Set<String> = [
         ShellCommandTool.declinedOutput,
         "The owner declined. Nothing was changed.",

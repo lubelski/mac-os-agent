@@ -74,15 +74,6 @@ public enum ToolOutputFormat {
         }
     }
 
-    public enum MarkdownBlock: Equatable, Sendable {
-        case heading(level: Int, text: String)
-        case bullet(indent: Int, text: String)
-        case numbered(indent: Int, number: String, text: String)
-        case code(String)
-        case rule
-        case paragraph(String)
-    }
-
     public enum Block: Equatable, Sendable {
         case text(String)
         case json(JSONNode)
@@ -90,7 +81,8 @@ public enum ToolOutputFormat {
         case keyValues([KeyValue])
         case diff([DiffLine])
         case paths([String])
-        case markdown([MarkdownBlock])
+        /// Markdown source, for the app's Markdown views. See `MarkdownDocument`.
+        case markdown(String)
     }
 
     public struct Formatted: Equatable, Sendable {
@@ -115,16 +107,20 @@ public enum ToolOutputFormat {
             return Formatted(shape: .plain, blocks: [.text(TerminalText.clean(text).text)],
                              note: "Too large to lay out, so it is shown as plain text.")
         }
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return Formatted(shape: .empty, blocks: [])
+        }
+        // Binary is judged before terminal codes are read, since cleaning would hide its bytes.
+        if isBinary(text) {
+            return Formatted(shape: .binary, blocks: [.text(TerminalText.visibleControls(text))],
+                             note: "This looks like binary data. Control characters are shown as symbols.")
+        }
         let cleaned = TerminalText.clean(text)
         let body = cleaned.text
         if body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return Formatted(shape: .empty, blocks: [])
         }
         let note = cleaned.removedEscapes ? "Terminal color codes were removed." : nil
-        if isBinary(body) {
-            return Formatted(shape: .binary, blocks: [.text(TerminalText.visibleControls(body))],
-                             note: "This looks like binary data. Control characters are shown as symbols.")
-        }
         if let formatted = detect(body) {
             return Formatted(shape: formatted.shape, blocks: formatted.blocks, note: formatted.note ?? note)
         }
@@ -145,7 +141,7 @@ public enum ToolOutputFormat {
         if let table = columns(body) { return Formatted(shape: .columns, blocks: [.table(table)]) }
         if let pairs = keyValues(body) { return Formatted(shape: .keyValue, blocks: [.keyValues(pairs)]) }
         if let paths = paths(body) { return Formatted(shape: .paths, blocks: [.paths(paths)]) }
-        if let markdown = markdown(body) { return Formatted(shape: .markdown, blocks: [.markdown(markdown)]) }
+        if looksLikeMarkdown(body) { return Formatted(shape: .markdown, blocks: [.markdown(body)]) }
         return nil
     }
 
@@ -174,7 +170,7 @@ public enum ToolOutputFormat {
         for scalar in text.unicodeScalars.prefix(detectionLimit) {
             total += 1
             if scalar.value == 0 { return true }
-            if scalar == "\u{FFFD}" || (scalar.value < 0x20 && scalar != "\t" && scalar != "\n") || (0x7F...0x9F).contains(scalar.value) {
+            if scalar == "\u{FFFD}" || (scalar.value < 0x20 && !["\t", "\n", "\r", "\u{1B}", "\u{08}", "\u{07}"].contains(scalar)) || (0x7F...0x9F).contains(scalar.value) {
                 odd += 1
             }
         }
@@ -371,7 +367,7 @@ public enum ToolOutputFormat {
         let cell = cell.trimmingCharacters(in: .whitespaces)
         guard let first = cell.first else { return false }
         if first == "/" || first == "~" { return true }
-        return cell.range(of: #"^[-+]?[0-9][0-9.,:]*[A-Za-z%]{0,3}$"#, options: .regularExpression) != nil
+        return cell.range(of: #"^[-+]?[0-9][0-9.,:]* ?[A-Za-z%]{0,3}$"#, options: .regularExpression) != nil
     }
 
     // MARK: - Aligned columns
@@ -448,6 +444,12 @@ public enum ToolOutputFormat {
             }
             rows.append(cells(line))
         }
+        // Some column must hold data, such as numbers, sizes, or paths, under a header that is a
+        // label. Repeated lines of words share their gaps too, and are not a table.
+        let hasDataColumn = headerCells.indices.contains { column in
+            !looksLikeData(headerCells[column]) && rows.prefix(50).contains { $0.indices.contains(column) && looksLikeData($0[column]) }
+        }
+        guard hasDataColumn else { return nil }
         return Table(header: headerCells, rows: rows, totalRows: all.count - 1)
     }
 
@@ -511,13 +513,13 @@ public enum ToolOutputFormat {
     // MARK: - Markdown
 
     /// Text with Markdown structure: headings, lists, fenced code, or rules, on at least two
-    /// lines. Inline marks such as `**bold**` stay as written for the view to render.
-    static func markdown(_ text: String) -> [MarkdownBlock]? {
-        guard text.count <= detectionLimit else { return nil }
-        let lines = allLines(text)
+    /// lines, and either a heading or fence or at least three list items. The app's own
+    /// Markdown parser renders it.
+    static func looksLikeMarkdown(_ text: String) -> Bool {
+        guard text.count <= detectionLimit else { return false }
         var structural = 0
         var hasHeadingOrFence = false
-        for line in lines {
+        for line in allLines(text) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.range(of: #"^#{1,6} \S"#, options: .regularExpression) != nil || trimmed.hasPrefix("```") {
                 structural += 1
@@ -526,51 +528,7 @@ public enum ToolOutputFormat {
                 structural += 1
             }
         }
-        guard structural >= 2, hasHeadingOrFence || structural >= 3 else { return nil }
-
-        var blocks: [MarkdownBlock] = []
-        var paragraph: [String] = []
-        var code: [String]?
-        func flush() {
-            if !paragraph.isEmpty { blocks.append(.paragraph(paragraph.joined(separator: "\n"))) }
-            paragraph = []
-        }
-        for line in lines {
-            let raw = String(line)
-            let trimmed = raw.trimmingCharacters(in: .whitespaces)
-            if var open = code {
-                if trimmed.hasPrefix("```") {
-                    blocks.append(.code(open.joined(separator: "\n")))
-                    code = nil
-                } else {
-                    open.append(raw)
-                    code = open
-                }
-                continue
-            }
-            if trimmed.hasPrefix("```") { flush(); code = []; continue }
-            let indent = (raw.prefix { $0 == " " }.count) / 2
-            if let match = trimmed.firstMatch(of: /^(#{1,6}) (.+)$/) {
-                flush()
-                blocks.append(.heading(level: match.1.count, text: String(match.2)))
-            } else if trimmed.range(of: #"^([-*_])( ?\1){2,}$"#, options: .regularExpression) != nil {
-                flush()
-                blocks.append(.rule)
-            } else if let match = trimmed.firstMatch(of: /^[-*+] (.+)$/) {
-                flush()
-                blocks.append(.bullet(indent: indent, text: String(match.1)))
-            } else if let match = trimmed.firstMatch(of: /^(\d{1,3})[.)] (.+)$/) {
-                flush()
-                blocks.append(.numbered(indent: indent, number: String(match.1), text: String(match.2)))
-            } else if trimmed.isEmpty {
-                flush()
-            } else {
-                paragraph.append(trimmed)
-            }
-        }
-        if let open = code { blocks.append(.code(open.joined(separator: "\n"))) }
-        flush()
-        return blocks
+        return structural >= 2 && (hasHeadingOrFence || structural >= 3)
     }
 }
 
