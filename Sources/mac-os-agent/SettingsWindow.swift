@@ -142,7 +142,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     init(
         session: AgentSession, prompt: AgentPrompt, usageLog: UsageLog, tools: ToolRegistry,
         history: ThreadStore?, problems: ProblemLog, signInStatus: @escaping @Sendable () async -> SignInStatus?,
-        shortcutAvailable: Bool, defaults: UserDefaults = .standard, remembersFrame: Bool = true
+        shortcutAvailable: Bool, defaults: UserDefaults = .standard, remembersFrame: Bool = true,
+        privacyAccess: any PrivacyAccessGate = EventKitStore.shared
     ) {
         models = SettingsModels(
             session: session,
@@ -150,7 +151,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             navigation: SettingsNavigation(defaults: defaults),
             instructions: InstructionsSettingsModel(prompt: prompt),
             skills: SkillsSettingsModel(library: prompt.skills),
-            tools: ToolsSettingsModel(registry: tools),
+            tools: ToolsSettingsModel(registry: tools, access: privacyAccess),
             history: HistorySettingsModel(history: history),
             debugging: DebuggingSettingsModel(
                 prompt: prompt, usageLog: usageLog, tools: tools, problems: problems,
@@ -211,6 +212,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         models.instructions.reloadIfUnchanged()
         models.debugging.reload()
         models.history.reload()
+        models.tools.reloadAccess()
     }
 }
 
@@ -240,7 +242,8 @@ enum SettingsPreview {
                     isSignedIn: true, accessTokenExpires: Date().addingTimeInterval(52 * 60),
                     lastTokenDate: Date().addingTimeInterval(-8 * 60))
             },
-            shortcutAvailable: true, defaults: defaults, remembersFrame: false)
+            shortcutAvailable: true, defaults: defaults, remembersFrame: false,
+            privacyAccess: StandInPrivacyAccess())
         self.controller = controller
         if let item {
             controller.models.history.query = section == .history ? item : ""
@@ -252,6 +255,16 @@ enum SettingsPreview {
         controller.models.debugging.reload()
         // Quits on its own, so a failed capture script cannot leave it on screen.
         Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { _ in exit(0) }
+    }
+
+    /// Access as a preview shows it: Reminders allowed, Calendars not asked yet. It never asks
+    /// the owner for anything.
+    private struct StandInPrivacyAccess: PrivacyAccessGate {
+        func status(_ kind: PrivacyAccessKind) -> PrivacyAccessStatus {
+            kind == .reminders ? .fullAccess : .notDetermined
+        }
+
+        func requestAccess(_ kind: PrivacyAccessKind) async -> PrivacyAccessStatus { status(kind) }
     }
 
     /// A few episodes of stand-in conversation in a temporary folder, never the real thread.

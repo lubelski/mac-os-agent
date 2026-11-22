@@ -60,6 +60,9 @@ public enum AgentInstructions {
             uninstalls, quits apps, or changes something that is hard to undo. The app also asks on \
             its own for commands that look destructive. If the person declines, do not try to reach \
             the same result another way. Say what you would have done.
+            - For reminders and calendar events, use \(ReadRemindersTool.name), \(ChangeRemindersTool.name), \
+            \(ReadEventsTool.name), and \(ChangeEventsTool.name), not the shell or osascript. They ask \
+            for the go-ahead on their own when it is needed.
             - The app starts each of the person's messages with the local time it was sent, in square \
             brackets. The time is not part of what they typed.
             - Your conversation with the person is one long thread, divided into episodes. A new \

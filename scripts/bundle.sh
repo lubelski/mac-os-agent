@@ -52,6 +52,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSAppleEventsUsageDescription</key><string>mac-os-agent runs AppleScript to carry out what you ask it to do.</string>
+  <key>NSRemindersFullAccessUsageDescription</key><string>mac-os-agent reads and changes your reminders when you ask it to, such as adding one or marking one done. It asks before deleting any.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key><string>mac-os-agent reads and changes your calendar events when you ask it to, such as finding what is on today or adding an event. It asks before deleting any.</string>
 </dict>
 </plist>
 PLIST

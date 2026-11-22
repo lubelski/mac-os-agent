@@ -40,7 +40,7 @@ When a decision changes, move it between the lists here in the same pull request
   - The agent runs with a set of tools that it can modify itself.
   - The tool list sent to the model stays fixed within a conversation, because a list that changes breaks prompt caching.
   - Built-in tools are a fixed, ordered list. New built-in tools go at the end. Tools from other sources will go after the built-ins, sorted by name.
-  - The built-in tools are a shell command, three app tools (search the installed apps by a loose name, open an app or bring it to the front, and list the running apps), a tool that loads a skill, and two tools for past episodes (search them, and read one).
+  - The built-in tools are a shell command, three app tools (search the installed apps by a loose name, open an app or bring it to the front, and list the running apps), a tool that loads a skill, two tools for past episodes (search them, and read one), and two tools each for Reminders and Calendar (read, and change).
 - Settings
   - A Settings window with a sidebar of sections on the left and the selected section beside it, in the style of System Settings. The sections are General, Instructions, Skills, Tools, History, and Debugging.
   - The window keeps one size whichever section is showing. It opens at 900 by 620 points, the owner can resize it down to 760 by 480, and it comes back at the size and place it was left. A section scrolls inside the window when it does not fit. The last section shown opens again next time.
@@ -49,6 +49,7 @@ When a decision changes, move it between the lists here in the same pull request
   - History lists the kept episodes newest first, with each one's date, length, and first line, and a search over all of them that lists the episodes that match with the matching line. The selected episode is shown read-only, with the owner's messages, the commands that ran, and the replies as selectable text. Incognito episodes are never kept, so they never appear. Nothing can be edited or deleted there yet.
   - Skills is a list of every skill, with a filter, beside the selected skill's detail: its description, on or off, its problem if the file is broken, the files in its folder, and its `SKILL.md` for reading. Editing happens in the owner's editor.
   - Tools lists the agent's tools in the order the model sees them, grouped by where they come from, with each tool's description as sent, its parameters, and whether it asks for a go-ahead. It is read-only. Tools from an MCP server will be a group of their own.
+  - A group of tools that needs a macOS permission, such as Reminders or Calendar, shows in each tool's detail whether the app has it, with a button that opens that pane of Privacy & Security, and one that asks for it when the owner has not been asked yet.
   - Debugging is read-only. It shows recent model requests with their token counts and duration, the prompt's size and fingerprint, the sign-in state, the thread file's size and entry count, problems since launch, and the build and how it is signed. Copy Diagnostics puts the same as plain text on the clipboard, without message content or secrets.
 - Measuring prompt caching
   - The app reads the token counts from each model response: input, cached input, output, and reasoning. They pass through the provider seam in a provider-neutral shape.
@@ -68,6 +69,14 @@ When a decision changes, move it between the lists here in the same pull request
   - The app tools use Launch Services, NSWorkspace, and Spotlight directly instead of the shell, because shell lookups with `mdfind` were slow and missed apps.
   - A search reads the standard app folders, caches each folder until it changes, and asks Spotlight only when nothing matches closely.
   - Opening, searching, and listing apps need no go-ahead. Quitting an app still goes through the shell tool and its confirmation step.
+- Reminders and Calendar through native tools
+  - `read_reminders`, `change_reminders`, `read_events`, and `change_events` call EventKit from inside the app instead of `osascript`, which was slow, fragile, and needed Automation permission for each app.
+  - Each area has one tool to read and one to change. A change tool takes a list of changes, so the model can do several in one call, and each change creates, edits, or deletes one item.
+  - The app asks for full access to Reminders or to Calendar the first time a tool needs it. When access is denied or restricted, the tool says so and names the pane in System Settings that grants it. The bundle carries `NSRemindersFullAccessUsageDescription` and `NSCalendarsFullAccessUsageDescription`.
+  - Deleting, changing more than one item in a call, and changing a repeating event from one occurrence on ask for the same go-ahead as a destructive shell command. Creating, completing, and editing a single item do not ask.
+  - Dates go in as ISO 8601. A date alone is a day: due that day, or an all-day event. A date-time without an offset is in the Mac's time zone. Results write dates as `Sat 2026-11-21 14:00` in the Mac's time zone and say which zone that is. A reminder with a due time also gets an alert at that time, as the Reminders app does.
+  - Each item comes back with a short id, eight characters from a hash of EventKit's identifier, so it is the same every time it is read. A repeating event's id adds when that occurrence was scheduled.
+  - The tools sit behind small protocols, so their logic is tested against stand-in data and never against the owner's real reminders and events.
 - Ask before destructive actions
   - A shell command waits for a go-ahead in the panel when the model marks it destructive, or when it matches a broad local pattern list for deleting, overwriting, uninstalling, quitting, killing processes, `sudo`, and system settings.
   - Either one is enough. The model cannot talk its way past the pattern list.
