@@ -12,7 +12,7 @@ enum PanelPreview {
         "empty", "running", "confirmation", "finished", "history", "draft", "multiline-draft",
         "fresh-start", "scrollback", "incognito", "command-hint", "tool-states", "first-message", "streaming",
         "fresh-start-slot", "markdown", "markdown-streaming", "markdown-code-streaming", "controls",
-    ] + inspectorStates
+    ] + inspectorStates + InstantActionPreview.names
 
     /// The states that show the tool call inspector beside the panel, each open on one call.
     static let inspectorStates = [
@@ -52,6 +52,7 @@ enum PanelPreview {
 
     static func session(named name: String) -> AgentSession? {
         if inspectorStates.contains(name) { return inspectorSession() }
+        if let session = InstantActionPreview.session(named: name) { return session }
         switch name {
         case "empty":
             return AgentSession(previewEntries: [])
@@ -261,7 +262,7 @@ enum PanelPreview {
     }
 
     /// Builds stand-in thread entries with send times relative to now.
-    private struct StandInThread {
+    struct StandInThread {
         let now: Date
         var entries: [ThreadEntry] = []
         private var clock: Date

@@ -7,7 +7,8 @@ import SwiftUI
 /// dictation, the emoji picker, Writing Tools, Services, and the context menu all come from
 /// `NSTextView` itself.
 ///
-/// It grows a line at a time up to `maximumLines`, then scrolls. Return sends, and Shift-Return
+/// It grows a line at a time up to `maximumLines`, then scrolls. Return sends, or takes the
+/// instant action the row above offers. Command-Return always sends to the agent. Shift-Return
 /// and Option-Return add a line.
 ///
 /// A vertical SwiftUI `TextField` was the first choice, and it does most of this. It was set
@@ -24,6 +25,11 @@ struct InputField: NSViewRepresentable {
     /// Up (-1) or Down (1) in an empty field. Returns true when it used the key, such as to move
     /// between tool calls in the inspector. Otherwise the text view handles it as usual.
     var onMove: (Int) -> Bool = { _ in false }
+    /// Command-Return: sends the text to the agent even when Return would take an instant action.
+    var onSubmitToAgent: () -> Void = {}
+    /// Up, Shift-Tab (-1) or Down, Tab (1) while the field has text. Returns true when it used
+    /// the key, to choose between instant action matches. Otherwise the key does what it always does.
+    var onChoose: (Int) -> Bool = { _ in false }
 
     static let font = NSFont.systemFont(ofSize: 15)
     static let maximumLines = 8
@@ -65,6 +71,7 @@ struct InputField: NSViewRepresentable {
 
         textView.string = text
         context.coordinator.observe(textView)
+        textView.onCommandReturn = { [weak coordinator = context.coordinator] in coordinator?.parent.onSubmitToAgent() }
         return scrollView
     }
 
@@ -166,6 +173,9 @@ struct InputField: NSViewRepresentable {
             case .send:
                 parent.onSubmit()
                 return true
+            case .sendToAgent:
+                parent.onSubmitToAgent()
+                return true
             case .newLine:
                 textView.insertNewlineIgnoringFieldEditor(nil)
                 return true
@@ -173,6 +183,11 @@ struct InputField: NSViewRepresentable {
                 parent.onCancel()
                 return true
             case .standard:
+                if !textView.string.isEmpty, !textView.hasMarkedText(), let offset = Self.choiceOffset(selector),
+                   parent.onChoose(offset)
+                {
+                    return true
+                }
                 if textView.string.isEmpty {
                     if selector == #selector(NSResponder.moveUp(_:)) { return parent.onMove(-1) }
                     if selector == #selector(NSResponder.moveDown(_:)) { return parent.onMove(1) }
@@ -180,13 +195,24 @@ struct InputField: NSViewRepresentable {
                 return false
             }
         }
+
+        /// How a key moves between instant action matches: Up and Shift-Tab back, Down and Tab on.
+        static func choiceOffset(_ selector: Selector) -> Int? {
+            switch selector {
+            case #selector(NSResponder.moveUp(_:)), #selector(NSResponder.insertBacktab(_:)): -1
+            case #selector(NSResponder.moveDown(_:)), #selector(NSResponder.insertTab(_:)): 1
+            default: nil
+            }
+        }
     }
 }
 
 /// What a text command from the key bindings does in the input field.
 enum InputCommand: Equatable {
-    /// Send the text.
+    /// Send the text, or take the instant action the row offers.
     case send
+    /// Send the text to the agent, even when the row offers an instant action. Command-Return.
+    case sendToAgent
     /// Add a line break.
     case newLine
     /// Hide the panel.
@@ -203,7 +229,8 @@ enum InputCommand: Equatable {
         switch selector {
         case #selector(NSResponder.insertNewline(_:)):
             // Shift-Return has no binding of its own, so it arrives as Return.
-            self = modifiers.intersection(.deviceIndependentFlagsMask).contains(.shift) ? .newLine : .send
+            let flags = modifiers.intersection(.deviceIndependentFlagsMask)
+            self = flags.contains(.shift) ? .newLine : flags.contains(.command) ? .sendToAgent : .send
         case #selector(NSResponder.insertLineBreak(_:)):
             // Control-Return. A plain line break, not a line separator character.
             self = .newLine
@@ -223,6 +250,22 @@ final class InputTextView: NSTextView {
     private(set) var currentKeyModifiers: NSEvent.ModifierFlags = []
     /// Asked for focus before it was in a window.
     var takesFocusInWindow = false
+    /// Command-Return. AppKit offers a Command key press to the views as a key equivalent and
+    /// never turns it into a text command, so it is caught here.
+    var onCommandReturn: (() -> Void)?
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if isCommandReturn(event), window?.firstResponder === self, let onCommandReturn {
+            onCommandReturn()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    private func isCommandReturn(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function, .capsLock])
+        return event.type == .keyDown && (event.keyCode == 36 || event.keyCode == 76) && flags == .command && !hasMarkedText()
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -233,6 +276,11 @@ final class InputTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        // A Command-Return that no key equivalent took, as when the event comes straight to the view.
+        if isCommandReturn(event), let onCommandReturn {
+            onCommandReturn()
+            return
+        }
         currentKeyModifiers = event.modifierFlags
         defer { currentKeyModifiers = [] }
         super.keyDown(with: event)

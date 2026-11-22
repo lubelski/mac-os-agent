@@ -58,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         session = AgentSession(loop: loop, authenticator: authenticator, makeIncognitoLoop: makeIncognitoLoop)
         session.onStatusChange = { [weak self] in self?.updateStatusIcon() }
         session.toolSources = tools.sourceTitles
+        session.instantActions = .live()
         panel = SummonPanel(session: session)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
