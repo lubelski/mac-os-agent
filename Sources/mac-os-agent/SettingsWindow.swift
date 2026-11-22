@@ -80,8 +80,15 @@ struct SettingsRootView: View {
                 set: { if let section = $0 { navigation.section = section } }
             )) {
                 ForEach(SettingsSection.allCases) { section in
-                    Label(section.title, systemImage: section.symbolName)
-                        .tag(section)
+                    // The sidebar draws the selected row's title in a heavier weight, which widens
+                    // it. A weight set on the title's own Text overrides that, so the row keeps
+                    // one weight across hover and selection. On the Label it has no effect.
+                    Label {
+                        Text(section.title).fontWeight(.regular)
+                    } icon: {
+                        Image(systemName: section.symbolName)
+                    }
+                    .tag(section)
                 }
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
@@ -236,3 +243,4 @@ enum SettingsPreview {
         Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { _ in exit(0) }
     }
 }
+
