@@ -143,10 +143,14 @@ private func command(_ name: String, _ description: String = "Does a thing.") ->
         try skills.setEnabled(false, folderName: "turned-off")
         let status = Dictionary(uniqueKeysWithValues: skills.skills().map { ($0.folderName, SlashCommandMenu.commandStatus(for: $0)) })
         #expect(status["rename-photos"] == "Type /rename-photos in the panel to use it, followed by what to use it on.")
-        #expect(status["agent-only"] == "Not offered as a slash command. Its SKILL.md has user-invocable: false, so only the agent uses it.")
+        #expect(status["agent-only"] == "Not offered as a slash command. Its SKILL.md has user-invocable: false, so only Iris uses it.")
         #expect(status["new"] == "Not offered as a slash command, because /new is one of the app's own commands. Rename the skill to invoke it with a slash.")
         #expect(status["turned-off"] == "Offered as /turned-off in the panel once it is on.")
         #expect(status["broken"] == .some(nil))
+        // The agent's name from Settings, General.
+        let agentOnly = try #require(skills.skills().first { $0.folderName == "agent-only" })
+        #expect(SlashCommandMenu.commandStatus(for: agentOnly, agentName: "Juno")
+            == "Not offered as a slash command. Its SKILL.md has user-invocable: false, so only Juno uses it.")
     }
 }
 

@@ -5,8 +5,8 @@ import SwiftUI
 
 /// The floating panel the hotkey toggles. It takes keyboard focus without bringing the app
 /// forward, like Spotlight. It stays up when the owner clicks another app, and hides only on
-/// the hotkey, the menu bar icon, the close button, Escape, or Command-W. Hiding never stops a
-/// running task.
+/// the hotkey, the menu bar icon, Hide Panel in its top bar's menu, Escape, or Command-W.
+/// Hiding never stops a running task.
 ///
 /// It lives in one of the layout presets in `PanelPreset`, chosen from the menu in its top bar
 /// and kept in the defaults:
@@ -23,6 +23,9 @@ import SwiftUI
 /// The corners on a side flush against the screen's edge are square, on the glass and on the
 /// clip of its layer alike, and rounded again once the panel moves off it. See `squareEdges`.
 ///
+/// A double click on the top bar puts it back at its preset's frame and forgets the frame or
+/// width it remembered for that preset. See `resetToDefaultPlace()`.
+///
 /// It is above other windows only while it has focus, or always when Keep on Top is on, and
 /// the app's own windows, such as Settings, always come in front of it. Once another window
 /// is brought forward it layers like an ordinary window and stays open underneath. See
@@ -30,7 +33,8 @@ import SwiftUI
 ///
 /// The incognito window is the same panel with the `.incognito` role. It has no layouts and
 /// no slide, keeps nothing about its place, and opens beside the main panel. Closing it, with
-/// the close button or Command-W, discards its conversation, so Escape never closes it.
+/// Close and Discard in its top bar's menu or Command-W, discards its conversation, so Escape
+/// never closes it.
 @MainActor
 final class SummonPanel: NSPanel {
     /// Which window this is.
@@ -54,6 +58,9 @@ final class SummonPanel: NSPanel {
     /// the keys above, and removed.
     static let legacyDockKey = "SummonPanelDock"
     static let legacyUndockedFrameKey = "SummonPanelUndockedFrame"
+    /// The preferences previews and tests read, such as the agent's name, so they never read
+    /// the owner's.
+    static let previewPreferences = UserDefaults(suiteName: "dev.lubelski.mac-os-agent.preview") ?? .standard
 
     /// What the hotkey and the menu bar icon do, given the panel's state.
     enum ToggleAction: Equatable {
@@ -112,7 +119,7 @@ final class SummonPanel: NSPanel {
     /// Stretches every slide in time, for a preview that shows the motion slowly.
     var slideTimeScale: Double = 1
 
-    /// Keep on Top, shared by both panels. Only the main panel's layout menu changes it.
+    /// Keep on Top, shared by both panels. Only the main panel's top bar menu changes it.
     let keepOnTop: KeepOnTopSetting
     /// Whether the panel or its inspector has keyboard focus. Tests stand in their own.
     var hasFocus: (SummonPanel) -> Bool = { $0.isKeyWindow || $0.inspectorWindow.isKeyWindow }
@@ -179,6 +186,7 @@ final class SummonPanel: NSPanel {
         self.screens = screens
         self.mouseLocation = mouseLocation
         self.keepOnTop = keepOnTop ?? (remembersFrame ? .shared : KeepOnTopSetting(defaults: nil))
+        let remembersFrameArgument = remembersFrame
         // Remembering where the incognito window was would be a trace of it.
         let remembersFrame = remembersFrame && role == .main
         defaults = role == .incognito ? nil : placementDefaults ?? (remembersFrame ? .standard : nil)
@@ -209,6 +217,7 @@ final class SummonPanel: NSPanel {
         session.showPanel = { [weak self] in self?.summon() }
         placement.choose = { [weak self] preset in self?.choose(preset) }
         placement.close = { [weak self] in self?.closeButtonPressed() }
+        placement.resetToDefault = { [weak self] in self?.resetToDefaultPlace() }
         placement.offersLayouts = role == .main
         placement.keepsOnTop = self.keepOnTop.isOn
         if role == .main {
@@ -221,9 +230,11 @@ final class SummonPanel: NSPanel {
         inspector.callIDs = { [weak session] in session?.transcript.toolCallIDs ?? [] }
         inspector.onChange = { [weak self] in self?.updateInspector() }
         inspectorWindow.onResize = { [weak self] in self?.placeInspector() }
+        // A preview reads the agent's name from the preview preferences, never the owner's.
+        let preferences = remembersFrameArgument ? UserDefaults.standard : Self.previewPreferences
         hostingController.rootView = AnyView(SummonView(session: session, onDismiss: { [weak self] in
             self?.escape()
-        }).environment(placement).environment(inspector))
+        }).environment(placement).environment(inspector).defaultAppStorage(preferences))
 
         container.frame = NSRect(origin: .zero, size: size)
         host.frame = container.bounds
@@ -419,13 +430,14 @@ final class SummonPanel: NSPanel {
         escape()
     }
 
-    /// Command-W, from the Window menu. The close button in the top bar does the same.
+    /// Command-W, from the Window menu. The last item in the top bar's menu does the same.
     override func performClose(_ sender: Any?) {
         closeButtonPressed()
     }
 
-    /// The close button and Command-W. The main panel hides and its task keeps going. The
-    /// incognito window closes and discards its conversation, after asking when a task runs.
+    /// The top bar menu's last item and Command-W. The main panel hides and its task keeps
+    /// going. The incognito window closes and discards its conversation, after asking when a
+    /// task runs.
     private func closeButtonPressed() {
         switch role {
         case .main: dismiss()
@@ -595,6 +607,32 @@ final class SummonPanel: NSPanel {
         updatePlacementFrames()
         placeInspector()
         if slide == nil, isPresented { reportMotion() }
+    }
+
+    /// A double click on the top bar. The panel goes back to its preset's frame on the screen
+    /// it is on, as if the owner had never moved or resized it there, and forgets what it
+    /// remembered for that preset. The frames come from `returnToPresetFrame()`, so they are
+    /// the ones the layout menu uses.
+    /// - Centered: the default size in the middle of the screen. The frame from before slide
+    ///   over is forgotten too.
+    /// - Slide over: the default width against its edge, which replaces the remembered width,
+    ///   so the panel comes back at it from Centered too.
+    /// - The incognito window: its opening size, beside the main panel. It remembers nothing.
+    ///
+    /// It moves at once, as choosing a preset does: the layouts have no animated move to share.
+    func resetToDefaultPlace() {
+        guard role == .main else {
+            placeOnActiveScreen(size: Self.incognitoSize)
+            updatePlacementFrames()
+            placeInspector()
+            return
+        }
+        if placement.preset.slideOverEdge != nil {
+            slideOverWidth = Self.defaultSize.width
+        } else {
+            centeredFrame = nil
+        }
+        returnToPresetFrame()
     }
 
     /// Puts a slide over panel in place at its edge of its screen, at the full height and the
@@ -797,16 +835,17 @@ final class SummonPanel: NSPanel {
 
     /// The default place on the screen that has the mouse. The incognito window goes beside
     /// the main panel instead, on the main panel's screen, when the main panel has a place.
-    private func placeOnActiveScreen() {
+    private func placeOnActiveScreen(size: CGSize? = nil) {
         let screens = screens()
+        let size = size ?? panelFrame.size
         if role == .incognito, let main = mainPanelFrame(),
            let index = PanelGeometry.screenIndex(for: main, among: screens.map(\.frame))
         {
-            place(PanelGeometry.besideFrame(size: panelFrame.size, beside: main, in: screens[index].visible))
+            place(PanelGeometry.besideFrame(size: size, beside: main, in: screens[index].visible))
             return
         }
         guard let visible = mouseScreen(screens)?.visible else { return }
-        place(PanelGeometry.defaultFrame(size: panelFrame.size, in: visible))
+        place(PanelGeometry.defaultFrame(size: size, in: visible))
     }
 
     /// Where the panel is when it has been placed, for a window that opens beside it.

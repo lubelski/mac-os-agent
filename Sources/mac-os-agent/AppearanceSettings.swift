@@ -9,6 +9,7 @@ struct AppearanceSettingsView: View {
     @Bindable var model: ThemeModel
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var deleting: ThemeEntry?
+    @AgentName private var agentName
 
     private let columns = [GridItem(.adaptive(minimum: 168, maximum: 240), spacing: 14, alignment: .top)]
 
@@ -27,7 +28,7 @@ struct AppearanceSettingsView: View {
                 let own = model.ownEntries
                 let readable = own.filter { $0.theme != nil }
                 if readable.isEmpty {
-                    Text("None yet. Duplicate a theme, put a theme file in the themes folder, or ask Iris to make one.")
+                    Text("None yet. Duplicate a theme, put a theme file in the themes folder, or ask \(agentName) to make one.")
                         .foregroundStyle(.secondary)
                 } else {
                     grid(readable)

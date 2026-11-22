@@ -93,7 +93,7 @@ struct RebuiltRowRenders {
 }
 
 /// Renders the top bar offscreen with Keep on Top off and on, in the main panel and the
-/// incognito window, for a pull request when screen capture is not available. Run with
+/// incognito window, and with another agent name, for a pull request when screen capture is not available. Run with
 /// MAC_OS_AGENT_RENDER_TOP_BAR set to a folder. The glass is drawn as its fallback fill.
 @MainActor
 @Suite(.enabled(if: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_TOP_BAR"] != nil))
@@ -106,20 +106,32 @@ struct TopBarRenders {
         defer { PanelTopBar.hostsAppKitViews = true }
         for scheme in [ColorScheme.dark, .light] {
             let palette = PanelPalette(theme: theme, dark: scheme == .dark, allowsGlass: false)
-            func bar(keepsOnTop: Bool, incognito: Bool) -> some View {
+            // The agent's name comes from preferences of the render's own.
+            let suite = "mac-os-agent-render-\(UUID().uuidString)"
+            let preferences = try #require(UserDefaults(suiteName: suite))
+            let namedSuite = suite + "-named"
+            let named = try #require(UserDefaults(suiteName: namedSuite))
+            named.set("Juno", forKey: AgentNameSetting.key)
+            defer {
+                preferences.removePersistentDomain(forName: suite)
+                named.removePersistentDomain(forName: namedSuite)
+            }
+            func bar(keepsOnTop: Bool, incognito: Bool, renamed: Bool = false, width: CGFloat = 480) -> some View {
                 let placement = PanelPlacement()
                 placement.keepsOnTop = keepsOnTop
                 placement.offersLayouts = !incognito
                 if !incognito { placement.setKeepsOnTop = { _ in } }
                 return PanelTopBar(incognito: incognito ? .init(canClear: true, clear: {}) : nil)
                     .environment(placement)
-                    .frame(width: 480)
+                    .defaultAppStorage(renamed ? named : preferences)
+                    .frame(width: width)
                     .background(incognito ? palette.incognitoTint : .clear)
             }
             let view = VStack(spacing: 8) {
                 bar(keepsOnTop: false, incognito: false)
                 bar(keepsOnTop: true, incognito: false)
                 bar(keepsOnTop: true, incognito: true)
+                bar(keepsOnTop: false, incognito: false, renamed: true, width: 640)
             }
             .padding(8)
             .foregroundStyle(palette.primary)

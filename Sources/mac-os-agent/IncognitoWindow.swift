@@ -7,10 +7,10 @@ import MacOSAgentCore
 /// It makes a new session and window when none is open, beside the main panel, and otherwise
 /// brings the open one forward with its text field focused. The main panel is never changed.
 ///
-/// The window lasts until the owner closes it. Closing it, with the close button or
-/// Command-W, ends its session: the controller lets go of the window and the session, and with
-/// them the loop, its in-memory store, and every row. Nothing about it was written anywhere,
-/// so nothing is left. Quitting the app does the same.
+/// The window lasts until the owner closes it. Closing it, with Close and Discard in its top
+/// bar's menu or Command-W, ends its session: the controller lets go of the window and the
+/// session, and with them the loop, its in-memory store, and every row. Nothing about it was
+/// written anywhere, so nothing is left. Quitting the app does the same.
 @MainActor
 final class IncognitoWindowController {
     private(set) var session: AgentSession?
@@ -80,7 +80,7 @@ final class IncognitoWindowController {
             episodeTimeout: { .infinity })
     }
 
-    /// Asks the open window to close, as its close button does: at once with no task running,
+    /// Asks the open window to close, as Close and Discard in its menu does: at once with no task running,
     /// and after the owner confirms with one.
     func requestClose() {
         session?.requestDiscard(.close)

@@ -227,23 +227,23 @@ final class StandInFocus {
         #expect(incognito.placement.keepsOnTop)
     }
 
-    @Test func theLayoutMenuHasKeepOnTopAfterThePresets() throws {
+    @Test func thePanelMenuHasKeepOnTopAfterThePresets() throws {
         var chosen: [Bool] = []
-        let layoutMenu = LayoutMenu(current: .centered, choose: { _ in }, keepsOnTop: true, setKeepsOnTop: { chosen.append($0) })
-        let menu = layoutMenu.menu
+        let panelMenu = PanelMenu(current: .centered, choose: { _ in }, keepsOnTop: true, setKeepsOnTop: { chosen.append($0) })
+        let menu = panelMenu.menu
         let titles = menu.items.map(\.title)
-        #expect(titles == PanelPreset.allCases.map(\.title) + ["", LayoutMenu.keepOnTopTitle])
+        #expect(titles == PanelPreset.allCases.map(\.title) + ["", PanelMenu.keepOnTopTitle, "", PanelMenu.hideTitle])
         #expect(menu.items[PanelPreset.allCases.count].isSeparatorItem)
-        let item = try #require(menu.items.last)
+        let item = try #require(menu.items.first { $0.title == PanelMenu.keepOnTopTitle })
         #expect(item.state == .on)
-        #expect(item.target === layoutMenu)
-        layoutMenu.toggledKeepOnTop(item)
+        #expect(item.target === panelMenu)
+        panelMenu.toggledKeepOnTop(item)
         #expect(chosen == [false])
     }
 
     @Test func aMenuWithoutTheSettingHasNoKeepOnTop() {
-        let menu = LayoutMenu(current: .centered, choose: { _ in }).menu
-        #expect(menu.items.map(\.title) == PanelPreset.allCases.map(\.title))
+        let menu = PanelMenu(current: .centered, choose: { _ in }).menu
+        #expect(menu.items.map(\.title) == PanelPreset.allCases.map(\.title) + ["", PanelMenu.hideTitle])
     }
 
     /// A slide over panel that dropped behind other windows still slides out when hidden, and

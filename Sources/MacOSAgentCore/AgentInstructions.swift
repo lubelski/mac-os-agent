@@ -2,8 +2,8 @@ import Foundation
 
 /// The instructions sent at the head of every request, in two parts.
 ///
-/// - The editable part is the person's to change in Settings. `defaultEditable` is what it
-///   holds until they do.
+/// - The editable part is the person's to change in Settings. `defaultEditable(named:)` is
+///   what it holds until they do, with the agent's name from `AgentNameSetting` in it.
 /// - The fixed part always follows it. It states what the app depends on to work correctly:
 ///   how the go-ahead for destructive commands works, the time at the start of each message,
 ///   and how skills are found and loaded. No edit can remove it.
@@ -12,8 +12,12 @@ import Foundation
 /// byte the same when nothing changed, or the prompt cache is lost. Nothing in it depends on
 /// the time, and skills are listed in a fixed order.
 public enum AgentInstructions {
-    public static let defaultEditable = """
-        You are Iris, the agent in the mac-os-agent app, and you live in the menu bar of the person's \
+    /// The default editable instructions, which tell the agent its name. A blank name is
+    /// the default name.
+    public static func defaultEditable(named name: String) -> String {
+        let name = AgentNameSetting.resolve(name)
+        return """
+        You are \(name), the agent in the mac-os-agent app, and you live in the menu bar of the person's \
         Mac. They summon you with a hotkey and type short instructions such as "change the wallpaper \
         to a sunset" or "delete zoom". You act on the Mac for them.
 
@@ -35,6 +39,10 @@ public enum AgentInstructions {
         sentences are best for a short answer. Use a heading only to split a longer answer.
         - Ask a question only when the instruction is ambiguous in a way that matters.
         """
+    }
+
+    /// The default editable instructions with the default name.
+    public static var defaultEditable: String { defaultEditable(named: AgentNameSetting.defaultName) }
 
     /// A skill as the instructions list it.
     public struct SkillSummary: Sendable, Equatable {
@@ -144,17 +152,30 @@ public enum AgentInstructions {
 }
 
 /// The editable instructions, kept as a file in Application Support. Until the person edits
-/// them there is no file, and the default applies.
+/// them there is no file, and the default applies, with the agent's name as it is set now.
+/// Saved instructions are the person's own text, so a name in them stays as they wrote it.
 public struct InstructionsStore: Sendable {
     public let fileURL: URL
+    /// The agent's name for the default instructions. Defaults to the setting in the app's
+    /// preferences.
+    public let agentName: @Sendable () -> String
 
-    public init(fileURL: URL = AgentPaths.instructionsFile) {
+    public init(
+        fileURL: URL = AgentPaths.instructionsFile,
+        agentName: @escaping @Sendable () -> String = { AgentNameSetting.current() }
+    ) {
         self.fileURL = fileURL
+        self.agentName = agentName
+    }
+
+    /// The default instructions with the agent's name as it is set now.
+    public var defaultText: String {
+        AgentInstructions.defaultEditable(named: agentName())
     }
 
     /// The editable instructions: the file's text exactly as saved, or the default.
     public func load() -> String {
-        (try? String(contentsOf: fileURL, encoding: .utf8)) ?? AgentInstructions.defaultEditable
+        (try? String(contentsOf: fileURL, encoding: .utf8)) ?? defaultText
     }
 
     /// True when the person has saved instructions of their own.
@@ -165,7 +186,7 @@ public struct InstructionsStore: Sendable {
     /// Saves the text exactly as given. Saving the default text removes the file instead, so a
     /// later change to the default reaches people who never changed it.
     public func save(_ text: String) throws {
-        if text == AgentInstructions.defaultEditable {
+        if text == defaultText {
             try restoreDefault()
             return
         }
@@ -189,7 +210,8 @@ public struct AgentPrompt: Sendable {
         self.skills = skills
     }
 
-    /// The full instructions as they stand now.
+    /// The full instructions as they stand now. Read once per request, so the name and the
+    /// skills in them stay the same through the request's tool calls.
     public func current() -> String {
         AgentInstructions.assemble(
             editable: instructions.load(),
