@@ -15,7 +15,7 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
 - Use "Sign in with ChatGPT" in the menu bar menu or in Settings before the first instruction.
 - Settings opens from the menu bar menu, or with Command-comma while one of the app's windows is in front.
 - `scripts/capture-panel-previews.sh` shows the panel in a few stand-in states and captures each one, for pull request screenshots. `--backdrop` captures it over a busy page instead, which shows the glass and its edges. Each preview quits on its own after a few seconds and never takes keyboard focus.
-- `scripts/capture-settings-previews.sh` does the same for each Settings pane, against a temporary data folder with sample skills.
+- `scripts/capture-settings-previews.sh` does the same for each Settings section, against a temporary data folder with sample skills, usage lines, and a thread file. `--preview-settings <section>` shows one section, and `--preview-item <name>` selects a skill or tool in it.
 - `--data-folder <path>` points the app at another folder instead of `~/Library/Application Support/mac-os-agent/`, for checking a build without touching the real thread.
 
 ## Decided
@@ -41,12 +41,18 @@ The first slice is built: a menu bar item, a hotkey, a panel, one flat thread, a
   - Built-in tools are a fixed, ordered list. New built-in tools go at the end. Tools from other sources will go after the built-ins, sorted by name.
   - The built-in tools are a shell command, three app tools (search the installed apps by a loose name, open an app or bring it to the front, and list the running apps), and a tool that loads a skill.
 - Settings
-  - A standard Settings window with General, Instructions, and Skills panes. An MCP pane comes next, in its own pull request.
+  - A Settings window with a sidebar of sections on the left and the selected section beside it, in the style of System Settings. The sections are General, Instructions, Skills, Tools, and Debugging.
+  - The window keeps one size whichever section is showing. It opens at 900 by 620 points, the owner can resize it down to 760 by 480, and it comes back at the size and place it was left. A section scrolls inside the window when it does not fit. The last section shown opens again next time.
+  - Debugging is always the last section. New sections, such as MCP servers, go above it.
   - General holds the sign-in, the model, and the summon shortcut, which is shown but not editable yet.
+  - Skills is a list of every skill, with a filter, beside the selected skill's detail: its description, on or off, its problem if the file is broken, the files in its folder, and its `SKILL.md` for reading. Editing happens in the owner's editor.
+  - Tools lists the agent's tools in the order the model sees them, grouped by where they come from, with each tool's description as sent, its parameters, and whether it asks for a go-ahead. It is read-only. Tools from an MCP server will be a group of their own.
+  - Debugging is read-only. It shows recent model requests with their token counts and duration, the prompt's size and fingerprint, the sign-in state, the thread file's size and entry count, problems since launch, and the build and how it is signed. Copy Diagnostics puts the same as plain text on the clipboard, without message content or secrets.
 - Measuring prompt caching
   - The app reads the token counts from each model response: input, cached input, output, and reasoning. They pass through the provider seam in a provider-neutral shape.
   - Each model request adds one line to `usage.jsonl` in Application Support with the time, provider, model, and counts. It holds no message content and is kept apart from the thread.
-  - General in Settings shows the last request and today's total, with the cached share as a percentage.
+  - Each line also records how long the request took and a fingerprint of the instructions and tool list sent with it, so a change that restarted the cache shows up.
+  - Debugging in Settings shows the recent requests and today's total, with the cached share as a percentage.
 - Instructions the owner can edit
   - The system prompt has two parts. The editable part is a file, `instructions.md` in Application Support, and the default applies until the owner saves an edit.
   - A fixed part always follows it. It covers what the app needs to work correctly: how the destructive flag and the go-ahead work, the time at the start of each message, and how skills are found, loaded, and written.

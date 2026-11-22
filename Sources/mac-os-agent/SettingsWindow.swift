@@ -87,8 +87,10 @@ struct SettingsRootView: View {
             .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
             .toolbar(removing: .sidebarToggle)
         } detail: {
+            // A minimum of zero keeps a section's ideal size, such as a long line in the
+            // instructions editor, from pushing the window or the sidebar around.
             detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                 .navigationTitle(navigation.section.title)
         }
     }
@@ -155,6 +157,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.contentViewController = hosting
         window.setContentSize(Self.defaultSize)
         window.contentMinSize = Self.minimumSize
+        // A toolbar gives the split view its full-height Liquid Glass sidebar. SwiftUI fills it.
+        window.toolbar = NSToolbar(identifier: "Settings")
         window.toolbarStyle = .unified
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenNone]
         window.isReleasedWhenClosed = false
@@ -224,6 +228,7 @@ enum SettingsPreview {
         if let item {
             controller.models.skills.selection = item
             controller.models.tools.selection = item
+            controller.models.debugging.scrollTarget = item
         }
         controller.show(section, takeFocus: false)
         controller.models.debugging.reload()

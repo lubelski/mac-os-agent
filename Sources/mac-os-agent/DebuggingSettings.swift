@@ -16,6 +16,8 @@ final class DebuggingSettingsModel {
     @ObservationIgnored let signInStatus: @Sendable () async -> SignInStatus?
     @ObservationIgnored let defaults: UserDefaults
     @ObservationIgnored private var loading: Task<Void, Never>?
+    /// A part to scroll to when the section appears, such as "sign-in". Used by previews.
+    @ObservationIgnored var scrollTarget: String?
 
     init(
         prompt: AgentPrompt, usageLog: UsageLog, tools: ToolRegistry, problems: ProblemLog,
@@ -91,6 +93,16 @@ struct DebuggingSettingsView: View {
     }
 
     private func form(_ report: DiagnosticsReport) -> some View {
+        ScrollViewReader { proxy in
+            sections(report)
+                .task {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    if let target = model.scrollTarget { proxy.scrollTo(target, anchor: .top) }
+                }
+        }
+    }
+
+    private func sections(_ report: DiagnosticsReport) -> some View {
         Form {
             Section {
                 HStack {
@@ -119,7 +131,7 @@ struct DebuggingSettingsView: View {
                 LabeledContent("Fingerprint") {
                     Text(report.prompt.fingerprint).font(.body.monospaced()).textSelection(.enabled)
                 }
-                LabeledContent("Unchanged since", value: Self.time(report.prompt.unchangedSince))
+                LabeledContent("Unchanged since", value: Self.time(report.prompt.unchangedSince, none: "Not recorded yet"))
                 LabeledContent("Tools", value: "\(report.tools)")
                 LabeledContent("Skills", value: "\(report.skills.total), \(report.skills.on) on, \(report.skills.withProblems) with problems")
                 HStack {
@@ -148,6 +160,7 @@ struct DebuggingSettingsView: View {
                     Text("Not available.").foregroundStyle(.secondary)
                 }
             }
+            .id("sign-in")
             Section("Thread") {
                 LabeledContent("File") {
                     Text(report.thread.path)
@@ -167,6 +180,7 @@ struct DebuggingSettingsView: View {
                     Button("Show in Finder") { model.showThreadFile() }
                 }
             }
+            .id("thread")
             Section("Problems since launch") {
                 if report.problems.isEmpty {
                     Text("None.").foregroundStyle(.secondary)
@@ -181,6 +195,7 @@ struct DebuggingSettingsView: View {
                     }
                 }
             }
+            .id("problems")
             Section("Build") {
                 LabeledContent("Version", value: "\(report.build.version) (\(report.build.build))")
                 LabeledContent("Commit") {
@@ -191,6 +206,7 @@ struct DebuggingSettingsView: View {
                 }
                 LabeledContent("System", value: report.system)
             }
+            .id("build")
         }
         .formStyle(.grouped)
         .onChange(of: report.date) { copied = false }

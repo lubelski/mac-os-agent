@@ -131,6 +131,7 @@ struct InstructionsSettingsView: View {
                 .foregroundStyle(.secondary)
             TextEditor(text: $model.draft)
                 .font(.body)
+                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 120, maxHeight: .infinity)
                 .scrollContentBackground(.hidden)
                 .padding(8)
                 .background(.background.secondary, in: .rect(cornerRadius: 10))

@@ -90,11 +90,11 @@ struct ToolDetailView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                LabeledContent("Asks for a go-ahead", value: tool.goAhead.label)
-                Text(tool.goAhead.explanation)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Asks for a go-ahead").font(.headline)
+                    Text("\(tool.goAhead.label). \(tool.goAhead.explanation)")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Description sent to the model").font(.headline)

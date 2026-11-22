@@ -7,13 +7,14 @@
 #   scripts/capture-settings-previews.sh [output folder]
 #
 # BIN picks another build, and SECTIONS another list of sections. An entry with a colon, such
-# as skills:half-written, selects that skill or tool in its section.
+# as skills:half-written, selects that skill or tool in its section, or scrolls Debugging
+# to that part, as debugging:sign-in does.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 BIN="${BIN:-build/mac-os-agent.app/Contents/MacOS/mac-os-agent}"
 OUT="${1:-docs/screenshots}"
-SECTIONS="${SECTIONS:-general instructions skills skills:half-written tools debugging}"
+SECTIONS="${SECTIONS:-general instructions skills skills:half-written tools debugging debugging:sign-in}"
 mkdir -p "$OUT"
 
 WORK="$(mktemp -d)"

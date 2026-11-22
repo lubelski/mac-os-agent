@@ -98,11 +98,18 @@ struct SkillsSettingsView: View {
                     } else if model.filteredSkills.isEmpty {
                         ContentUnavailableView.search(text: model.filter)
                     } else {
-                        List(model.filteredSkills, selection: $model.selection) { skill in
-                            SkillRow(skill: skill).tag(skill.id)
+                        ScrollViewReader { proxy in
+                            List(model.filteredSkills, selection: $model.selection) { skill in
+                                SkillRow(skill: skill).tag(skill.id).id(skill.id)
+                            }
+                            .listStyle(.inset)
+                            .scrollContentBackground(.hidden)
+                            .task {
+                                // Waits a moment for the rows, then brings the selected skill into view.
+                                try? await Task.sleep(for: .milliseconds(100))
+                                if let selection = model.selection { proxy.scrollTo(selection, anchor: .center) }
+                            }
                         }
-                        .listStyle(.inset)
-                        .scrollContentBackground(.hidden)
                     }
                 }
                 .frame(maxHeight: .infinity)
