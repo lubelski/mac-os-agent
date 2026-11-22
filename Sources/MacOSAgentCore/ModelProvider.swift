@@ -24,6 +24,8 @@ public enum ModelStreamEvent: Sendable, Equatable {
     case toolCallStarted(callID: String, name: String)
     /// A finished piece of the reply, ready to be added to the thread.
     case item(ThreadItem)
+    /// The token counts for the request, reported once it is complete.
+    case usage(TokenUsage, provider: String, model: String)
 }
 
 /// The seam between the loop and a model API. The loop knows nothing about any one API.

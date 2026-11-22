@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var hotKeyRegistered = false
     private var settings: SettingsWindowController!
     private let prompt = AgentPrompt()
+    private let usageLog = UsageLog()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let installationID = AgentPaths.installationID()
@@ -29,7 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             loop = AgentLoop(
                 provider: provider, thread: thread,
                 tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills)).tools,
-                instructions: { prompt.current() })
+                instructions: { prompt.current() },
+                usageLog: usageLog)
         } catch {
             startupError = error
         }
@@ -46,7 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         hotKey = SummonHotKey { [weak self] in self?.panel.toggle() }
         hotKeyRegistered = hotKey.register()
-        settings = SettingsWindowController(session: session, prompt: prompt, shortcutAvailable: hotKeyRegistered)
+        settings = SettingsWindowController(
+            session: session, prompt: prompt, usageLog: usageLog, shortcutAvailable: hotKeyRegistered)
         log.notice("Hotkey \(SummonShortcut.displayName, privacy: .public) registered: \(self.hotKeyRegistered, privacy: .public). Status item button: \(self.statusItem.button != nil, privacy: .public)")
 
         Task { await session.start() }

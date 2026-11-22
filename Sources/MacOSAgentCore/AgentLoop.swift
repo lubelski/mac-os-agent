@@ -34,19 +34,23 @@ public final class AgentLoop: Sendable {
     /// new skill applies from the next instruction and the text stays the same while one runs.
     public let instructions: @Sendable () async -> String
     public let maximumModelReplies: Int
+    /// Where each request's token counts go. Nil keeps no record.
+    public let usageLog: UsageLog?
 
     public init(
         provider: any ModelProvider,
         thread: ThreadStore,
         tools: [any AgentTool],
         instructions: @escaping @Sendable () async -> String = { AgentInstructions.defaultPrompt },
-        maximumModelReplies: Int = 40
+        maximumModelReplies: Int = 40,
+        usageLog: UsageLog? = nil
     ) {
         self.provider = provider
         self.thread = thread
         self.tools = tools
         self.instructions = instructions
         self.maximumModelReplies = maximumModelReplies
+        self.usageLog = usageLog
     }
 
     public convenience init(
@@ -88,6 +92,8 @@ public final class AgentLoop: Sendable {
                     await onEvent(.textDelta(text))
                 case .toolCallStarted(let callID, let name):
                     await onEvent(.toolCallStarted(callID: callID, name: name))
+                case .usage(let usage, let providerName, let model):
+                    usageLog?.append(UsageRecord(date: Date(), provider: providerName, model: model, usage: usage))
                 case .item(let item):
                     if case .toolCall(let call) = item { calls.append(call) }
                     await onEvent(.entryAdded(try await thread.append(item)))

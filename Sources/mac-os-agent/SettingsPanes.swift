@@ -5,9 +5,46 @@ import SwiftUI
 
 // MARK: - General
 
+@MainActor
+@Observable
+final class UsageSummaryModel {
+    private(set) var last: UsageRecord?
+    private(set) var today = UsageTotals()
+    @ObservationIgnored let log: UsageLog
+
+    init(log: UsageLog) {
+        self.log = log
+        reload()
+    }
+
+    func reload() {
+        (last, today) = log.summary()
+    }
+
+    static func tokens(_ count: Int) -> String {
+        count.formatted(.number)
+    }
+
+    static func percent(_ share: Double) -> String {
+        share.formatted(.percent.precision(.fractionLength(0)))
+    }
+
+    var lastText: String {
+        guard let last else { return "No requests yet" }
+        return "\(Self.tokens(last.input)) in, \(Self.percent(last.usage.cachedShare)) cached, \(Self.tokens(last.output)) out"
+    }
+
+    var todayText: String {
+        guard today.requests > 0 else { return "No requests yet" }
+        let requests = today.requests == 1 ? "1 request" : "\(today.requests) requests"
+        return "\(requests), \(Self.tokens(today.input)) in, \(Self.percent(today.cachedShare)) cached"
+    }
+}
+
 struct GeneralSettingsView: View {
     let session: AgentSession
     let shortcutAvailable: Bool
+    let usage: UsageSummaryModel
     @AppStorage(ModelSetting.key) private var model = OpenAIModel.defaultID
 
     var body: some View {
@@ -45,6 +82,15 @@ struct GeneralSettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Section {
+                LabeledContent("Last request", value: usage.lastText)
+                LabeledContent("Today", value: usage.todayText)
+            } header: {
+                Text("Prompt caching")
+            } footer: {
+                Text("Cached input is the part of each request the model reused from earlier ones. Counts come from usage.jsonl in Application Support.")
+                    .foregroundStyle(.secondary)
+            }
+            Section {
                 LabeledContent("Show or hide the panel") {
                     Text(SummonShortcut.displayName)
                 }
@@ -58,7 +104,8 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 280)
+        .frame(width: 560, height: 440)
+        .onAppear { usage.reload() }
     }
 }
 

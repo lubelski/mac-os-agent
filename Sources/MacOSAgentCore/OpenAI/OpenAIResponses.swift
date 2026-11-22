@@ -102,6 +102,17 @@ public enum OpenAIResponses {
         return formatter.string(from: date)
     }
 
+    /// Reads the `usage` object of a finished response. OpenAI counts cached tokens inside
+    /// `input_tokens` and reasoning tokens inside `output_tokens`, the same as `TokenUsage`.
+    public static func usage(from response: JSONValue?) -> TokenUsage? {
+        guard let usage = response?["usage"], let input = usage["input_tokens"]?.numberValue else { return nil }
+        return TokenUsage(
+            inputTokens: Int(input),
+            cachedInputTokens: Int(usage["input_tokens_details"]?["cached_tokens"]?.numberValue ?? 0),
+            outputTokens: Int(usage["output_tokens"]?.numberValue ?? 0),
+            reasoningTokens: usage["output_tokens_details"]?["reasoning_tokens"]?.numberValue.map { Int($0) })
+    }
+
     public enum StreamError: Error, Equatable, LocalizedError {
         case failed(String)
         case incomplete(String)
@@ -140,12 +151,14 @@ public enum OpenAIResponses {
                 if let item = event["item"], let finished = finishedItem(item) { return [.item(finished)] }
             case "response.completed":
                 sawTerminalEvent = true
+                return usageEvent(event["response"])
             case "response.incomplete":
                 sawTerminalEvent = true
                 let reason = event["response"]?["incomplete_details"]?["reason"]?.stringValue
                 if reason != "max_output_tokens" {
                     throw StreamError.incomplete(reason ?? "no reason given")
                 }
+                return usageEvent(event["response"])
             case "response.failed":
                 sawTerminalEvent = true
                 let error = event["response"]?["error"]
@@ -165,6 +178,11 @@ public enum OpenAIResponses {
         /// Call when the stream ends. Throws when no terminal event arrived.
         public func finish() throws {
             if !sawTerminalEvent { throw StreamError.endedEarly }
+        }
+
+        private func usageEvent(_ response: JSONValue?) -> [ModelStreamEvent] {
+            guard let usage = OpenAIResponses.usage(from: response) else { return [] }
+            return [.usage(usage, provider: providerName, model: model)]
         }
 
         private func finishedItem(_ item: JSONValue) -> ThreadItem? {
