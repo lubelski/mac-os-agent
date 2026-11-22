@@ -8,6 +8,9 @@ import SwiftUI
 struct GeneralSettingsView: View {
     let session: AgentSession
     @Bindable var shortcut: ShortcutRecorderModel
+    let updater: AppUpdater
+    /// Read from Sparkle when the section appears. Sparkle keeps it in its own preferences.
+    @State private var updatesAutomatically = false
     @AppStorage(ModelSetting.key) private var model = OpenAIModel.defaultID
     @AppStorage(EpisodeTimeoutSetting.key) private var episodeTimeout = EpisodeTimeoutSetting.defaultMinutes
     @AppStorage(AgentNameSetting.key) private var agentName = ""
@@ -91,8 +94,36 @@ struct GeneralSettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            Section {
+                if updater.isAvailable {
+                    Toggle("Update automatically", isOn: Binding(
+                        get: { updatesAutomatically },
+                        set: {
+                            updater.updatesAutomatically = $0
+                            updatesAutomatically = $0
+                        }
+                    ))
+                }
+                LabeledContent("Version") {
+                    HStack {
+                        Text(AppUpdates.version(Bundle.main.infoDictionary))
+                            .textSelection(.enabled)
+                        if updater.isAvailable {
+                            Button("Check for Updates…") { updater.checkForUpdates() }
+                        }
+                    }
+                }
+            } header: {
+                Text("Updates")
+            } footer: {
+                Text(updater.isAvailable
+                     ? "Checks about once a day, downloads a newer release, and relaunches into it. While a task runs, waits for a go-ahead, has queued messages, or an incognito conversation is open, the relaunch waits until it ends. Check for Updates is also in the menu bar menu."
+                     : "This build does not update itself. Only a release build does.")
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
+        .onAppear { updatesAutomatically = updater.updatesAutomatically }
     }
 }
 

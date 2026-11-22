@@ -89,6 +89,7 @@ struct SettingsModels {
     let tools: ToolsSettingsModel
     let history: HistorySettingsModel
     let debugging: DebuggingSettingsModel
+    let updater: AppUpdater
 }
 
 /// The window's content: a sidebar of sections and the selected section beside it. The window's
@@ -133,7 +134,7 @@ struct SettingsRootView: View {
     @ViewBuilder private var detail: some View {
         switch navigation.section {
         case .general:
-            GeneralSettingsView(session: models.session, shortcut: models.shortcut)
+            GeneralSettingsView(session: models.session, shortcut: models.shortcut, updater: models.updater)
         case .appearance:
             AppearanceSettingsView(model: ThemeModel.shared)
         case .instructions:
@@ -177,7 +178,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         history: ThreadStore?, problems: ProblemLog, signInStatus: @escaping @Sendable () async -> SignInStatus?,
         summonTrigger: SummonTriggerController, defaults: UserDefaults = .standard, remembersFrame: Bool = true,
         privacyAccess: any PrivacyAccessGate = EventKitStore.shared,
-        actions: SavedActionLibrary = SavedActionLibrary()
+        actions: SavedActionLibrary = SavedActionLibrary(),
+        updater: AppUpdater = .unavailable()
     ) {
         models = SettingsModels(
             session: session,
@@ -190,7 +192,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             history: HistorySettingsModel(history: history),
             debugging: DebuggingSettingsModel(
                 prompt: prompt, usageLog: usageLog, tools: tools, problems: problems,
-                signInStatus: signInStatus, defaults: defaults))
+                signInStatus: signInStatus, defaults: defaults),
+            updater: updater)
 
         let root = SettingsRootView(models: models, navigation: models.navigation)
             .defaultAppStorage(defaults)

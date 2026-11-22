@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var settings: SettingsWindowController!
     private let prompt = AgentPrompt()
     private let usageLog = UsageLog()
+    /// Created at launch, so it checks on its own schedule. In a build with no feed it does nothing.
+    private var updater: AppUpdater!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let installationID = AgentPaths.installationID()
@@ -103,10 +105,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let startupError {
             session.problems.record("Startup", "Could not open the thread: \(startupError.localizedDescription)")
         }
+        updater = AppUpdater { [weak self] in self?.relaunchActivity() ?? .init() }
         settings = SettingsWindowController(
             session: session, prompt: prompt, usageLog: usageLog, tools: tools, history: thread, problems: session.problems,
             signInStatus: { await authenticator.status() },
-            summonTrigger: summonTrigger)
+            summonTrigger: summonTrigger, updater: updater)
         log.notice("Hotkey \(self.summonTrigger.displayName ?? "none", privacy: .public) registered: \(self.summonTrigger.isRegistered, privacy: .public). Status item button: \(self.statusItem.button != nil, privacy: .public)")
 
         Task { await session.start() }
@@ -156,6 +159,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.button?.image = image
         // The tooltip names the shortcut, read when the pointer rests on the icon.
         statusItem.button?.toolTip = summonTrigger?.displayName.map { "\(description)\n\($0) shows or hides the panel" } ?? description
+        // A task ending, a go-ahead answered, or the incognito window closing can be what an
+        // update that is ready was waiting for.
+        updater?.installPendingUpdate()
+    }
+
+    /// What a relaunch into an update would cut off, in either window.
+    private func relaunchActivity() -> AppUpdates.Activity {
+        let sessions = [session, incognito?.session].compactMap { $0 }
+        return AppUpdates.Activity(
+            taskRunning: sessions.contains { $0.isRunning },
+            waitingForGoAhead: sessions.contains { $0.pendingConfirmation != nil },
+            queuedMessages: sessions.contains { !$0.queue.isEmpty },
+            incognitoConversation: incognito?.session?.transcript.rows.contains { !$0.isEpisodeStart } == true)
     }
 
     // MARK: - Menu
@@ -226,6 +242,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settingsItem.keyEquivalent = ","
         menu.addItem(settingsItem)
         menu.addItem(item("Show Thread in Finder", #selector(showThread)))
+        // Only a release build has a feed. A development build never updates itself, so it
+        // has no item.
+        if updater.isAvailable {
+            menu.addItem(updater.canCheck
+                ? item("Check for Updates…", #selector(checkForUpdates))
+                : disabledItem("Check for Updates…"))
+        }
         menu.addItem(NSMenuItem(title: "Quit mac-os-agent", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
 
@@ -256,6 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func openIncognito() {
         incognito.open()
     }
+    @objc private func checkForUpdates() { updater.checkForUpdates() }
     @objc private func signIn() { session.signIn() }
     @objc private func cancelSignIn() { session.cancelSignIn() }
     @objc private func signOut() { session.signOut() }
