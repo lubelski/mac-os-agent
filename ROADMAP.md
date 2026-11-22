@@ -211,7 +211,8 @@ When a decision changes, move it between the lists here in the same pull request
   - The go-ahead card and the Stop button sit by the text field, outside the scrolling history.
   - Hiding the panel never stops a task. The menu bar icon shows when a task is running or waiting for a go-ahead. A Stop button and a menu item end it.
 - A stable signing identity
-  - The build script signs with a self-signed certificate named `mac-os-agent development` when the keychain has one, so every build is the same app to macOS and Keychain and permission grants survive a rebuild. Without it the script signs ad hoc.
+  - The build script signs with a self-signed certificate named `mac-os-agent development` when the keychain has one, so every build is the same app to macOS and permission grants survive a rebuild. Without it the script signs ad hoc.
+  - The sign-in is kept in `secrets.json` in the data folder, readable only by the owner, not in the Keychain. The Keychain asked twice after every rebuild, because without an Apple team identifier it ties "Always Allow" to the exact build. The cost is that any process running as the owner can read the file. A Developer ID certificate would let it move back.
   - The certificate lives in the owner's login keychain. It is machine setup and not in this repo.
 - State lives where Mac apps keep theirs
   - Thread records, tool definitions, and everything else the agent owns go in `~/Library/Application Support/mac-os-agent/`.

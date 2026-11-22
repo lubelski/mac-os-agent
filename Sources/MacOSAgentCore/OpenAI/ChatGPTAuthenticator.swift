@@ -21,7 +21,7 @@ public struct URLSessionTransport: HTTPTransport {
 
 /// Holds the ChatGPT sign-in: runs the browser flow, keeps the access token in memory, and
 /// refreshes it ahead of expiry. The refresh token and the issued client id are kept in the
-/// Keychain. The access token is never written anywhere.
+/// secret store, a file in the data folder. The access token is never written anywhere.
 public actor ChatGPTAuthenticator {
     public static let refreshTokenKey = "chatgpt-refresh-token"
     public static let clientIDKey = "chatgpt-client-id"
@@ -37,7 +37,7 @@ public actor ChatGPTAuthenticator {
     private var lastError: (date: Date, message: String)?
 
     public init(
-        secrets: any SecretStore = KeychainSecrets(),
+        secrets: any SecretStore,
         installationID: UUID,
         transport: any HTTPTransport = URLSessionTransport(),
         now: @escaping @Sendable () -> Date = { Date() }

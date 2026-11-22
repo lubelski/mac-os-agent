@@ -140,7 +140,7 @@ public struct BuildInfo: Sendable, Equatable {
     public static func describeSigning(isSigned: Bool, isAdHoc: Bool, teamID: String?) -> String {
         if !isSigned { return "Not signed" }
         if isAdHoc {
-            return "Signed ad hoc, so macOS may ask again for Keychain and permission access after each build"
+            return "Signed ad hoc, so macOS may ask again for permission access after each build"
         }
         if let teamID { return "Signed by team \(teamID)" }
         return "Signed"

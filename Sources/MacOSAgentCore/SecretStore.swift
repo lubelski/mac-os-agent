@@ -9,7 +9,8 @@ public protocol SecretStore: Sendable {
     func delete(_ key: String)
 }
 
-/// Generic password items under mac-os-agent's own service name, in the login Keychain.
+/// Generic password items under mac-os-agent's own service name, in the login Keychain. The
+/// app no longer uses it. See `FileSecrets`.
 public struct KeychainSecrets: SecretStore {
     public static let service = "dev.lubelski.mac-os-agent"
 
@@ -58,10 +59,10 @@ public struct KeychainSecrets: SecretStore {
     }
 }
 
-/// Secrets in a file inside a data folder named with `--data-folder`, readable only by the
-/// owner. A run against another data folder is a preview, a test, or a manual check, and it
-/// must not read the real sign-in from the Keychain: macOS asks the owner for access for every
-/// build that does, and the real sign-in is not that run's to use.
+/// Secrets in `secrets.json` in the data folder, readable only by the owner. This is where the
+/// app keeps its sign-in. The Keychain ties "Always Allow" to the exact build for an app with
+/// no Apple team identifier, so it asked the owner twice after every rebuild. The cost of the
+/// file is that any process running as the owner can read it.
 public final class FileSecrets: SecretStore, @unchecked Sendable {
     private let fileURL: URL
     private let lock = NSLock()
@@ -101,14 +102,8 @@ public final class FileSecrets: SecretStore, @unchecked Sendable {
 }
 
 extension AgentPaths {
-    /// Whether this run was pointed at another data folder with `--data-folder`.
-    public static var usesAnotherDataFolder: Bool { dataFolder(from: CommandLine.arguments) != nil }
+    public static var secretsFile: URL { applicationSupport.appending(path: "secrets.json") }
 
-    /// Where this run keeps secrets: the Keychain, or a file in the data folder when the run
-    /// was pointed at another one, so only the installed app ever asks for the Keychain.
-    public static func secretStore() -> any SecretStore {
-        usesAnotherDataFolder
-            ? FileSecrets(fileURL: applicationSupport.appending(path: "secrets.json"))
-            : KeychainSecrets()
-    }
+    /// Where this run keeps secrets: a file in its data folder, never the Keychain.
+    public static func secretStore() -> any SecretStore { FileSecrets(fileURL: secretsFile) }
 }
