@@ -112,7 +112,7 @@ import Testing
         // Well inside the 10 second grace period, so SIGTERM alone ended them.
         let deadline = ContinuousClock.now + .seconds(3)
         while killpg(group, 0) == 0, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
-        let left = killpg(group, 0) == 0 || errno != ESRCH
+        let left = killpg(group, 0) == 0
         if left {
             // What is left, for the failure message.
             let ps = Process()

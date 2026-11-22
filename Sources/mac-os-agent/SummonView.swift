@@ -98,9 +98,10 @@ struct SummonView: View {
             if session.isRunning {
                 HStack(spacing: 10) {
                     ProgressView().controlSize(.small)
+                    // Command-Period reaches it through Stop in the main menu.
                     Button("Stop", action: session.stop)
                         .buttonStyle(.glass)
-                        .keyboardShortcut(".", modifiers: .command)
+                        .help("Stop the task (Command-Period)")
                 }
                 .frame(height: InputField.rowHeight)
             }
