@@ -92,11 +92,37 @@ public enum ToolCallInput {
             case literal(String)
             /// An object or array, pretty printed.
             case structured(JSONNode)
+            /// An array of objects whose values are all plain, such as the change tools'
+            /// `changes`: each object as its fields that are not null, in the model's order.
+            case records([[Pair]])
         }
 
         public var id: String { name }
         public var name: String
         public var value: Value
+    }
+
+    /// One field of a record, with a string shown without quotes.
+    public struct Pair: Equatable, Sendable {
+        public var key: String
+        public var value: String
+    }
+
+    /// The records in an array of flat objects, or nil when any item is not a flat object.
+    static func records(_ node: JSONNode) -> [[Pair]]? {
+        guard case .array(let items) = node, !items.isEmpty else { return nil }
+        var records: [[Pair]] = []
+        for item in items {
+            guard case .object(let members) = item else { return nil }
+            var pairs: [Pair] = []
+            for member in members {
+                guard case .scalar(let text) = member.value else { return nil }
+                if text == "null" { continue }
+                pairs.append(Pair(key: JSONNode.scalar(member.key).stringValue ?? member.key, value: member.value.stringValue ?? text))
+            }
+            records.append(pairs)
+        }
+        return records
     }
 
     /// The arguments as labeled fields, in the order the model wrote them. Nil when they are not
@@ -112,6 +138,7 @@ public enum ToolCallInput {
                 }
                 return Field(name: name, value: .literal(text))
             case .array, .object:
+                if let records = records(member.value) { return Field(name: name, value: .records(records)) }
                 return Field(name: name, value: .structured(member.value))
             }
         }

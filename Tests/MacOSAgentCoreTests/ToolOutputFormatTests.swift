@@ -209,6 +209,17 @@ import Testing
         #expect(shape(text) == .plain)
     }
 
+    @Test func lsofOutputBecomesColumns() throws {
+        let text = """
+            COMMAND     PID  USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+            Safari      812 owner   23u  IPv4 0x8f2a1c3e9b0d4f11      0t0  TCP 192.168.1.20:51234->17.253.144.10:443 (ESTABLISHED)
+            Slack      1022 owner   88u  IPv4 0x8f2a1c3e9b0d6b33      0t0  TCP 192.168.1.20:51301->52.4.21.9:443 (ESTABLISHED)
+            """
+        let table = try #require(table(text))
+        #expect(table.header == ["COMMAND", "PID", "USER", "FD", "TYPE", "DEVICE", "SIZE/OFF", "NODE", "NAME"])
+        #expect(table.rows[1].last == "192.168.1.20:51301->52.4.21.9:443 (ESTABLISHED)")
+    }
+
     @Test func raggedColumnsStayText() {
         let text = """
             NAME   SIZE
@@ -367,8 +378,18 @@ import Testing
         #expect(fields[0].value == .text("safari"))
         #expect(fields[1].value == .literal("null"))
         #expect(fields[3].value == .text("line\nbreak"))
-        guard case .structured(let node) = fields[2].value else { Issue.record("not structured"); return }
-        #expect(node.prettyText().contains("\"completed\": true"))
+        #expect(fields[2].value == .records([[.init(key: "id", value: "3f9a2c1b"), .init(key: "completed", value: "true")]]))
+    }
+
+    @Test func anArrayOfFlatObjectsBecomesRecordsWithoutNulls() throws {
+        let fields = try #require(ToolCallInput.fields(#"{"changes":[{"id":"3f9a2c1b","completed":true,"title":null},{"id":null,"title":"Water the plants"}]}"#))
+        #expect(fields[0].value == .records([
+            [.init(key: "id", value: "3f9a2c1b"), .init(key: "completed", value: "true")],
+            [.init(key: "title", value: "Water the plants")],
+        ]))
+        // A nested object inside keeps the JSON view.
+        let nested = try #require(ToolCallInput.fields(#"{"changes":[{"id":"a","alarm":{"minutes":5}}]}"#))
+        guard case .structured = nested[0].value else { Issue.record("expected JSON"); return }
     }
 
     @Test func argumentsThatAreNotAnObjectHaveNoFields() {

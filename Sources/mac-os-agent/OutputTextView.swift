@@ -94,6 +94,9 @@ final class LineNumberRuler: NSRulerView {
         super.init(scrollView: nil, orientation: .verticalRuler)
         clientView = textView
         ruleThickness = 36
+        // Without this the default drawing reaches past the gutter, as a line and a band
+        // across the rest of the inspector.
+        clipsToBounds = true
         NotificationCenter.default.addObserver(
             self, selector: #selector(redraw), name: NSView.boundsDidChangeNotification, object: nil)
         NotificationCenter.default.addObserver(
@@ -116,6 +119,13 @@ final class LineNumberRuler: NSRulerView {
     }
 
     @objc private func redraw() { needsDisplay = true }
+
+    override var isOpaque: Bool { false }
+
+    /// Only the numbers: no background and no rule, so the gutter sits on the glass.
+    override func draw(_ dirtyRect: NSRect) {
+        drawHashMarksAndLabels(in: dirtyRect)
+    }
 
     override func drawHashMarksAndLabels(in rect: NSRect) {
         guard let textView, let layoutManager = textView.textLayoutManager,

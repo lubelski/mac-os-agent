@@ -110,7 +110,10 @@ private struct InspectorMetadata: View {
     }
 
     static func time(_ date: Date) -> String {
-        "\(TranscriptTimeLabel.episodeText(for: date, now: Date())), \(date.formatted(.dateTime.second(.twoDigits)))s"
+        // To the second, with the day when it was not today: "10:24:34 PM", "Nov 3, 10:24:34 PM".
+        let time = date.formatted(.dateTime.hour().minute().second())
+        if Calendar.current.isDateInToday(date) { return time }
+        return "\(date.formatted(.dateTime.month(.abbreviated).day().year())), \(time)"
     }
 }
 
@@ -167,10 +170,14 @@ private struct ArgumentFields: View {
             ForEach(fields) { field in
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: field.name).foregroundStyle(.tertiary)
-                    value(field.value)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if case .records(let records) = field.value {
+                        RecordList(records: records)
+                    } else {
+                        value(field.value)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
         }
@@ -181,6 +188,36 @@ private struct ArgumentFields: View {
         case .text(let text): Text(verbatim: text.isEmpty ? "(empty)" : text)
         case .literal(let text): Text(verbatim: text)
         case .structured(let node): Text(verbatim: node.prettyText())
+        case .records: Text(verbatim: "")
+        }
+    }
+}
+
+/// An array of flat objects, such as a change tool's changes: each one numbered, with its
+/// fields that are set. Fields left null are left out here, and the raw view has them.
+private struct RecordList: View {
+    let records: [[ToolCallInput.Pair]]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(records.enumerated()), id: \.offset) { index, record in
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text(verbatim: "\(index + 1)")
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 22, alignment: .leading)
+                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 1) {
+                        ForEach(Array(record.enumerated()), id: \.offset) { _, pair in
+                            GridRow {
+                                Text(verbatim: pair.key).foregroundStyle(.tertiary)
+                                Text(verbatim: pair.value)
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

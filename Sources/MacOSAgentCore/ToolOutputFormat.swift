@@ -382,7 +382,7 @@ public enum ToolOutputFormat {
         let header = lines[0]
         let names = header.split(separator: " ").map(String.init)
         guard names.count >= 2, names.allSatisfy({ name in
-            name.contains(where: \.isLetter) && !looksLikeData(name) && !name.contains("/") && !name.contains(".")
+            name.contains(where: \.isLetter) && !looksLikeData(name) && !name.hasPrefix("/") && !name.contains(".")
         }) else { return nil }
         let grids = lines.map { Array($0) }
         let width = grids.map(\.count).max() ?? 0

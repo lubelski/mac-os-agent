@@ -244,8 +244,7 @@ private struct DiffOutput: View {
 
     private func style(_ kind: ToolOutputFormat.DiffLine.Kind) -> HierarchicalShapeStyle {
         switch kind {
-        case .added, .context: .secondary
-        case .file: .primary
+        case .added, .context, .file: .secondary
         case .removed, .hunk, .other: .tertiary
         }
     }

@@ -340,7 +340,9 @@ enum PanelPreview {
     /// `capture-rect x,y,width,height`.
     static func showBackdrop(behind panel: NSPanel, dark: Bool) {
         let margin: CGFloat = 24
-        let frame = panel.frame.insetBy(dx: -margin, dy: -margin)
+        // The panel and any window attached to it, such as the inspector.
+        let covered = (panel.childWindows ?? []).filter(\.isVisible).reduce(panel.frame) { $0.union($1.frame) }
+        let frame = covered.insetBy(dx: -margin, dy: -margin)
         let backdrop = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         backdrop.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue - 1)
         backdrop.ignoresMouseEvents = true

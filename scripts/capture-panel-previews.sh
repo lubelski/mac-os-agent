@@ -7,6 +7,11 @@
 #                                                           shows the glass and its edges
 #   scripts/capture-panel-previews.sh --states "a b" [out-dir]  only the states named
 #   scripts/capture-panel-previews.sh --dock right [out-dir]    docked to that edge of the screen
+#   scripts/capture-panel-previews.sh --states inspector [out-dir]  the tool call inspector beside
+#                                                           the panel, one state per kind of output
+#
+# An inspector state is always captured over the busy page, since it is two windows: the panel
+# and the inspector attached to it.
 #
 # The options go in the order shown: --backdrop, then --dock, then --states.
 #
@@ -31,7 +36,11 @@ fi
 
 STATES=(empty history running confirmation finished draft multiline-draft fresh-start scrollback incognito command-hint tool-states first-message streaming fresh-start-slot markdown markdown-streaming markdown-code-streaming controls)
 if [[ "${1:-}" == "--states" ]]; then
-  read -r -a STATES <<<"$2"
+  if [[ "$2" == "inspector" ]]; then
+    STATES=(inspector-json inspector-table inspector-diff inspector-long inspector-running inspector-fields)
+  else
+    read -r -a STATES <<<"$2"
+  fi
   shift 2
 fi
 
@@ -55,14 +64,14 @@ swiftc -O -o "$HELPER" "$HELPER.swift"
 for appearance in dark light; do
   for state in "${STATES[@]}"; do
     LOG="$(mktemp)"
-    if [[ $BACKDROP == 1 ]]; then
+    if [[ $BACKDROP == 1 || $state == inspector-* ]]; then
       "$BIN" --preview-panel "$state" --appearance "$appearance" --backdrop ${DOCK[@]+"${DOCK[@]}"} >"$LOG" &
     else
       "$BIN" --preview-panel "$state" --appearance "$appearance" ${DOCK[@]+"${DOCK[@]}"} >"$LOG" &
     fi
     PID=$!
     sleep 2
-    if [[ $BACKDROP == 1 ]]; then
+    if [[ $BACKDROP == 1 || $state == inspector-* ]]; then
       RECT="$(awk '/^capture-rect / { print $2 }' "$LOG")"
       FILE="$OUT/panel-$state$SUFFIX-$appearance-backdrop.png"
       if [[ -n "$RECT" ]]; then
