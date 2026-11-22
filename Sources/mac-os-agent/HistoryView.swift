@@ -244,10 +244,12 @@ struct EpisodeSeparator: View {
             hairline
             Text(TranscriptTimeLabel.episodeText(for: date, now: now))
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.tertiary)
                 .fixedSize()
             hairline
         }
+        // Room above and below, so an episode reads as a new start and not as one more row.
+        .padding(.vertical, 16)
         .help(TranscriptTimeLabel.fullText(for: date))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Episode started \(TranscriptTimeLabel.fullText(for: date))")
@@ -257,6 +259,7 @@ struct EpisodeSeparator: View {
     private var hairline: some View {
         Rectangle()
             .fill(palette.divider)
+            .opacity(0.5)
             .frame(height: 1)
             .frame(maxWidth: .infinity)
     }
