@@ -81,6 +81,14 @@ public enum JSONValue: Sendable, Equatable, Codable {
         guard let data = try? encoder.encode(self) else { return "null" }
         return String(decoding: data, as: UTF8.self)
     }
+
+    /// Indented JSON text with sorted keys, for reading.
+    public func prettyEncodedString() -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes, .prettyPrinted]
+        guard let data = try? encoder.encode(self) else { return "null" }
+        return String(decoding: data, as: UTF8.self)
+    }
 }
 
 extension JSONValue: ExpressibleByStringLiteral, ExpressibleByBooleanLiteral, ExpressibleByIntegerLiteral,

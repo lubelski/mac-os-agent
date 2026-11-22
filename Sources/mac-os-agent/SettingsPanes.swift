@@ -5,46 +5,9 @@ import SwiftUI
 
 // MARK: - General
 
-@MainActor
-@Observable
-final class UsageSummaryModel {
-    private(set) var last: UsageRecord?
-    private(set) var today = UsageTotals()
-    @ObservationIgnored let log: UsageLog
-
-    init(log: UsageLog) {
-        self.log = log
-        reload()
-    }
-
-    func reload() {
-        (last, today) = log.summary()
-    }
-
-    static func tokens(_ count: Int) -> String {
-        count.formatted(.number)
-    }
-
-    static func percent(_ share: Double) -> String {
-        share.formatted(.percent.precision(.fractionLength(0)))
-    }
-
-    var lastText: String {
-        guard let last else { return "No requests yet" }
-        return "\(Self.tokens(last.input)) in, \(Self.percent(last.usage.cachedShare)) cached, \(Self.tokens(last.output)) out"
-    }
-
-    var todayText: String {
-        guard today.requests > 0 else { return "No requests yet" }
-        let requests = today.requests == 1 ? "1 request" : "\(today.requests) requests"
-        return "\(requests), \(Self.tokens(today.input)) in, \(Self.percent(today.cachedShare)) cached"
-    }
-}
-
 struct GeneralSettingsView: View {
     let session: AgentSession
     let shortcutAvailable: Bool
-    let usage: UsageSummaryModel
     @AppStorage(ModelSetting.key) private var model = OpenAIModel.defaultID
 
     var body: some View {
@@ -82,15 +45,6 @@ struct GeneralSettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Section {
-                LabeledContent("Last request", value: usage.lastText)
-                LabeledContent("Today", value: usage.todayText)
-            } header: {
-                Text("Prompt caching")
-            } footer: {
-                Text("Cached input is the part of each request the model reused from earlier ones. Counts come from usage.jsonl in Application Support.")
-                    .foregroundStyle(.secondary)
-            }
-            Section {
                 LabeledContent("Show or hide the panel") {
                     Text(SummonShortcut.displayName)
                 }
@@ -104,8 +58,6 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 440)
-        .onAppear { usage.reload() }
     }
 }
 
@@ -207,7 +159,6 @@ struct InstructionsSettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 680, height: 540)
         .confirmationDialog("Restore the default instructions?", isPresented: $confirmingRestore) {
             Button("Restore Default", role: .destructive) { model.restoreDefault() }
         } message: {
@@ -242,153 +193,7 @@ struct FullPromptView: View {
     }
 }
 
-// MARK: - Skills
-
-@MainActor
-@Observable
-final class SkillsSettingsModel {
-    private(set) var skills: [Skill] = []
-    var selection: Skill.ID?
-    var errorMessage: String?
-    @ObservationIgnored let library: SkillLibrary
-
-    init(library: SkillLibrary) {
-        self.library = library
-        reload()
-    }
-
-    func reload() {
-        skills = library.skills()
-        if let selection, !skills.contains(where: { $0.id == selection }) { self.selection = nil }
-    }
-
-    func setEnabled(_ enabled: Bool, _ skill: Skill) {
-        do {
-            try library.setEnabled(enabled, folderName: skill.folderName)
-            errorMessage = nil
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        reload()
-    }
-
-    /// Makes the skill and opens its SKILL.md for writing. Returns why it could not, or nil.
-    func create(name: String, description: String) -> String? {
-        do {
-            let skill = try library.create(name: name, description: description)
-            reload()
-            selection = skill.id
-            NSWorkspace.shared.open(skill.fileURL)
-            return nil
-        } catch {
-            return error.localizedDescription
-        }
-    }
-
-    var selectedSkill: Skill? { skills.first { $0.id == selection } }
-
-    func openSelected() {
-        guard let skill = selectedSkill else { return }
-        NSWorkspace.shared.open(FileManager.default.fileExists(atPath: skill.fileURL.path) ? skill.fileURL : skill.folderURL)
-    }
-
-    func revealInFinder() {
-        if let skill = selectedSkill {
-            NSWorkspace.shared.activateFileViewerSelecting([skill.folderURL])
-            return
-        }
-        try? FileManager.default.createDirectory(at: library.folder, withIntermediateDirectories: true)
-        NSWorkspace.shared.open(library.folder)
-    }
-}
-
-struct SkillsSettingsView: View {
-    @Bindable var model: SkillsSettingsModel
-    @State private var creating = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("""
-                Skills teach the agent particular tasks. It sees the name and description of each skill \
-                that is on, and reads the rest when a task needs it. It can write new skills itself.
-                """)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Group {
-                if model.skills.isEmpty {
-                    ContentUnavailableView {
-                        Label("No Skills Yet", systemImage: "puzzlepiece.extension")
-                    } description: {
-                        Text("Make one with New Skill, or ask the agent to write one.")
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    List(selection: $model.selection) {
-                        ForEach(model.skills) { skill in
-                            SkillRow(skill: skill) { model.setEnabled($0, skill) }
-                                .tag(skill.id)
-                        }
-                    }
-                    .listStyle(.inset)
-                    .alternatingRowBackgrounds()
-                }
-            }
-            .background(.background, in: .rect(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
-            .clipShape(.rect(cornerRadius: 10))
-            if let error = model.errorMessage {
-                Text(error).font(.callout).foregroundStyle(.red)
-            }
-            HStack {
-                Button("New Skill…") { creating = true }
-                Button("Open SKILL.md") { model.openSelected() }
-                    .disabled(model.selectedSkill == nil)
-                Spacer()
-                Button("Show in Finder") { model.revealInFinder() }
-                Button("Reload") { model.reload() }
-            }
-            Text(model.library.folder.path(percentEncoded: false))
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .textSelection(.enabled)
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
-        .padding(20)
-        .frame(width: 680, height: 500)
-        .onAppear { model.reload() }
-        .sheet(isPresented: $creating) {
-            NewSkillView { name, description in model.create(name: name, description: description) }
-        }
-    }
-}
-
-struct SkillRow: View {
-    let skill: Skill
-    let setEnabled: @MainActor @Sendable (Bool) -> Void
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Toggle("Use \(skill.name)", isOn: Binding(get: { skill.isEnabled }, set: setEnabled))
-                .labelsHidden()
-                .toggleStyle(.checkbox)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(skill.name)
-                if let problem = skill.problem {
-                    Label(problem, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
-                        .font(.callout)
-                } else {
-                    Text(skill.description)
-                        .foregroundStyle(.secondary)
-                        .font(.callout)
-                        .lineLimit(2)
-                }
-            }
-        }
-        .padding(.vertical, 3)
-    }
-}
+// MARK: - Skills: see SkillsSettings.swift
 
 struct NewSkillView: View {
     let create: (String, String) -> String?

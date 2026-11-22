@@ -23,6 +23,8 @@ final class AgentSession {
     var draft = ""
 
     @ObservationIgnored var onStatusChange: (() -> Void)?
+    /// Errors since launch, for Settings > Debugging. Message content never goes here.
+    @ObservationIgnored let problems = ProblemLog()
     @ObservationIgnored private let loop: AgentLoop?
     @ObservationIgnored private let authenticator: ChatGPTAuthenticator?
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -151,6 +153,7 @@ final class AgentSession {
     private func appendError(_ error: Error) {
         let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         transcript.appendError(message)
+        problems.record("Request", message)
     }
 
     // MARK: - Sign-in
@@ -169,6 +172,7 @@ final class AgentSession {
                 signInState = await authenticator.isSignedIn() ? .signedIn : .signedOut
             } catch {
                 signInState = await authenticator.isSignedIn() ? .signedIn : .signedOut
+                problems.record("Sign-in", (error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
                 Self.showAlert("Sign-in did not finish", error)
             }
             onStatusChange?()

@@ -18,6 +18,25 @@ public struct Skill: Sendable, Equatable, Identifiable {
     public var isAvailable: Bool { isEnabled && problem == nil }
 }
 
+extension Skill {
+    /// True when the name, folder, or description contains the text, ignoring case. Empty text matches.
+    public func matches(_ query: String) -> Bool {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+        return [name, folderName, description].contains { $0.localizedStandardContains(query) }
+    }
+}
+
+/// A skill's `SKILL.md` and folder, read for showing in Settings.
+public struct SkillContents: Sendable, Equatable {
+    /// False when the folder has no readable `SKILL.md`.
+    public var hasFile: Bool
+    /// The instructions after the front matter, or the whole file when it has no valid front matter.
+    public var instructions: String
+    /// The other files in the folder, relative to it.
+    public var files: [String]
+}
+
 /// The parts of a `SKILL.md`.
 public struct SkillDocument: Sendable, Equatable {
     public var name: String
@@ -215,6 +234,35 @@ public struct SkillLibrary: Sendable {
         case broken(String)
     }
 
+    /// The files in a skill's folder other than `SKILL.md`, as paths relative to the folder,
+    /// sorted. Hidden files are left out.
+    public static func files(in folder: URL) -> [String] {
+        guard let enumerator = FileManager.default.enumerator(
+            at: folder, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles])
+        else { return [] }
+        let base = folder.plainPath.hasSuffix("/") ? folder.plainPath : folder.plainPath + "/"
+        var files: [String] = []
+        for case let url as URL in enumerator {
+            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else { continue }
+            let path = url.plainPath
+            let relative = path.hasPrefix(base) ? String(path.dropFirst(base.count)) : url.lastPathComponent
+            if relative != fileName { files.append(relative) }
+        }
+        return files.sorted()
+    }
+
+    /// What Settings shows for one skill: its instructions and the files beside them.
+    public func contents(of skill: Skill) -> SkillContents {
+        let text = try? String(contentsOf: skill.fileURL, encoding: .utf8)
+        let instructions: String
+        if let text, let document = try? SkillDocument.parse(text) {
+            instructions = document.body
+        } else {
+            instructions = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        }
+        return SkillContents(hasFile: text != nil, instructions: instructions, files: Self.files(in: skill.folderURL))
+    }
+
     // MARK: - Turning skills on and off
 
     private struct Settings: Codable {
@@ -338,18 +386,7 @@ public struct LoadSkillTool: AgentTool {
     }
 
     private func otherFiles(in folder: URL) -> [String] {
-        guard let enumerator = FileManager.default.enumerator(
-            at: folder, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles])
-        else { return [] }
-        let base = folder.plainPath + "/"
-        var files: [String] = []
-        for case let url as URL in enumerator {
-            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else { continue }
-            let path = url.plainPath
-            let relative = path.hasPrefix(base) ? String(path.dropFirst(base.count)) : url.lastPathComponent
-            if relative != SkillLibrary.fileName { files.append(relative) }
-        }
-        files.sort()
+        let files = SkillLibrary.files(in: folder)
         if files.count > fileListLimit {
             return Array(files.prefix(fileListLimit)) + ["(\(files.count - fileListLimit) more)"]
         }
