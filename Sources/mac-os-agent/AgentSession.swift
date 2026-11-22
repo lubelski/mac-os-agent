@@ -48,6 +48,8 @@ final class AgentSession {
     @ObservationIgnored var clock: () -> Date = { Date() }
     /// For a preview of the scrollback: the history opens at its top instead of its end.
     @ObservationIgnored var previewStartsAtTop = false
+    /// For a preview of the fresh-start slot: stand-in lines that show how content lays out.
+    @ObservationIgnored var previewFreshStartContent: [String]?
     /// True after a fresh start in the panel, until the next message starts the episode.
     @ObservationIgnored private var startsNewEpisode = false
     @ObservationIgnored private var incognitoLastActivity = Date.distantPast
@@ -93,6 +95,16 @@ final class AgentSession {
         self.pendingConfirmation = pendingConfirmation
         self.isRunning = isRunning
         signInState = .signedIn
+    }
+
+    /// For previews: sets a tool row's status.
+    func previewSetStatus(_ callID: String, _ status: TranscriptRow.ToolStatus) {
+        transcript.setToolStatus(callID, status)
+    }
+
+    /// For previews: adds a row for a call whose arguments have not arrived.
+    func previewToolStarted(_ callID: String) {
+        transcript.toolStarted(callID)
     }
 
     /// Loads the whole thread as history and checks for a stored sign-in.

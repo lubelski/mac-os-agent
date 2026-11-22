@@ -196,15 +196,12 @@ private struct LineView: View {
             labeled("Agent", Text(line.text))
         case .command(let outcome):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Group {
-                    switch outcome {
-                    case .succeeded: Image(systemName: "checkmark").foregroundStyle(.green)
-                    case .failed: Image(systemName: "xmark").foregroundStyle(.red)
-                    case .unknown: Image(systemName: "minus").foregroundStyle(.tertiary)
-                    }
-                }
-                .font(.system(size: 9, weight: .bold))
-                .frame(width: 12)
+                // The marks of the panel's tool rows: `›` for a command, `✗` for one that failed.
+                Text(verbatim: outcome == .failed ? Mark.failed : Mark.call)
+                    .font(Mark.rowFont)
+                    .foregroundStyle(outcome == .failed ? HierarchicalShapeStyle.primary : .tertiary)
+                    .frame(width: Mark.rowColumn, alignment: .leading)
+                    .accessibilityHidden(true)
                 Text(line.text)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.secondary)
