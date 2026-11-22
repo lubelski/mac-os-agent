@@ -314,9 +314,9 @@ final class AgentSession {
 
     // MARK: - Discarding an incognito conversation
 
-    /// The close button, Command-W, and Clear in the incognito window. With no task running it
-    /// happens at once. With one running, the window asks first, since the task stops and the
-    /// conversation is gone.
+    /// The close button and Close and Discard in the incognito window's top bar, Command-W, and
+    /// Clear. With no task running it happens at once. With one running, the window asks first,
+    /// since the task stops and the conversation is gone.
     func requestDiscard(_ discard: Discard) {
         guard kind == .incognito else { return }
         if isRunning {

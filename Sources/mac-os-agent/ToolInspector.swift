@@ -171,8 +171,11 @@ final class ToolInspectorWindow: NSPanel {
         session.stop()
     }
 
+    /// Close in the Window menu is always enabled, as in the panel: AppKit's own check turns it
+    /// down for a borderless window.
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == MainMenu.stopTaskAction { return session.isRunning }
+        if item.action == #selector(performClose(_:)) { return true }
         return super.validateMenuItem(item)
     }
 

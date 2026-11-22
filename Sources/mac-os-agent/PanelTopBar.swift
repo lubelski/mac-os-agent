@@ -11,9 +11,13 @@ final class PanelPlacement {
     var preset: PanelPreset = .centered
     /// Moves the panel to a preset.
     var choose: (PanelPreset) -> Void = { _ in }
-    /// The panel menu's last item, as Command-W does. The main panel hides, as Escape does, and
-    /// its task keeps going. The incognito window closes and discards its conversation.
+    /// The close button and the panel menu's last item, as Command-W does. The main panel
+    /// hides, as Escape does, and its task keeps going. The incognito window closes and
+    /// discards its conversation, after asking when a task runs.
     var close: () -> Void = {}
+    /// The pointer is over the top bar, anywhere on it, so the close button shows. The bar's
+    /// drag area tracks it, since it lies under the whole bar.
+    var barIsHovered = false
     /// A double click on the bar: back to the default frame of the current layout, forgetting
     /// the owner's moves and resizes in it.
     var resetToDefault: () -> Void = {}
@@ -55,8 +59,11 @@ final class PanelPlacement {
 ///   centered on the whole bar, not on the room between the other two areas, and it is cut
 ///   short before it would reach them. In the incognito window the incognito label follows
 ///   the name. Its font and weight never change.
-/// - `leading`: empty in the main panel, and the Clear control in the incognito window. Later
-///   this is room for an episode title.
+/// - `leading`: the close button, then, in the incognito window, the Clear control. The close
+///   button is hidden at rest and fades in while the pointer is anywhere over the bar. Its
+///   room is kept while it is hidden, so the bar never shifts, and it is a button there
+///   whether it shows or not: a click on its spot always closes, never drags. VoiceOver finds
+///   it either way. Clear always shows.
 /// - `trailing`: the panel menu, an ellipsis, after a quiet pin mark while Keep on Top is on,
 ///   so a panel that will not go behind other windows explains itself. A new control is one
 ///   more `TopBarButton` in that row, before the menu.
@@ -103,7 +110,13 @@ struct PanelTopBar: View {
             title
                 .padding(.horizontal, Self.sidePadding + max(leadingWidth, trailingWidth) + Self.titleGap)
         }
-        .background { if Self.hostsAppKitViews { WindowDragArea(onDoubleClick: { placement?.resetToDefault() }) } }
+        .background {
+            if Self.hostsAppKitViews {
+                WindowDragArea(
+                    onDoubleClick: { placement?.resetToDefault() },
+                    onHover: { placement?.barIsHovered = $0 })
+            }
+        }
     }
 
     /// The agent's name, and in the incognito window the incognito label after it.
@@ -129,12 +142,17 @@ struct PanelTopBar: View {
     /// Give a label here `.allowsHitTesting(false)`, so dragging it moves the panel.
     @ViewBuilder
     private var leading: some View {
-        if placement != nil, let incognito {
-            TopBarTextButton(
-                title: "Clear",
-                help: "Discard this conversation and start a new one. The window stays open.",
-                isEnabled: incognito.canClear,
-                action: incognito.clear)
+        if let placement {
+            HStack(spacing: 8) {
+                CloseButton(placement: placement, incognito: incognito != nil)
+                if let incognito {
+                    TopBarTextButton(
+                        title: "Clear",
+                        help: "Discard this conversation and start a new one. The window stays open.",
+                        isEnabled: incognito.canClear,
+                        action: incognito.clear)
+                }
+            }
         }
     }
 
@@ -148,6 +166,33 @@ struct PanelTopBar: View {
                 PanelMenuButton(placement: placement)
             }
         }
+    }
+}
+
+/// The close button at the left end of the bar. It shows only while the pointer is over the
+/// bar, with a short fade, and otherwise keeps its room, so nothing in the bar moves.
+struct CloseButton: View {
+    static let symbol = "xmark"
+    static let fade = 0.15
+    let placement: PanelPlacement
+    let incognito: Bool
+
+    var label: String { incognito ? "Close and Discard" : "Close" }
+    var help: String {
+        incognito
+            ? "Close this window, as Command-W does. Everything in it is discarded."
+            : "Hide the panel, as Command-W does. A running task keeps going."
+    }
+
+    /// Fully there while the pointer is over the bar, and not drawn at all otherwise.
+    static func opacity(barIsHovered: Bool) -> Double { barIsHovered ? 1 : 0 }
+
+    var body: some View {
+        TopBarButton(
+            symbol: Self.symbol, label: label, help: help,
+            drawnOpacity: Self.opacity(barIsHovered: placement.barIsHovered),
+            action: placement.close)
+            .animation(.easeOut(duration: Self.fade), value: placement.barIsHovered)
     }
 }
 
@@ -207,6 +252,10 @@ struct TopBarButton: View {
     let label: String
     let help: String
     var isOn = false
+    /// How much of the control is drawn, for one that shows only some of the time, such as the
+    /// close button. It still takes clicks and is still there for VoiceOver when not drawn,
+    /// since only what is inside its frame fades.
+    var drawnOpacity: Double = 1
     let action: () -> Void
     @State private var isHovered = false
     @Environment(\.panelPalette) private var palette
@@ -221,6 +270,7 @@ struct TopBarButton: View {
                 .opacity(isOn || isHovered ? 0.9 : 0.4)
                 .frame(width: Self.size, height: Self.size)
                 .background(palette.textTint(isOn ? 0.12 : isHovered ? 0.07 : 0), in: PanelShape.control)
+                .opacity(drawnOpacity)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -262,7 +312,7 @@ struct KeepOnTopMark: View {
 
 /// The panel menu's control: an ellipsis that opens a standard menu under it. In the main
 /// panel the menu has the layouts, Keep on Top, and Hide Panel. In the incognito window it has
-/// only Close and Discard, its one pointer route to closing, since Escape never closes it.
+/// only Close and Discard, which the close button also does, since Escape never closes it.
 struct PanelMenuButton: View {
     static let symbol = "ellipsis"
     let placement: PanelPlacement
@@ -405,11 +455,28 @@ private struct MenuAnchorView: NSViewRepresentable {
 /// The part of the bar that moves the panel. AppKit's own window drag, so it works in a panel
 /// that never activates the app. The pointer stays the arrow over it. A double click calls
 /// `onDoubleClick` instead of starting a drag.
+///
+/// It lies under the whole bar, so it also tells `onHover` when the pointer comes onto the bar
+/// and leaves it. Its tracking area goes by where the pointer is, not by which view is under
+/// it, so the bar's controls on top of it do not count as leaving. It is active whether or not
+/// the app is, since the app never is while the panel has focus.
 struct WindowDragArea: NSViewRepresentable {
     var onDoubleClick: () -> Void = {}
+    var onHover: (Bool) -> Void = { _ in }
 
     final class DragView: NSView {
         var onDoubleClick: () -> Void = {}
+        var onHover: (Bool) -> Void = { _ in }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(
+                rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        }
+
+        override func mouseEntered(with event: NSEvent) { onHover(true) }
+        override func mouseExited(with event: NSEvent) { onHover(false) }
 
         override func mouseDown(with event: NSEvent) {
             if event.clickCount == 2 {
@@ -424,11 +491,12 @@ struct WindowDragArea: NSViewRepresentable {
 
     func makeNSView(context: Context) -> DragView {
         let view = DragView()
-        view.onDoubleClick = onDoubleClick
+        updateNSView(view, context: context)
         return view
     }
 
     func updateNSView(_ nsView: DragView, context: Context) {
         nsView.onDoubleClick = onDoubleClick
+        nsView.onHover = onHover
     }
 }
