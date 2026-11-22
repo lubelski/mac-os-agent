@@ -15,11 +15,9 @@ public typealias PanelDock = PanelEdge
 /// AppKit's screen coordinates, with the origin at the bottom left of the primary screen and y
 /// growing upward. A screen's `visible` rectangle leaves out the menu bar and the Dock.
 public enum PanelGeometry {
-    /// The gap between a slide over panel and the screen's edges, so the glass's soft shadow is
-    /// not cut off at the edge of the display and the glass reads as floating.
-    public static let slideOverMargin: CGFloat = 10
-    /// The name from when the panel docked. New code says `slideOverMargin`.
-    public static let dockMargin: CGFloat = slideOverMargin
+    /// The gap a window kept beside the panel, such as the inspector, leaves from the screen's
+    /// edges. A slide over panel itself has no gap: it is flush against its edge.
+    public static let windowEdgeMargin: CGFloat = 10
     /// The least room left around a centered panel.
     public static let screenMargin: CGFloat = 20
     /// A slide over panel is at most this share of the screen's width.
@@ -39,26 +37,50 @@ public enum PanelGeometry {
             width: width, height: height)
     }
 
-    /// The panel in slide over at one edge of the screen: the full height of the visible area
-    /// less the margin, and the width asked for, kept between the minimum and half the screen.
+    /// The panel in slide over at one edge of the screen: flush against that edge of the
+    /// visible area, which is the Dock's edge when the Dock is on that side, at its full height
+    /// from the menu bar down to the bottom, and the width asked for, kept between the minimum
+    /// and half the screen.
     public static func slideOverFrame(_ edge: PanelEdge, width: CGFloat, minimumWidth: CGFloat, in visible: CGRect) -> CGRect {
-        let room = visible.width - 2 * slideOverMargin
         let widest = max(minimumWidth, (visible.width * slideOverWidthShare).rounded(.down))
-        let fitted = min(room, max(minimumWidth, min(width, widest))).rounded()
-        let x = edge == .left ? visible.minX + slideOverMargin : visible.maxX - slideOverMargin - fitted
-        return CGRect(x: x, y: visible.minY + slideOverMargin, width: fitted, height: visible.height - 2 * slideOverMargin)
+        let fitted = min(visible.width, max(minimumWidth, min(width, widest))).rounded()
+        let x = edge == .left ? visible.minX : visible.maxX - fitted
+        return CGRect(x: x, y: visible.minY, width: fitted, height: visible.height)
+    }
+
+    /// The frame a preset puts the panel at, and the one place that says so. Choosing a preset,
+    /// choosing it again, and anything else that puts the panel back where its preset belongs
+    /// all use it.
+    /// - Centered: `centeredSize` in the middle of the screen, from `defaultFrame(size:in:)`.
+    /// - Slide over: flush against its edge at the full height, from `slideOverFrame`, at
+    ///   `slideOverWidth`.
+    public static func presetFrame(
+        _ preset: PanelPreset, centeredSize: CGSize, slideOverWidth: CGFloat, minimumWidth: CGFloat, in visible: CGRect
+    ) -> CGRect {
+        guard let edge = preset.slideOverEdge else { return defaultFrame(size: centeredSize, in: visible) }
+        return slideOverFrame(edge, width: slideOverWidth, minimumWidth: minimumWidth, in: visible)
     }
 
     /// Whether a frame still sits where a slide over panel at that edge belongs. The edge, the
     /// top, and the bottom must be in place. The free edge can move, so the owner can change
     /// the width.
     public static func isInSlideOver(_ frame: CGRect, at edge: PanelEdge, in visible: CGRect) -> Bool {
-        let held = edge == .left
-            ? abs(frame.minX - (visible.minX + slideOverMargin))
-            : abs(frame.maxX - (visible.maxX - slideOverMargin))
-        return held <= tolerance
-            && abs(frame.minY - (visible.minY + slideOverMargin)) <= tolerance
-            && abs(frame.maxY - (visible.maxY - slideOverMargin)) <= tolerance
+        flushEdges(of: frame, in: visible).contains(edge)
+            && abs(frame.minY - visible.minY) <= tolerance
+            && abs(frame.maxY - visible.maxY) <= tolerance
+    }
+
+    /// The sides of a frame that are flush against the same side of the screen's visible area.
+    /// The panel's corners on such a side are square, and they are rounded again as soon as it
+    /// moves off that edge. Only the left and right count: the top and bottom keep their
+    /// corners, so a full height panel still reads as a sheet against its edge.
+    public static func flushEdges(of frame: CGRect, in visible: CGRect) -> Set<PanelEdge> {
+        guard frame.width > 0, frame.height > 0, !visible.isEmpty,
+              frame.maxY > visible.minY, frame.minY < visible.maxY else { return [] }
+        var edges: Set<PanelEdge> = []
+        if abs(frame.minX - visible.minX) <= tolerance { edges.insert(.left) }
+        if abs(frame.maxX - visible.maxX) <= tolerance { edges.insert(.right) }
+        return edges
     }
 
     /// The frame moved and shrunk as little as needed to fit inside the screen, with a margin.
@@ -168,7 +190,7 @@ extension PanelGeometry {
     public static func inspectorPlacement(
         panel: CGRect, freeSide: PanelEdge, width: CGFloat, in visible: CGRect
     ) -> InspectorPlacement {
-        let margin = slideOverMargin
+        let margin = windowEdgeMargin
         let roomRight = visible.maxX - margin - (panel.maxX + inspectorGap)
         let roomLeft = (panel.minX - inspectorGap) - (visible.minX + margin)
         let preferred: InspectorPlacement.Side = freeSide == .left ? .left : .right

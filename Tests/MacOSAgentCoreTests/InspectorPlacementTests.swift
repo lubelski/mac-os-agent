@@ -27,7 +27,7 @@ import Testing
         let placement = PanelGeometry.inspectorPlacement(panel: panel, freeSide: .right, width: 600, in: laptop)
         #expect(placement.side == .right)
         #expect(placement.frame.width == 418)
-        #expect(placement.frame.maxX <= laptop.maxX - PanelGeometry.slideOverMargin)
+        #expect(placement.frame.maxX <= laptop.maxX - PanelGeometry.windowEdgeMargin)
     }
 
     @Test func slideOverLeftOpensToTheRightAndSlideOverRightOpensToTheLeft() {
@@ -53,7 +53,7 @@ import Testing
         let placement = PanelGeometry.inspectorPlacement(panel: panel, freeSide: .right, width: 420, in: small)
         #expect(placement.overlapsPanel)
         #expect(placement.side == .right)
-        #expect(placement.frame.maxX == small.maxX - PanelGeometry.slideOverMargin)
+        #expect(placement.frame.maxX == small.maxX - PanelGeometry.windowEdgeMargin)
         #expect(placement.frame.minX - panel.minX >= PanelGeometry.conversationKeptInView)
         #expect(placement.frame.width >= PanelGeometry.inspectorNarrowestWidth)
         #expect(placement.frame.height == panel.height)
