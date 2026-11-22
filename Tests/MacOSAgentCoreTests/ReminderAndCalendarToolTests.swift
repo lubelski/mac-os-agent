@@ -208,15 +208,15 @@ private func change(
         let store = reminderStore()
         let goAhead = GoAheadRecorder(answer: false)
         let output = await tool(store).run(
-            arguments: ["changes": [change(title: "Water the plants", due: "2026-11-22T08:30", priority: "high")]],
+            arguments: ["changes": [change(title: "Water the plants", due: "2030-11-22T08:30", priority: "high")]],
             context: goAhead.context)
         #expect(goAhead.requests.isEmpty)
         let (saved, dueChanged) = try #require(store.savedReminders.first)
         #expect(saved.listID == "LIST-INBOX")
-        #expect(saved.due == .moment(local("2026-11-22T08:30")))
+        #expect(saved.due == .moment(local("2030-11-22T08:30")))
         #expect(saved.priority == 1)
         #expect(dueChanged)
-        #expect(output == "Created \(short(saved.identifier)) | Water the plants | Reminders | due Sun 2026-11-22 08:30 | high priority")
+        #expect(output == "Created \(short(saved.identifier)) | Water the plants | Reminders | due Fri 2030-11-22 08:30 | high priority")
     }
 
     @Test func aDateAloneIsDueThatDay() async throws {
