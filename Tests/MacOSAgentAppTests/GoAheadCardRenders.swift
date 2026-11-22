@@ -109,15 +109,21 @@ struct TopBarRenders {
             // The agent's name comes from preferences of the render's own.
             let suite = "mac-os-agent-render-\(UUID().uuidString)"
             let preferences = try #require(UserDefaults(suiteName: suite))
-            defer { preferences.removePersistentDomain(forName: suite) }
-            func bar(keepsOnTop: Bool, incognito: Bool, name: String = "", width: CGFloat = 480) -> some View {
+            let namedSuite = suite + "-named"
+            let named = try #require(UserDefaults(suiteName: namedSuite))
+            named.set("Juno", forKey: AgentNameSetting.key)
+            defer {
+                preferences.removePersistentDomain(forName: suite)
+                named.removePersistentDomain(forName: namedSuite)
+            }
+            func bar(keepsOnTop: Bool, incognito: Bool, renamed: Bool = false, width: CGFloat = 480) -> some View {
                 let placement = PanelPlacement()
                 placement.keepsOnTop = keepsOnTop
                 placement.offersLayouts = !incognito
                 if !incognito { placement.setKeepsOnTop = { _ in } }
                 return PanelTopBar(incognito: incognito ? .init(canClear: true, clear: {}) : nil)
                     .environment(placement)
-                    .defaultAppStorage(name.isEmpty ? preferences : Self.named(name))
+                    .defaultAppStorage(renamed ? named : preferences)
                     .frame(width: width)
                     .background(incognito ? palette.incognitoTint : .clear)
             }
@@ -125,7 +131,7 @@ struct TopBarRenders {
                 bar(keepsOnTop: false, incognito: false)
                 bar(keepsOnTop: true, incognito: false)
                 bar(keepsOnTop: true, incognito: true)
-                bar(keepsOnTop: false, incognito: false, name: "Juno", width: 640)
+                bar(keepsOnTop: false, incognito: false, renamed: true, width: 640)
             }
             .padding(8)
             .foregroundStyle(palette.primary)
@@ -138,12 +144,5 @@ struct TopBarRenders {
             let data = try #require(NSBitmapImageRep(data: image.tiffRepresentation!)?.representation(using: .png, properties: [:]))
             try data.write(to: folder.appending(path: "top-bar-\(scheme == .dark ? "dark" : "light").png"))
         }
-    }
-
-    /// Preferences in memory only, holding an agent name.
-    private static func named(_ name: String) -> UserDefaults {
-        let defaults = UserDefaults(suiteName: "mac-os-agent-render-named")!
-        defaults.set(name, forKey: AgentNameSetting.key)
-        return defaults
     }
 }
