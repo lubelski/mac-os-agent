@@ -7,6 +7,7 @@ let log = Logger(subsystem: "dev.lubelski.mac-os-agent", category: "app")
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
+    private let statusMenu = NSMenu()
     private var session: AgentSession!
     private var panel: SummonPanel!
     private var hotKey: SummonHotKey!
@@ -60,9 +61,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel = SummonPanel(session: session)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        let menu = NSMenu()
-        menu.delegate = self
-        statusItem.menu = menu
+        statusMenu.delegate = self
+        // No menu attached, so a left click reaches the action. See `StatusItemClick`.
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(statusItemPressed(_:))
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        statusItem.button?.setAccessibilityHelp("Shows or hides the panel. Opens the menu with a right click or Control-click.")
+        statusItem.button?.setAccessibilityCustomActions([
+            NSAccessibilityCustomAction(name: "Show or Hide the Panel") { [weak self] in
+                self?.panel.toggle()
+                return true
+            },
+            NSAccessibilityCustomAction(name: "Show Menu") { [weak self] in
+                guard let self else { return false }
+                statusItem.showMenu(statusMenu)
+                return true
+            },
+        ])
         updateStatusIcon()
 
         hotKey = SummonHotKey { [weak self] in self?.panel.toggle() }
@@ -117,10 +132,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Menu
 
+    @objc private func statusItemPressed(_ sender: Any?) {
+        switch StatusItemClick.action(for: NSApp.currentEvent) {
+        case .togglePanel: panel.toggle()
+        case .showMenu: statusItem.showMenu(statusMenu)
+        }
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let open = NSMenuItem(title: "Open mac-os-agent", action: #selector(openPanel), keyEquivalent: SummonShortcut.keyEquivalent)
+        let open = NSMenuItem(
+            title: panel.isVisible ? "Hide mac-os-agent" : "Show mac-os-agent",
+            action: #selector(togglePanel), keyEquivalent: SummonShortcut.keyEquivalent)
         open.keyEquivalentModifierMask = SummonShortcut.modifierFlags
         open.target = self
         menu.addItem(open)
@@ -187,7 +211,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
-    @objc private func openPanel() { panel.summon() }
+    /// From the menu, which takes keyboard focus while it is open, so the panel is never key
+    /// here: a visible panel hides and a hidden one shows.
+    @objc private func togglePanel() {
+        if panel.isVisible { panel.dismiss() } else { panel.summon() }
+    }
     @objc func openSettings(_ sender: Any?) { settings.show() }
     @objc private func stopTask() { session.stop() }
 
