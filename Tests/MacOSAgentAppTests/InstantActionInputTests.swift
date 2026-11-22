@@ -328,7 +328,9 @@ struct InstantActionRowRenders {
         for name in InstantActionPreview.names {
             let session = try #require(InstantActionPreview.session(named: name))
             if name == "instant-several" { _ = session.instantActions.move(by: 1) }
-            for scheme in [ColorScheme.light, .dark] {
+            for (themeID, scheme) in [("glass", ColorScheme.light), ("glass", .dark), ("tidewater", .dark), ("paper", .light)] {
+                let theme = try #require(BuiltInThemes.all.first { $0.id == themeID }?.theme)
+                let palette = PanelPalette(theme: theme, dark: scheme == .dark, allowsGlass: false)
                 let view = VStack(spacing: 0) {
                     InstantActionRow(actions: session.instantActions)
                     PanelDivider()
@@ -340,13 +342,15 @@ struct InstantActionRowRenders {
                     .padding(.horizontal, 16).padding(.vertical, 12)
                 }
                 .frame(width: 640)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .foregroundStyle(palette.primary)
+                .background(palette.fallbackFill)
+                .environment(\.panelPalette, palette)
                 .environment(\.colorScheme, scheme)
                 let renderer = ImageRenderer(content: view)
                 renderer.scale = 2
                 let image = try #require(renderer.nsImage)
                 let data = try #require(NSBitmapImageRep(data: image.tiffRepresentation!)?.representation(using: .png, properties: [:]))
-                try data.write(to: folder.appending(path: "\(name)-\(scheme == .dark ? "dark" : "light").png"))
+                try data.write(to: folder.appending(path: "\(name)-\(themeID)-\(scheme == .dark ? "dark" : "light").png"))
             }
         }
     }
