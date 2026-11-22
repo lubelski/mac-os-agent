@@ -88,7 +88,8 @@ struct SummonView: View {
                 onChoose: { offset in session.moveHintSelection(by: offset) || session.instantActions.move(by: offset) },
                 onComplete: session.completeHint,
                 onRecall: session.recallMessage(by:),
-                onInterrupt: session.interrupt)
+                onInterrupt: session.interrupt,
+                onDoubleDelete: session.startNewEpisodeFromKeys)
                 .overlay(alignment: .topLeading) {
                     if session.draft.isEmpty {
                         Text(placeholder)

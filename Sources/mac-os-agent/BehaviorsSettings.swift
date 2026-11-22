@@ -10,6 +10,8 @@ struct BehaviorsSettingsView: View {
     private var recallsMessages = HarnessBehavior.recallEarlierMessages.defaultValue
     @AppStorage(HarnessBehavior.controlCStopsOrClears.key)
     private var controlCStopsOrClears = HarnessBehavior.controlCStopsOrClears.defaultValue
+    @AppStorage(HarnessBehavior.doubleDeleteStartsNewEpisode.key)
+    private var doubleDeleteStartsNewEpisode = HarnessBehavior.doubleDeleteStartsNewEpisode.defaultValue
 
     var body: some View {
         Form {
@@ -21,6 +23,10 @@ struct BehaviorsSettingsView: View {
                 Toggle(isOn: $controlCStopsOrClears) {
                     Text("Control-C stops or clears")
                     Text("Control-C stops the running task, as Command-Period does. With no task running, it clears the field. Command-C still copies.")
+                }
+                Toggle(isOn: $doubleDeleteStartsNewEpisode) {
+                    Text("Delete twice starts a new episode")
+                    Text("Pressing Delete twice quickly in an empty field does what /new does: a new episode, or in the incognito window a cleared conversation. Holding Delete down does not.")
                 }
             } header: {
                 Text("Habits from terminal coding agents such as Claude Code, pi, and Codex.")

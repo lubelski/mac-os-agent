@@ -10,6 +10,8 @@ public enum HarnessBehavior: String, CaseIterable, Sendable, Identifiable {
     case recallEarlierMessages
     /// Control-C stops the running task, or with none running clears the field.
     case controlCStopsOrClears
+    /// Delete twice in quick succession in an empty field does what `/new` does. See `DoubleDelete`.
+    case doubleDeleteStartsNewEpisode
 
     public var id: String { rawValue }
 
@@ -17,6 +19,7 @@ public enum HarnessBehavior: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .recallEarlierMessages: "BehaviorUpArrowRecallsMessages"
         case .controlCStopsOrClears: "BehaviorControlCStopsOrClears"
+        case .doubleDeleteStartsNewEpisode: "BehaviorDoubleDeleteStartsNewEpisode"
         }
     }
 
@@ -24,6 +27,7 @@ public enum HarnessBehavior: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .recallEarlierMessages: true
         case .controlCStopsOrClears: false
+        case .doubleDeleteStartsNewEpisode: true
         }
     }
 

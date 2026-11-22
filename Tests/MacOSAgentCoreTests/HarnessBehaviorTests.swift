@@ -91,10 +91,11 @@ import Testing
         return (try #require(UserDefaults(suiteName: name)), name)
     }
 
-    @Test func defaultsAreRecallOnAndTheRestOff() throws {
+    @Test func defaultsAreRecallAndDoubleDeleteOnAndTheRestOff() throws {
         let (defaults, name) = try suite()
         defer { UserDefaults.standard.removePersistentDomain(forName: name) }
         #expect(HarnessBehavior.recallEarlierMessages.isOn(defaults))
+        #expect(HarnessBehavior.doubleDeleteStartsNewEpisode.isOn(defaults))
         #expect(!HarnessBehavior.controlCStopsOrClears.isOn(defaults))
         #expect(!Experiment.queueMessagesWhileRunning.isOn(defaults))
     }
@@ -104,9 +105,65 @@ import Testing
         defer { UserDefaults.standard.removePersistentDomain(forName: name) }
         HarnessBehavior.recallEarlierMessages.set(false, defaults)
         HarnessBehavior.controlCStopsOrClears.set(true, defaults)
+        HarnessBehavior.doubleDeleteStartsNewEpisode.set(false, defaults)
         Experiment.queueMessagesWhileRunning.set(true, defaults)
+        #expect(!HarnessBehavior.doubleDeleteStartsNewEpisode.isOn(defaults))
         #expect(!HarnessBehavior.recallEarlierMessages.isOn(defaults))
         #expect(HarnessBehavior.controlCStopsOrClears.isOn(defaults))
         #expect(Experiment.queueMessagesWhileRunning.isOn(defaults))
+    }
+}
+
+@Suite struct DoubleDeleteTests {
+    private func press(_ presses: inout DoubleDelete, _ empty: Bool, _ repeating: Bool, _ time: TimeInterval) -> Bool {
+        presses.press(fieldIsEmpty: empty, isRepeat: repeating, at: time)
+    }
+
+    @Test func twoPressesOnAnEmptyFieldWithinTheIntervalCount() {
+        var presses = DoubleDelete(interval: 0.5)
+        #expect(!press(&presses, true, false, 10))
+        #expect(presses.isWaiting)
+        #expect(press(&presses, true, false, 10.3))
+        #expect(!presses.isWaiting, "a third press starts over")
+        #expect(!press(&presses, true, false, 10.4))
+    }
+
+    @Test func onePressDoesNotCount() {
+        var presses = DoubleDelete(interval: 0.5)
+        #expect(!press(&presses, true, false, 10))
+    }
+
+    @Test func tooSlowStartsOverFromTheLaterPress() {
+        var presses = DoubleDelete(interval: 0.5)
+        #expect(!press(&presses, true, false, 10))
+        #expect(!press(&presses, true, false, 10.6))
+        #expect(press(&presses, true, false, 10.9), "the slow press was a first press")
+    }
+
+    @Test func aPressThatEmptiesTheFieldIsNotTheFirst() {
+        var presses = DoubleDelete(interval: 0.5)
+        #expect(!press(&presses, false, false, 10))
+        #expect(!press(&presses, true, false, 10.1))
+    }
+
+    @Test func keyRepeatNeverCountsAndStartsOver() {
+        var presses = DoubleDelete(interval: 0.5)
+        // Holding Delete through the last characters and on into an empty field.
+        #expect(!press(&presses, false, false, 10))
+        for step in 1...10 {
+            #expect(!press(&presses, step > 3, true, 10 + Double(step) * 0.05))
+        }
+        #expect(!presses.isWaiting)
+        // A press, then a repeat between it and the next press.
+        #expect(!press(&presses, true, false, 11))
+        #expect(!press(&presses, true, true, 11.05))
+        #expect(!press(&presses, true, false, 11.1))
+    }
+
+    @Test func resetForgetsTheFirstPress() {
+        var presses = DoubleDelete(interval: 0.5)
+        _ = presses.press(fieldIsEmpty: true, isRepeat: false, at: 10)
+        presses.reset()
+        #expect(!press(&presses, true, false, 10.1))
     }
 }

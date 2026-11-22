@@ -1,4 +1,5 @@
 import AppKit
+import MacOSAgentCore
 import SwiftUI
 
 /// The panel's text input: a plain AppKit text view, so it has the whole Mac text system with
@@ -41,6 +42,10 @@ struct InputField: NSViewRepresentable {
     /// Control-C. Returns true when it used the key, to stop the task or clear the field.
     /// Otherwise the key goes to the text view as before. Command-C is never this.
     var onInterrupt: () -> Bool = { false }
+    /// Delete twice in quick succession with the field already empty, both distinct presses
+    /// and neither a key repeat. Returns true when it used the key, to start a new episode as
+    /// `/new` does. Otherwise the key goes to the text view as before. See `DoubleDelete`.
+    var onDoubleDelete: () -> Bool = { false }
 
     static let font = NSFont.systemFont(ofSize: 15)
     static let maximumLines = 8
@@ -84,6 +89,7 @@ struct InputField: NSViewRepresentable {
         context.coordinator.observe(textView)
         textView.onCommandReturn = { [weak coordinator = context.coordinator] in coordinator?.parent.onSubmitToAgent() }
         textView.onControlC = { [weak coordinator = context.coordinator] in coordinator?.parent.onInterrupt() ?? false }
+        textView.onDoubleDelete = { [weak coordinator = context.coordinator] in coordinator?.parent.onDoubleDelete() ?? false }
         return scrollView
     }
 
@@ -116,6 +122,9 @@ struct InputField: NSViewRepresentable {
 
         if coordinator.focusRequest != focusRequest {
             coordinator.focusRequest = focusRequest
+            // The window was shown again, or something asked for the field: a Delete before
+            // it is not the first of two.
+            textView.resetDoubleDelete()
             coordinator.focusWhenPossible(textView)
         }
     }
@@ -167,6 +176,9 @@ struct InputField: NSViewRepresentable {
         }
 
         private func textDidChangeInStorage() {
+            // Any change to the text between two presses of Delete, from typing, paste, recall,
+            // or the session, starts the count over.
+            (textView as? InputTextView)?.resetDoubleDelete()
             guard !isSettingText, let string = textView?.string, parent.text != string else { return }
             parent.text = string
         }
@@ -337,6 +349,78 @@ final class InputTextView: NSTextView {
     var onCommandReturn: (() -> Void)?
     /// Control-C. Returns true when it used the key.
     var onControlC: (() -> Bool)?
+    /// The second of two quick presses of Delete in an empty field. Returns true when it used the key.
+    var onDoubleDelete: (() -> Bool)?
+    /// How close two presses of Delete have to be. The system's double-click interval, read at
+    /// each press so a change in System Settings applies at once.
+    var doubleDeleteInterval: () -> TimeInterval = { NSEvent.doubleClickInterval }
+    private(set) var doubleDelete = DoubleDelete(interval: NSEvent.doubleClickInterval)
+    /// While a first press waits for a second: sees every click and key in the app, so one in
+    /// between, anywhere, starts the count over, including a key that a menu takes before it
+    /// would reach this view.
+    private var doubleDeleteMonitor: Any?
+    private var resignKeyObserver: (any NSObjectProtocol)?
+
+    /// Delete with no modifier, by its key code, as the key bindings read it.
+    static func isPlainDelete(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function, .capsLock])
+        return event.type == .keyDown && event.keyCode == 51 && flags.isEmpty
+    }
+
+    func resetDoubleDelete() {
+        doubleDelete.reset()
+        if let doubleDeleteMonitor {
+            NSEvent.removeMonitor(doubleDeleteMonitor)
+            self.doubleDeleteMonitor = nil
+        }
+    }
+
+    /// One press of Delete. True when it was the second of two in an empty field and the
+    /// owner's handler used it.
+    private func handleDelete(_ event: NSEvent) -> Bool {
+        // An input method that is composing gets Delete as usual.
+        guard !hasMarkedText() else {
+            resetDoubleDelete()
+            return false
+        }
+        doubleDelete.interval = doubleDeleteInterval()
+        if doubleDelete.press(fieldIsEmpty: string.isEmpty, isRepeat: event.isARepeat, at: event.timestamp) {
+            resetDoubleDelete()
+            return onDoubleDelete?() == true
+        }
+        if doubleDelete.isWaiting, doubleDeleteMonitor == nil {
+            doubleDeleteMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+            ) { [weak self] event in
+                MainActor.assumeIsolated {
+                    if event.type != .keyDown || !Self.isPlainDelete(event) { self?.resetDoubleDelete() }
+                }
+                return event
+            }
+        } else if !doubleDelete.isWaiting {
+            resetDoubleDelete()
+        }
+        return false
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        resetDoubleDelete()
+        super.mouseDown(with: event)
+    }
+
+    override func resignFirstResponder() -> Bool {
+        resetDoubleDelete()
+        return super.resignFirstResponder()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        resetDoubleDelete()
+        if let resignKeyObserver {
+            NotificationCenter.default.removeObserver(resignKeyObserver)
+            self.resignKeyObserver = nil
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if isCommandReturn(event), window?.firstResponder === self, let onCommandReturn {
@@ -359,6 +443,14 @@ final class InputTextView: NSTextView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        // Hiding the window, or the owner going to another window, starts the count over.
+        if let window {
+            resignKeyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification, object: window, queue: nil
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.resetDoubleDelete() }
+            }
+        }
         if takesFocusInWindow, let window {
             takesFocusInWindow = false
             window.makeFirstResponder(self)
@@ -366,6 +458,11 @@ final class InputTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if Self.isPlainDelete(event) {
+            if handleDelete(event) { return }
+        } else {
+            resetDoubleDelete()
+        }
         // A Command-Return that no key equivalent took, as when the event comes straight to the view.
         if isCommandReturn(event), let onCommandReturn {
             onCommandReturn()

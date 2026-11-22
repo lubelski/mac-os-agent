@@ -474,13 +474,15 @@ final class AgentSession {
     func submitToAgent() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        if case .builtIn(let command) = slashMenu.parse(text) {
+            if submitCommand(command, typed: text) {
+                draft = ""
+                recall.reset()
+            }
+            return
+        }
         if isRunning {
             guard queuesWhileRunning else { return }
-            // The app's own commands are not queued. They stay in the field until the task ends.
-            if case .builtIn = slashMenu.parse(text) {
-                transcript.appendNotice("\(text) can be used when the task ends.")
-                return
-            }
             queue.append(text)
             draft = ""
             recall.reset()
@@ -490,6 +492,33 @@ final class AgentSession {
             draft = ""
             recall.reset()
         }
+    }
+
+    /// One of the app's own commands, typed and sent, or from keys, such as Delete twice for
+    /// `/new`. Both come here, so they behave the same. While a task runs it is not run and not
+    /// queued: with the queue experiment on a line says it can be used when the task ends, and
+    /// with it off nothing happens, as Return does nothing then. Returns true when it ran.
+    @discardableResult
+    private func submitCommand(_ command: SlashCommand, typed: String) -> Bool {
+        if isRunning {
+            if queuesWhileRunning {
+                transcript.appendNotice("\(typed) can be used when the task ends.")
+            }
+            return false
+        }
+        perform(command)
+        return true
+    }
+
+    /// Delete twice in quick succession in an empty field, with the behavior on: does what
+    /// typing `/new` and Return does, through the same path. Returns false when the behavior is
+    /// off or the field has text, so the key does what it always does.
+    func startNewEpisodeFromKeys() -> Bool {
+        guard HarnessBehavior.doubleDeleteStartsNewEpisode.isOn(preferences), draft.isEmpty else { return false }
+        if submitCommand(.new, typed: SlashCommand.new.name) {
+            recall.reset()
+        }
+        return true
     }
 
     /// Whether Return while a task runs queues the message. Read each time, so the switch in
