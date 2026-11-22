@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Before anything reads the quick actions folder, which used to be `actions/`.
-        let quickActionsMove = SavedActionLibrary.moveFolderFromOldName()
+        let quickActionsMove = QuickActionLibrary.moveFolderFromOldName()
         let installationID = AgentPaths.installationID()
         let authenticator = ChatGPTAuthenticator(secrets: AgentPaths.secretStore(), installationID: installationID)
         var loop: AgentLoop?

@@ -48,37 +48,37 @@ private func temporaryFolder() -> URL {
     FileManager.default.temporaryDirectory.appending(path: "mac-os-agent-actions-\(UUID().uuidString)", directoryHint: .isDirectory)
 }
 
-private let screensaver = SavedAction(
+private let screensaver = QuickAction(
     id: "start-screensaver", name: "Start Screensaver", description: "Starts the screen saver.",
     phrases: ["screensaver", "screen saver"],
     steps: [.init(tool: "open_application", arguments: ["bundle_identifier_or_path": "/System/Library/CoreServices/ScreenSaverEngine.app"])])
 
-private func step(_ tool: String, _ value: String) -> SavedAction.Step {
+private func step(_ tool: String, _ value: String) -> QuickAction.Step {
     .init(tool: tool, arguments: ["value": .string(value), "count": nil])
 }
 
-@Suite struct SavedActionFileTests {
+@Suite struct QuickActionFileTests {
     @Test func aFileRoundTripsAndReadsAsAPersonWouldWriteIt() throws {
         let text = screensaver.fileText
         #expect(text.hasPrefix("{\n  \"format\": 1,\n  \"name\": \"Start Screensaver\","))
         #expect(text.contains("\"tool\": \"open_application\""))
-        #expect(try SavedAction.parse(text, id: "start-screensaver") == screensaver)
+        #expect(try QuickAction.parse(text, id: "start-screensaver") == screensaver)
 
         let handWritten = """
             {"format": 1, "name": "  Lock  ", "description": "Locks the screen.",
              "steps": [{"tool": "run_shell_command", "arguments": {"command": "pmset displaysleepnow", "destructive": false}}]}
             """
-        let action = try SavedAction.parse(handWritten, id: "lock")
+        let action = try QuickAction.parse(handWritten, id: "lock")
         #expect(action.name == "Lock")
         #expect(action.phrases.isEmpty)
         #expect(action.isEnabled, "on unless the file says otherwise")
-        #expect(try SavedAction.parse(action.fileText, id: "lock") == action)
+        #expect(try QuickAction.parse(action.fileText, id: "lock") == action)
     }
 
     @Test func theLibrarySavesFindsTurnsOffAndDeletes() throws {
         let folder = temporaryFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
-        let library = SavedActionLibrary(folder: folder)
+        let library = QuickActionLibrary(folder: folder)
         #expect(library.entries().isEmpty, "a missing folder is no actions")
         try library.save(screensaver)
         #expect(library.entries().map(\.id) == ["start-screensaver"])
@@ -90,13 +90,13 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         #expect(library.availableActions().isEmpty)
         try library.delete(id: "start-screensaver")
         #expect(library.entries().isEmpty)
-        #expect(SavedActionLibrary.identifier(for: "Start Screensaver!") == "start-screensaver")
+        #expect(QuickActionLibrary.identifier(for: "Start Screensaver!") == "start-screensaver")
     }
 
     @Test func aBadFileIsListedWithItsProblemAndTheRestStillLoad() throws {
         let folder = temporaryFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
-        let library = SavedActionLibrary(folder: folder)
+        let library = QuickActionLibrary(folder: folder)
         try library.save(screensaver)
         let files: [String: String] = [
             "broken.json": "{ not json",
@@ -120,24 +120,24 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
 
     @Test func theNoticeNamesAddedAndChangedActions() {
         let folder = URL(filePath: "/tmp/actions")
-        func entry(_ action: SavedAction) -> SavedActionEntry {
-            SavedActionEntry(id: action.id, name: action.name, action: action, problem: nil, fileURL: folder.appending(path: action.id + ".json"))
+        func entry(_ action: QuickAction) -> QuickActionEntry {
+            QuickActionEntry(id: action.id, name: action.name, action: action, problem: nil, fileURL: folder.appending(path: action.id + ".json"))
         }
         var changed = screensaver
         changed.phrases = ["saver"]
-        let lock = SavedAction(id: "lock", name: "Lock", description: "Locks.", steps: [step("a", "x")])
-        #expect(SavedActionLibrary.changeNotice(from: [], to: [entry(screensaver)])
+        let lock = QuickAction(id: "lock", name: "Lock", description: "Locks.", steps: [step("a", "x")])
+        #expect(QuickActionLibrary.changeNotice(from: [], to: [entry(screensaver)])
             == "The quick action Start Screensaver is ready to use. Type its name and press Return.")
-        #expect(SavedActionLibrary.changeNotice(from: [entry(screensaver)], to: [entry(changed), entry(lock)])
+        #expect(QuickActionLibrary.changeNotice(from: [entry(screensaver)], to: [entry(changed), entry(lock)])
             == "The quick action Lock is ready to use. Type its name and press Return. The quick action Start Screensaver is updated.")
-        #expect(SavedActionLibrary.changeNotice(from: [entry(screensaver)], to: [entry(screensaver)]) == nil)
+        #expect(QuickActionLibrary.changeNotice(from: [entry(screensaver)], to: [entry(screensaver)]) == nil)
         var off = lock
         off.isEnabled = false
-        #expect(SavedActionLibrary.changeNotice(from: [], to: [entry(off)]) == nil, "an action that is off is not offered")
+        #expect(QuickActionLibrary.changeNotice(from: [], to: [entry(off)]) == nil, "an action that is off is not offered")
     }
 }
 
-@Suite struct ActionMatchingTests {
+@Suite struct QuickActionMatchingTests {
     static let applications: [InstalledApplication] = [
         ("Safari", "com.apple.Safari"), ("Spotify", "com.spotify.client"), ("Screen Sharing", "com.apple.ScreenSharing"),
         ("Xcode", "com.apple.dt.Xcode"),
@@ -145,13 +145,13 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         InstalledApplication(name: name, bundleIdentifier: identifier, url: URL(filePath: "/Applications/\(name).app", directoryHint: .isDirectory))
     }
 
-    static let spotifyFocus = SavedAction(
+    static let spotifyFocus = QuickAction(
         id: "spotify-focus", name: "Spotify Focus", description: "Opens Spotify and hides the rest.",
         steps: [.init(tool: "open_application", arguments: ["bundle_identifier_or_path": "com.spotify.client"])])
 
-    private func engine(_ actions: [SavedAction] = [screensaver, Self.spotifyFocus]) -> InstantActionEngine {
+    private func engine(_ actions: [QuickAction] = [screensaver, Self.spotifyFocus]) -> InstantActionEngine {
         InstantActionEngine(providers: [
-            ActionInstantActions(actions: actions),
+            QuickActionInstantActions(actions: actions),
             ApplicationInstantActions(applications: Self.applications),
         ])
     }
@@ -160,7 +160,7 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         for input in ["screensaver", "screen saver", "Start Screensaver", "start screensaver", "run screensaver", "screensa"] {
             let suggestion = try #require(engine().suggestion(for: input), "\(input)")
             #expect(suggestion.choices.map(\.title) == ["Start Screensaver"], "\(input)")
-            #expect(suggestion.top.target == .action(id: "start-screensaver"))
+            #expect(suggestion.top.target == .quickAction(id: "start-screensaver"))
             #expect(suggestion.top.detail == "Open ScreenSaverEngine")
             #expect(suggestion.top.target.actionLabel == "runs")
         }
@@ -183,13 +183,13 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
     }
 
     @Test func aLongReadingIsShortened() {
-        let many = SavedAction(id: "many", name: "Many", description: "Many steps.",
+        let many = QuickAction(id: "many", name: "Many", description: "Many steps.",
                                steps: (1...5).map { _ in .init(tool: "read_clipboard", arguments: [:]) })
-        #expect(ActionInstantActions.reading(of: many) == "Read the clipboard, then Read the clipboard, and 3 more steps")
+        #expect(QuickActionInstantActions.reading(of: many) == "Read the clipboard, then Read the clipboard, and 3 more steps")
     }
 }
 
-@Suite struct ActionRunTests {
+@Suite struct QuickActionRunTests {
     private func loop(tools: [any AgentTool], thread: any ThreadStorage = InMemoryThreadStore(), provider: FakeProvider = FakeProvider(replies: [])) -> AgentLoop {
         AgentLoop(provider: provider, thread: thread, tools: tools, instructions: { "Be brief." }, episodeTimeout: { 1800 })
     }
@@ -199,11 +199,11 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         let second = StepTool("second", result: "Error: the thing was not there.")
         let third = StepTool("third")
         let thread = InMemoryThreadStore()
-        let action = SavedAction(id: "three", name: "Three Steps", description: "Runs three.",
+        let action = QuickAction(id: "three", name: "Three Steps", description: "Runs three.",
                                  steps: [step("first", "a"), step("second", "b"), step("third", "c")])
         let events = EventLog()
         let entry = try await loop(tools: [first, second, third], thread: thread)
-            .runAction(action, typed: "three", onEvent: { events.record($0) })
+            .runQuickAction(action, typed: "three", onEvent: { events.record($0) })
 
         #expect(first.received == [["value": "a", "count": nil]])
         #expect(second.received.count == 1)
@@ -216,14 +216,14 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         #expect(record.message.contains("Step 2 failed, so the app stopped and the 1 after it did not run."))
         let names: [String] = events.events.compactMap { if case .toolCallStarted(_, let name) = $0 { name } else { nil } }
         #expect(names == ["first", "second"])
-        #expect(events.events.first.map { if case .actionStarted = $0 { true } else { false } } == true)
+        #expect(events.events.first.map { if case .quickActionStarted = $0 { true } else { false } } == true)
         #expect(await thread.entries == [entry], "one entry, the owner's message")
     }
 
     @Test func aGoAheadIsGivenWithoutAskingAndNoted() async throws {
         let asking = StepTool("asking", asks: true)
-        let action = SavedAction(id: "ask", name: "Ask", description: "Asks.", steps: [step("asking", "x")])
-        let entry = try await loop(tools: [asking]).runAction(action, typed: "ask", onEvent: { _ in })
+        let action = QuickAction(id: "ask", name: "Ask", description: "Asks.", steps: [step("asking", "x")])
+        let entry = try await loop(tools: [asking]).runQuickAction(action, typed: "ask", onEvent: { _ in })
         #expect(asking.goAheadAnswers == [true])
         guard case .userMessage(_, _, let record?) = entry.item else { Issue.record("no record"); return }
         #expect(record.failedStep == nil)
@@ -238,10 +238,10 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         defer { try? FileManager.default.removeItem(at: folder) }
         let themes = ThemeLibrary(folder: folder)
         let change = ChangeThemeTool(library: themes, preferences: ThemePreferences(suiteName: "actions-test-\(UUID().uuidString)"))
-        let action = SavedAction(id: "bad-theme", name: "Bad Theme", description: "Saves a bad theme.", steps: [
+        let action = QuickAction(id: "bad-theme", name: "Bad Theme", description: "Saves a bad theme.", steps: [
             .init(tool: "change_theme", arguments: ["action": "delete", "theme_id": "glass", "file": nil]),
         ])
-        let entry = try await loop(tools: [change]).runAction(action, typed: "bad theme", onEvent: { _ in })
+        let entry = try await loop(tools: [change]).runQuickAction(action, typed: "bad theme", onEvent: { _ in })
         guard case .userMessage(_, _, let record?) = entry.item else { Issue.record("no record"); return }
         #expect(record.failedStep == 0)
         #expect(record.steps[0].output.hasPrefix("Error: Glass is a built-in theme"))
@@ -254,8 +254,8 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         let loop = loop(tools: [tool], thread: thread, provider: provider)
         try await loop.run("hello", onEvent: { _ in }, confirm: { _ in false })
         let before = await thread.entries
-        let action = SavedAction(id: "one", name: "One", description: "One step.", steps: [step("first", "a")])
-        try await loop.runAction(action, typed: "one", onEvent: { _ in })
+        let action = QuickAction(id: "one", name: "One", description: "One step.", steps: [step("first", "a")])
+        try await loop.runQuickAction(action, typed: "one", onEvent: { _ in })
         #expect(provider.requests.count == 1, "running an action asks the model nothing")
         try await loop.run("what did you just do", onEvent: { _ in }, confirm: { _ in false })
 
@@ -277,9 +277,9 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         let file = temporaryThreadFile()
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         let thread = try ThreadStore(fileURL: file)
-        let action = SavedAction(id: "two", name: "Two", description: "Two steps.", steps: [step("first", "a"), step("second", "b")])
+        let action = QuickAction(id: "two", name: "Two", description: "Two steps.", steps: [step("first", "a"), step("second", "b")])
         let entry = try await loop(tools: [StepTool("first"), StepTool("second", result: "Error: no.")], thread: thread)
-            .runAction(action, typed: "two", onEvent: { _ in })
+            .runQuickAction(action, typed: "two", onEvent: { _ in })
 
         let reopened = try ThreadStore(fileURL: file)
         let stored = await reopened.entries
@@ -291,7 +291,7 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         #expect(transcript.rows.count == 5)
         guard case .user(let typed, _, _) = transcript.rows[1].kind else { Issue.record("no owner's row"); return }
         #expect(typed == "two")
-        #expect(transcript.rows[2].id == ActionRunStart.callID(entryID: entry.id, index: 0))
+        #expect(transcript.rows[2].id == QuickActionRunStart.callID(entryID: entry.id, index: 0))
         #expect(transcript.rows[4].kind == .error("Two stopped at step 2 of 2."))
         #expect(transcript.toolCall(transcript.rows[3].id)?.facts.call?.name == "second")
 
@@ -352,8 +352,8 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         let loop = loop(tools: [StepTool("first")], thread: thread, provider: provider)
         let start = Date()
         try await loop.run("hello", now: start, onEvent: { _ in }, confirm: { _ in false })
-        let action = SavedAction(id: "one", name: "One", description: "One step.", steps: [step("first", "a")])
-        try await loop.runAction(action, typed: "one", now: start.addingTimeInterval(3600), onEvent: { _ in })
+        let action = QuickAction(id: "one", name: "One", description: "One step.", steps: [step("first", "a")])
+        try await loop.runQuickAction(action, typed: "one", now: start.addingTimeInterval(3600), onEvent: { _ in })
         let entries = await thread.entries
         #expect(entries.count == 4)
         #expect(entries[2].item == .episodeStart(.init(reason: .timeout)))
@@ -363,11 +363,11 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
     }
 }
 
-@Suite struct ActionValidationTests {
+@Suite struct QuickActionValidationTests {
     private let definitions = [StepTool("first").definition, ShellCommandTool().definition]
 
-    private func problems(_ steps: [SavedAction.Step]) -> [String] {
-        ActionValidation.problems(SavedAction(id: "x", name: "X", description: "X.", steps: steps), tools: definitions)
+    private func problems(_ steps: [QuickAction.Step]) -> [String] {
+        QuickActionValidation.problems(QuickAction(id: "x", name: "X", description: "X.", steps: steps), tools: definitions)
     }
 
     @Test func everyStepMustNameARealToolWithArgumentsThatFit() {
@@ -384,21 +384,21 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
     }
 
     @Test func aShellStepThatWouldAskIsNotedNotRefused() {
-        let remove = SavedAction.Step(tool: ShellCommandTool.name, arguments: ["command": "rm ~/Desktop/old.txt", "destructive": false])
+        let remove = QuickAction.Step(tool: ShellCommandTool.name, arguments: ["command": "rm ~/Desktop/old.txt", "destructive": false])
         #expect(problems([remove]).isEmpty)
-        #expect(ActionValidation.goAheadNote(remove) == "deletes files")
-        let list = SavedAction.Step(tool: ShellCommandTool.name, arguments: ["command": "ls ~", "destructive": false])
-        #expect(ActionValidation.goAheadNote(list) == nil)
-        let marked = SavedAction.Step(tool: ShellCommandTool.name, arguments: ["command": "ls ~", "destructive": true])
-        #expect(ActionValidation.goAheadNote(marked) == "is marked as destructive")
+        #expect(QuickActionValidation.goAheadNote(remove) == "deletes files")
+        let list = QuickAction.Step(tool: ShellCommandTool.name, arguments: ["command": "ls ~", "destructive": false])
+        #expect(QuickActionValidation.goAheadNote(list) == nil)
+        let marked = QuickAction.Step(tool: ShellCommandTool.name, arguments: ["command": "ls ~", "destructive": true])
+        #expect(QuickActionValidation.goAheadNote(marked) == "is marked as destructive")
     }
 
     @Test func changeActionChecksASaveInFullAndDeletingAsks() async throws {
         let folder = temporaryFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
-        let library = SavedActionLibrary(folder: folder)
+        let library = QuickActionLibrary(folder: folder)
         let definitions = definitions
-        let tool = ChangeActionTool(library: library, tools: { definitions })
+        let tool = ChangeQuickActionTool(library: library, tools: { definitions })
         let context = ToolRunContext(callID: "c", confirm: { _ in false })
 
         let bad = #"{"format": 1, "name": "Bad", "description": "Bad.", "steps": [{"tool": "nope", "arguments": {}}]}"#
@@ -424,7 +424,7 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
 
         let declined = await tool.run(arguments: ["operation": "delete", "action_id": "clean-desktop", "file": nil], context: context)
         #expect(declined == "The owner declined. Clean Desktop is still there.")
-        let yes = ToolRunContext(callID: "d", confirm: { $0.kind == .deleteAction })
+        let yes = ToolRunContext(callID: "d", confirm: { $0.kind == .deleteQuickAction })
         let deleted = await tool.run(arguments: ["operation": "delete", "action_id": "clean-desktop", "file": nil], context: yes)
         #expect(deleted == "Deleted Clean Desktop.")
         #expect(library.entries().isEmpty)
@@ -433,9 +433,9 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
     @Test func readActionsListsThemAndShowsAFile() async throws {
         let folder = temporaryFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
-        let library = SavedActionLibrary(folder: folder)
+        let library = QuickActionLibrary(folder: folder)
         try library.save(screensaver)
-        let read = ReadActionsTool(library: library)
+        let read = ReadQuickActionsTool(library: library)
         let context = ToolRunContext(callID: "c", confirm: { _ in false })
         let list = await read.run(arguments: ["action_id": nil], context: context)
         #expect(list.contains("- start-screensaver: Start Screensaver, on, Starts the screen saver. Also typed as: screensaver, screen saver."))
@@ -450,18 +450,71 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         // The memory tools come after them.
         for tool in tools.dropLast(2).suffix(2) {
             let definition = tool.definition
-            #expect(tool.source == .actions)
+            #expect(tool.source == .quickActions)
             #expect(definition.parameters["additionalProperties"] == false)
             let encoded: JSONValue = ["type": "function", "name": .string(definition.name), "description": .string(definition.description), "parameters": definition.parameters, "strict": true]
             characters += encoded.encodedString().count
         }
-        print("action tools add \(characters) characters to each request")
+        print("quick action tools add \(characters) characters to each request")
         #expect(characters < 1200)
         let text = AgentInstructions.fixed(skills: [], skillsFolder: URL(filePath: "/tmp/skills"))
         #expect(text.contains("A quick action is a fixed tool call"))
         #expect(text.contains("\"make that instant\""))
         #expect(text.contains("Use a skill instead when the task needs judgment each time."))
         #expect(!AgentInstructions.incognitoFixed.contains("action"), "the incognito window has no actions")
+    }
+}
+
+/// What the model and the data folder see of quick actions, pinned byte for byte. The code's
+/// names changed from "saved action" to "quick action" after the product's did, and none of this
+/// was to move: the tools and instructions are the cached prefix of every request, and the rest
+/// is in the owner's thread and instant-actions.json.
+@Suite struct QuickActionWireFormatTests {
+    @Test func theToolsAreSentExactlyAsBefore() {
+        let tools = BuiltInTools.make(applicationWorkspace: FakeApplicationWorkspace(installed: []), system: FakeSystemControl())
+        let sent = tools.filter { $0.source == .quickActions }.map { tool in
+            let definition = tool.definition
+            let encoded: JSONValue = [
+                "type": "function", "name": .string(definition.name), "description": .string(definition.description),
+                "parameters": definition.parameters, "strict": true,
+            ]
+            return encoded.encodedString()
+        }
+        #expect(sent == [
+            #"{"description":"List the quick actions and the quick action file format, or show one quick action's whole file.","name":"read_quick_actions","parameters":{"additionalProperties":false,"properties":{"action_id":{"description":"A quick action's id, for its whole file. Null for the list.","type":["string","null"]}},"required":["action_id"],"type":"object"},"strict":true,"type":"function"}"#,
+            #"{"description":"Save a quick action from a whole quick action file, or delete one. A save is refused, with the reasons, when the file is malformed or a step does not fit its tool.","name":"change_quick_action","parameters":{"additionalProperties":false,"properties":{"action_id":{"description":"The quick action to replace or delete. Null to save a new quick action under an id made from its name.","type":["string","null"]},"file":{"description":"For a save, the whole quick action file as JSON text. Null otherwise.","type":["string","null"]},"operation":{"enum":["save","delete"],"type":"string"}},"required":["action_id","file","operation"],"type":"object"},"strict":true,"type":"function"}"#,
+        ])
+        #expect(ToolSource.quickActions.id == "actions")
+    }
+
+    @Test func theInstructionsSayWhatTheySaidBefore() {
+        let text = AgentInstructions.fixed(skills: [], skillsFolder: URL(filePath: "/tmp/skills"))
+        #expect(text.contains("""
+            - A quick action is a fixed tool call, or a few in order, with the arguments filled in. When the person \
+            types its name in the panel and presses Return, the app runs it at once, with no request to you and no \
+            go-ahead, since choosing it is the go-ahead. Manage quick actions with read_quick_actions and \
+            change_quick_action. When a request came down to a fixed call or calls the person is likely to repeat, \
+            such as opening one thing or running one command, offer to save it as a quick action, and save one when \
+            they ask, for example "make that instant". Use a skill instead when the task needs judgment each time.
+            - When the person runs a quick action, their message holds an <action_run> record of what ran and what \
+            came of it, instead of text for you to answer. If they refer to it later, such as "undo that", it is \
+            what they mean.
+            """))
+    }
+
+    @Test func storedNamesStayAsTheyWere() throws {
+        let action = QuickAction(id: "one", name: "One", description: "One step.", steps: [step("first", "a")])
+        #expect(QuickActionInstantActions.id(for: action) == "action:one", "the learned-use key in instant-actions.json")
+        let step = ThreadItem.QuickActionRun.Step(callID: "c", tool: "first", arguments: "{}", output: "done")
+        #expect(step.call.model == "action")
+        let run = ThreadItem.QuickActionRun(id: "one", name: "One", stepCount: 1, steps: [step], failedStep: nil,
+                                            message: ThreadItem.QuickActionRun.message(typed: "one", action: action, steps: [step], failedStep: nil))
+        #expect(run.message.hasPrefix("<action_run>\n") && run.message.hasSuffix("\n</action_run>"))
+        let line = try JSONEncoder().encode(ThreadEntry(item: .userMessage(text: "one", action: run)))
+        let value = try #require(JSONValue.parse(String(decoding: line, as: UTF8.self))?["item"]?["value"])
+        #expect(value["action"]?["id"]?.stringValue == "one", "the thread keeps the run under \"action\"")
+        #expect(AgentPaths.quickActionsFolderName == "quick-actions")
+        #expect(AgentPaths.oldActionsFolderName == "actions")
     }
 }
 
@@ -482,7 +535,7 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
     private func read(_ url: URL) -> String? { try? String(contentsOf: url, encoding: .utf8) }
 
     @Test func theFolderIsCalledQuickActions() {
-        #expect(AgentPaths.actionsFolder.lastPathComponent == "quick-actions")
+        #expect(AgentPaths.quickActionsFolder.lastPathComponent == "quick-actions")
     }
 
     @Test func theOldFolderIsRenamedOnce() throws {
@@ -490,17 +543,17 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         defer { try? FileManager.default.removeItem(at: data) }
         try write("{}", to: data.appending(path: "actions/start-screensaver.json"))
 
-        #expect(SavedActionLibrary.moveFolderFromOldName(in: data) == .moved)
+        #expect(QuickActionLibrary.moveFolderFromOldName(in: data) == .moved)
         #expect(!FileManager.default.fileExists(atPath: data.appending(path: "actions").path(percentEncoded: false)))
         #expect(read(data.appending(path: "quick-actions/start-screensaver.json")) == "{}")
-        #expect(SavedActionLibrary.moveFolderFromOldName(in: data) == .nothingToMove, "the next launch has nothing to do")
-        #expect(SavedActionLibrary.moveFolderFromOldName(in: data).problem == nil)
+        #expect(QuickActionLibrary.moveFolderFromOldName(in: data) == .nothingToMove, "the next launch has nothing to do")
+        #expect(QuickActionLibrary.moveFolderFromOldName(in: data).problem == nil)
     }
 
     @Test func withNeitherFolderNothingHappens() throws {
         let data = try dataFolder()
         defer { try? FileManager.default.removeItem(at: data) }
-        #expect(SavedActionLibrary.moveFolderFromOldName(in: data) == .nothingToMove)
+        #expect(QuickActionLibrary.moveFolderFromOldName(in: data) == .nothingToMove)
         #expect(try FileManager.default.contentsOfDirectory(atPath: data.path(percentEncoded: false)).isEmpty)
     }
 
@@ -510,7 +563,7 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         try write("old", to: data.appending(path: "actions/lock.json"))
         try write("new", to: data.appending(path: "quick-actions/lock.json"))
 
-        let move = SavedActionLibrary.moveFolderFromOldName(in: data)
+        let move = QuickActionLibrary.moveFolderFromOldName(in: data)
         #expect(move == .bothExist)
         #expect(read(data.appending(path: "actions/lock.json")) == "old")
         #expect(read(data.appending(path: "quick-actions/lock.json")) == "new")
@@ -523,7 +576,7 @@ private func step(_ tool: String, _ value: String) -> SavedAction.Step {
         let data = try dataFolder()
         defer { try? FileManager.default.removeItem(at: data) }
         try write("not a folder", to: data.appending(path: "actions"))
-        #expect(SavedActionLibrary.moveFolderFromOldName(in: data) == .nothingToMove)
+        #expect(QuickActionLibrary.moveFolderFromOldName(in: data) == .nothingToMove)
         #expect(read(data.appending(path: "actions")) == "not a folder")
     }
 }

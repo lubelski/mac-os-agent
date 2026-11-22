@@ -49,13 +49,13 @@ struct InputFooterContentTests {
         let content = make(.suggestion(app, others: 2), name: "Juno")
         #expect(content.leading.map(\.text) == ["↵ open", "↓ 2 more"])
         #expect(content.trailing?.text == "⌘↵ ask Juno", "the agent's name comes from the setting")
-        #expect(make(.suggestion(.action(id: "x"), others: 0)).leading.map(\.text) == ["↵ run"])
+        #expect(make(.suggestion(.quickAction(id: "x"), others: 0)).leading.map(\.text) == ["↵ run"])
     }
 
     @Test func withTheListOpen() {
         let app = InstantActionTarget.application(FooterPreview.applications[0])
         #expect(make(.list(app)).leading.map(\.text) == ["↵ open", "↑↓ choose", "esc close"])
-        #expect(make(.list(.action(id: "x"))).leading.first?.text == "↵ run")
+        #expect(make(.list(.quickAction(id: "x"))).leading.first?.text == "↵ run")
         #expect(make(.list(nil)).leading.first?.text == "↵ ask", "on the Ask row")
         #expect(make(.list(app)).trailing?.text == "⌘↵ ask Iris")
     }
@@ -217,14 +217,14 @@ struct InputFooterContentTests {
         harness.editor.unmarkText()
     }
 
-    @Test func aSavedActionShowsItsSymbolAndRuns() async throws {
+    @Test func aQuickActionShowsItsSymbolAndRuns() async throws {
         let (harness, _) = try harness()
         harness.type("chrome incognito")
         await harness.settle()
         let target = try #require(harness.session.returnTarget)
-        #expect(target.target == .action(id: "chrome-incognito"))
-        guard case .suggestion(.action, _) = harness.session.footerState else {
-            Issue.record("expected a saved action, got \(harness.session.footerState)")
+        #expect(target.target == .quickAction(id: "chrome-incognito"))
+        guard case .suggestion(.quickAction, _) = harness.session.footerState else {
+            Issue.record("expected a quick action, got \(harness.session.footerState)")
             return
         }
     }
@@ -280,15 +280,15 @@ struct InputFooterContentTests {
         #expect(harness.session.instantActions.history.wasPicked(matches[canary].id, for: "chr"), "the choice is learned")
     }
 
-    @Test func returnOnASavedActionRowTakesIt() async throws {
+    @Test func returnOnAQuickActionRowTakesIt() async throws {
         let (harness, recorder) = try harness()
         harness.type("chr")
         await harness.settle()
         let matches = try #require(harness.session.instantActions.suggestion?.matches)
-        let action = try #require(matches.firstIndex { $0.target == .action(id: "chrome-incognito") })
+        let action = try #require(matches.firstIndex { $0.target == .quickAction(id: "chrome-incognito") })
         press(harness, down)
         for _ in 0..<action { press(harness, down) }
-        #expect(harness.session.footerState == .list(.action(id: "chrome-incognito")))
+        #expect(harness.session.footerState == .list(.quickAction(id: "chrome-incognito")))
         harness.press("\r", code: 36, [])
         await harness.settle()
         // The preview has no loop to run it with, so only what Return took is checked.
@@ -457,8 +457,8 @@ struct InputFooterContentTests {
         press(harness, down)
         let rows = harness.session.suggestionRows
         #expect(!rows.isEmpty)
-        #expect(!rows.contains { if case .candidate(let c) = $0, case .action = c.target { true } else { false } },
-                "it has no saved actions")
+        #expect(!rows.contains { if case .candidate(let c) = $0, case .quickAction = c.target { true } else { false } },
+                "it has no quick actions")
         harness.press("\r", code: 36, [])
         await harness.settle()
         #expect(recorder.opened == ["Google Chrome"])

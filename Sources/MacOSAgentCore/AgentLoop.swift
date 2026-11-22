@@ -12,10 +12,10 @@ public enum AgentEvent: Sendable, Equatable {
     case toolRunning(callID: String, summary: String)
     /// A tool finished. Its result also arrives as an entry.
     case toolFinished(callID: String)
-    /// The owner ran a saved action. Its steps follow as `toolCallStarted`, `toolRunning`, and
+    /// The owner ran a quick action. Its steps follow as `toolCallStarted`, `toolRunning`, and
     /// `toolFinished` under the call ids given here, and the record of the run arrives as an
     /// entry with the same id when it ends.
-    case actionStarted(ActionRunStart)
+    case quickActionStarted(QuickActionRunStart)
 }
 
 public enum AgentLoopError: Error, Equatable, LocalizedError {

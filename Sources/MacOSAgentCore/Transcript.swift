@@ -225,10 +225,10 @@ public struct Transcript: Equatable, Sendable {
         }
     }
 
-    /// A saved action began running: the owner's typed text shows as their message at once, and
+    /// A quick action began running: the owner's typed text shows as their message at once, and
     /// each step adds its row as it starts, under the call ids the run gives it. The run's entry
     /// fills them in when it ends, through `apply`.
-    public mutating func beginActionRun(_ start: ActionRunStart) {
+    public mutating func beginActionRun(_ start: QuickActionRunStart) {
         let id = start.entryID.uuidString
         guard indexByID[id] == nil else { return }
         // The very first entry of a thread starts an episode. Its separator has to come first.
@@ -241,7 +241,7 @@ public struct Transcript: Equatable, Sendable {
     /// The rows of an action's run: the typed text, a row per step that ran with its output, and
     /// a line saying where it stopped when a step failed. Rows the run already showed while it
     /// ran are filled in where they are.
-    private mutating func applyActionRun(_ action: ThreadItem.ActionRun, text: String, entry: ThreadEntry) {
+    private mutating func applyActionRun(_ action: ThreadItem.QuickActionRun, text: String, entry: ThreadEntry) {
         let id = entry.id.uuidString
         if indexByID[id] == nil {
             let showsTime = lastUserDate != nil

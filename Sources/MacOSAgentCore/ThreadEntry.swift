@@ -22,9 +22,9 @@ public enum ThreadItem: Sendable, Equatable, Codable {
     /// What the person typed into the panel. When they invoked a skill with a slash, such as
     /// `/rename-photos the trip folder`, `text` is the line as typed, which is what the panel and
     /// search show, and `skill` holds the message the model was sent for it. When they ran a
-    /// saved action from the instant row, `text` is what they typed for it and `action` is the
+    /// quick action from the instant row, `text` is what they typed for it and `action` is the
     /// record of the run, with the note the model is sent in place of the typed text.
-    case userMessage(text: String, skill: SkillInvocation? = nil, action: ActionRun? = nil)
+    case userMessage(text: String, skill: SkillInvocation? = nil, action: QuickActionRun? = nil)
     /// Text the model wrote.
     case assistantMessage(AssistantMessage)
     /// Model output that only the provider understands, such as an encrypted reasoning item.
@@ -56,7 +56,7 @@ public enum ThreadItem: Sendable, Equatable, Codable {
 
     /// The text the model is sent for an owner's message: the record of an action they ran,
     /// the skill's expanded message when they invoked one, and otherwise what they typed.
-    public static func modelText(text: String, skill: SkillInvocation?, action: ActionRun? = nil) -> String {
+    public static func modelText(text: String, skill: SkillInvocation?, action: QuickActionRun? = nil) -> String {
         action?.message ?? skill?.message ?? text
     }
 
@@ -155,7 +155,7 @@ public enum ThreadItem: Sendable, Equatable, Codable {
     private struct UserText: Codable {
         var text: String
         var skill: SkillInvocation?
-        var action: ActionRun?
+        var action: QuickActionRun?
     }
 
     public init(from decoder: Decoder) throws {

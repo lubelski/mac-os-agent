@@ -2,14 +2,14 @@ import Foundation
 import Synchronization
 
 extension ThreadItem {
-    /// The record of a saved action the owner ran from the instant row, kept on their message
+    /// The record of a quick action the owner ran from the instant row, kept on their message
     /// in the thread. The model is sent `message` in place of the typed text, so when the owner
     /// follows up ("undo that"), the agent knows what ran and what came of it.
     ///
     /// It is an owner's message rather than tool calls, because the model made no calls: a
     /// function call in the request with no model turn that made it would not be valid input.
     /// It is appended at the end like any message, so the request's prefix stays as it was.
-    public struct ActionRun: Sendable, Equatable, Codable {
+    public struct QuickActionRun: Sendable, Equatable, Codable {
         public struct Step: Sendable, Equatable, Codable {
             /// The id of the step's row in the panel, which the inspector opens it by.
             public var callID: String
@@ -73,7 +73,7 @@ extension ThreadItem {
 
         /// The note the model reads for the run, between `<action_run>` tags.
         public static func message(
-            typed: String, action: SavedAction, steps: [Step], failedStep: Int?
+            typed: String, action: QuickAction, steps: [Step], failedStep: Int?
         ) -> String {
             var lines = [
                 "<action_run>",
@@ -102,7 +102,7 @@ extension ThreadItem {
 }
 
 /// What the panel needs to show an action's run before it ends.
-public struct ActionRunStart: Sendable, Equatable {
+public struct QuickActionRunStart: Sendable, Equatable {
     /// The id the run's entry will have in the thread.
     public var entryID: UUID
     public var date: Date
@@ -124,7 +124,7 @@ public struct ActionRunStart: Sendable, Equatable {
 }
 
 extension AgentLoop {
-    /// Runs a saved action the owner chose in the instant row, with no model request, and
+    /// Runs a quick action the owner chose in the instant row, with no model request, and
     /// keeps a record of it in the thread.
     ///
     /// The steps run in order through the same tools the model's calls use, and the run stops
@@ -136,8 +136,8 @@ extension AgentLoop {
     /// answers to any unanswered calls, as a typed message would be. Stopping the task stops the
     /// step that is running, and the record says so.
     @discardableResult
-    public func runAction(
-        _ action: SavedAction,
+    public func runQuickAction(
+        _ action: QuickAction,
         typed: String,
         startsNewEpisode: Bool = false,
         now: Date = Date(),
@@ -145,13 +145,13 @@ extension AgentLoop {
     ) async throws -> ThreadEntry {
         try await prepareForOwnerEntry(startsNewEpisode: startsNewEpisode, now: now, onEvent: onEvent)
         let entryID = UUID()
-        await onEvent(.actionStarted(ActionRunStart(entryID: entryID, date: now, text: typed, name: action.name)))
+        await onEvent(.quickActionStarted(QuickActionRunStart(entryID: entryID, date: now, text: typed, name: action.name)))
         let episodeID = await thread.currentEpisode?.id
 
-        var steps: [ThreadItem.ActionRun.Step] = []
+        var steps: [ThreadItem.QuickActionRun.Step] = []
         var failedStep: Int?
         for (index, step) in action.steps.enumerated() {
-            let callID = ActionRunStart.callID(entryID: entryID, index: index)
+            let callID = QuickActionRunStart.callID(entryID: entryID, index: index)
             let arguments = step.arguments.encodedString()
             let call = ThreadItem.ToolCall(callID: callID, name: step.tool, arguments: arguments, provider: "mac-os-agent", model: "action")
             await onEvent(.toolCallStarted(callID: callID, name: step.tool))
@@ -173,9 +173,9 @@ extension AgentLoop {
                 break
             }
         }
-        let record = ThreadItem.ActionRun(
+        let record = ThreadItem.QuickActionRun(
             id: action.id, name: action.name, stepCount: action.steps.count, steps: steps, failedStep: failedStep,
-            message: ThreadItem.ActionRun.message(typed: typed, action: action, steps: steps, failedStep: failedStep))
+            message: ThreadItem.QuickActionRun.message(typed: typed, action: action, steps: steps, failedStep: failedStep))
         let entry = try await thread.append(.userMessage(text: typed, action: record), date: now, id: entryID)
         await onEvent(.entryAdded(entry))
         return entry

@@ -47,8 +47,8 @@ public struct ToolCallSummaries: Sendable {
     /// Built-in tools that were renamed, by their old name. A call in the thread made under an
     /// old name still reads as the tool's summary. The model is sent it as it was made.
     public static let formerNames: [String: String] = [
-        "read_actions": ReadActionsTool.name,
-        "change_action": ChangeActionTool.name,
+        "read_actions": ReadQuickActionsTool.name,
+        "change_action": ChangeQuickActionTool.name,
     ]
 
     /// The summary of a stored call.
@@ -88,8 +88,8 @@ public enum BuiltInTools {
         QuitOrHideApplicationTool.name,
         ReadThemesTool.name,
         ChangeThemeTool.name,
-        ReadActionsTool.name,
-        ChangeActionTool.name,
+        ReadQuickActionsTool.name,
+        ChangeQuickActionTool.name,
         ReadMemoryTool.name,
         ChangeMemoryTool.name,
     ]
@@ -101,7 +101,7 @@ public enum BuiltInTools {
     ///   - system: Files, the clipboard, the desktop picture, and running apps, for the system tools.
     ///   - themes: The panel's themes, which the appearance tools read and write.
     ///   - themePreferences: Where the active theme is kept.
-    ///   - actions: The saved actions, which the action tools read and write.
+    ///   - actions: The quick actions, which the quick action tools read and write.
     ///   - memories: The memory folder, which the memory tools read and write.
     public static func make(
         applicationWorkspace: any ApplicationWorkspace = SystemApplicationWorkspace(),
@@ -112,7 +112,7 @@ public enum BuiltInTools {
         system: any SystemControl = SystemControlOnMac(),
         themes: ThemeLibrary = ThemeLibrary(),
         themePreferences: ThemePreferences = ThemePreferences(),
-        actions: SavedActionLibrary = SavedActionLibrary(),
+        actions: QuickActionLibrary = QuickActionLibrary(),
         memories: MemoryLibrary = MemoryLibrary()
     ) -> [any AgentTool] {
         let reminderIDs = ShortIdentifierTable()
@@ -138,12 +138,12 @@ public enum BuiltInTools {
             ReadThemesTool(library: themes, preferences: themePreferences),
             ChangeThemeTool(library: themes, preferences: themePreferences),
         ]
-        // A saved action's steps may call any tool before these two, so a save is checked
+        // A quick action's steps may call any tool before these two, so a save is checked
         // against their definitions.
         let stepTools = tools.map(\.definition)
         tools += [
-            ReadActionsTool(library: actions),
-            ChangeActionTool(library: actions, tools: { stepTools }),
+            ReadQuickActionsTool(library: actions),
+            ChangeQuickActionTool(library: actions, tools: { stepTools }),
             ReadMemoryTool(library: memories),
             ChangeMemoryTool(library: memories),
         ]

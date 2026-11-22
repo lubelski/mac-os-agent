@@ -4,7 +4,7 @@ import Observation
 
 /// One row of the list under the text field.
 enum SuggestionRow: Equatable, Identifiable {
-    /// An app or a saved action, which Return takes without the model.
+    /// An app or a quick action, which Return takes without the model.
     case candidate(InstantActionCandidate)
     /// The last row of an instant action list: Return sends the typed text to the agent.
     case ask(String)
@@ -102,7 +102,7 @@ extension AgentSession {
         return rows.isEmpty ? nil : rows[highlightedRowIndex]
     }
 
-    /// The app or saved action Return will act on now, which the mark beside the field shows
+    /// The app or quick action Return will act on now, which the mark beside the field shows
     /// and the gray text names. Nil when Return sends the text as a message, completes a
     /// command, or does nothing, and always nil with the experiment off.
     var returnTarget: InstantActionCandidate? {

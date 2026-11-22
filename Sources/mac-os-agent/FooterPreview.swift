@@ -39,7 +39,7 @@ enum FooterPreview {
     }
 
     /// What a stand-in owner has learned: they open Google Chrome with "chr", so it leads
-    /// the saved action whose name starts with "Chr", as on the wireframe.
+    /// the quick action whose name starts with "Chr", as on the wireframe.
     static var history: InstantActionHistory {
         var history = InstantActionHistory()
         let chrome = ApplicationInstantActions.id(for: applications[0])
@@ -63,8 +63,8 @@ enum FooterPreview {
         SkillCommand(name: "tidy-downloads", description: "Moves old files in Downloads to the Trash, after asking.", folderName: "tidy-downloads"),
     ])
 
-    static let actions: [SavedAction] = [
-        SavedAction(
+    static let actions: [QuickAction] = [
+        QuickAction(
             id: "chrome-incognito", name: "Chrome Incognito Window", description: "Opens a private Chrome window.",
             steps: [.init(tool: "run_shell_command", arguments: ["command": "open -na 'Google Chrome' --args --incognito", "destructive": false])]),
     ]
