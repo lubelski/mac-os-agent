@@ -193,7 +193,6 @@ public final class AgentLoop: Sendable {
         // the next request invalid. Answer it at the end of the thread instead of editing history.
         try await answerUnansweredCalls(with: Self.unfinishedOutput, onEvent: onEvent)
     }
-    }
 
     func runTool(
         _ call: ThreadItem.ToolCall,

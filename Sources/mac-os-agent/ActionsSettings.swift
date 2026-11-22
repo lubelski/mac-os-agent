@@ -102,6 +102,7 @@ final class ActionsSettingsModel {
 /// Saved actions as a list beside the selected action's detail, as Skills is.
 struct ActionsSettingsView: View {
     @Bindable var model: ActionsSettingsModel
+    @AgentName private var agentName
 
     var body: some View {
         HStack(spacing: 0) {
@@ -113,7 +114,7 @@ struct ActionsSettingsView: View {
                         ContentUnavailableView {
                             Label("No Actions Yet", systemImage: "bolt")
                         } description: {
-                            Text("Ask the agent to make something it did instant, and it saves it here.")
+                            Text("Ask \(agentName) to make something it did instant, and it saves it here.")
                         }
                     } else if model.filteredEntries.isEmpty {
                         ContentUnavailableView.search(text: model.filter)
@@ -286,6 +287,7 @@ struct ActionStepView: View {
     let number: Int
     let step: SavedAction.Step
     let summaries: ToolCallSummaries
+    @AgentName private var agentName
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -307,7 +309,7 @@ struct ActionStepView: View {
                 .background(.background.secondary, in: .rect(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
             if let reason = ActionValidation.goAheadNote(step) {
-                Text("When the agent makes this call it asks first, because it \(reason). Here it runs without asking.")
+                Text("When \(agentName) makes this call it asks first, because it \(reason). Here it runs without asking.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

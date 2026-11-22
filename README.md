@@ -12,10 +12,11 @@ The agent is called Iris unless you name it otherwise in Settings, General. The 
 - Choose "Sign in with ChatGPT" in the menu bar menu or in Settings.
 - Press the summon shortcut, Option-Shift-Space unless you change it in Settings, General, or click the menu bar icon, to show or hide the panel, and type what you want done. Right-click or Control-click the icon for its menu.
 - Typing an app's name, or part of it, and pressing Return opens the app at once, without the model. Command-Return sends the text to the agent instead.
+- Typing a saved action's name and pressing Return runs it at once, without the model. An action is a fixed tool call, or a few, kept in `actions/`. Ask the agent to "make that instant" to save one.
 - Typing a slash lists the panel's commands and the skills you can invoke. `/skill-name` and some text asks the agent to use that skill for the text.
 - Settings opens from the menu bar menu, or with Command-comma while the panel is in front.
 
-Settings > Appearance picks the panel's theme. Everything the agent keeps (the thread, skills, instructions, themes, usage log) is in `~/Library/Application Support/mac-os-agent/`.
+Settings > Appearance picks the panel's theme. Everything the agent keeps (the thread, skills, actions, instructions, themes, usage log) is in `~/Library/Application Support/mac-os-agent/`.
 
 ## Working on it
 
