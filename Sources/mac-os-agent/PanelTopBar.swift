@@ -66,6 +66,9 @@ struct PanelTopBar: View {
     }
 
     static let height: CGFloat = 30
+    /// False only for an offscreen render, which cannot draw the AppKit views behind the bar's
+    /// drag area and menu anchor.
+    nonisolated(unsafe) static var hostsAppKitViews = true
     /// The space from the panel's side to the control at each end.
     static let sidePadding: CGFloat = 12
     /// Set for the incognito window.
@@ -82,7 +85,7 @@ struct PanelTopBar: View {
         .padding(.horizontal, Self.sidePadding)
         .frame(height: Self.height)
         .frame(maxWidth: .infinity)
-        .background { WindowDragArea() }
+        .background { if Self.hostsAppKitViews { WindowDragArea() } }
     }
 
     /// The close button, then labels. Give a label here `.allowsHitTesting(false)`, so dragging
@@ -250,7 +253,7 @@ struct LayoutMenuButton: View {
                     current: placement.preset, choose: placement.choose,
                     keepsOnTop: placement.keepsOnTop, setKeepsOnTop: placement.setKeepsOnTop))
             })
-            .background(MenuAnchorView(anchor: anchor))
+            .background { if PanelTopBar.hostsAppKitViews { MenuAnchorView(anchor: anchor) } }
             .accessibilityValue(placement.preset.title)
             .accessibilityHint("Opens a menu of layouts")
     }

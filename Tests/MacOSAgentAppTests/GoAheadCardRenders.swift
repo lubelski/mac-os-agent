@@ -91,3 +91,46 @@ struct RebuiltRowRenders {
         try data.write(to: folder.appending(path: "rebuilt-rows-dark.png"))
     }
 }
+
+/// Renders the top bar offscreen with Keep on Top off and on, in the main panel and the
+/// incognito window, for a pull request when screen capture is not available. Run with
+/// MAC_OS_AGENT_RENDER_TOP_BAR set to a folder. The glass is drawn as its fallback fill.
+@MainActor
+@Suite(.enabled(if: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_TOP_BAR"] != nil))
+struct TopBarRenders {
+    @Test func rendersTheBarWithAndWithoutKeepOnTop() throws {
+        let folder = URL(filePath: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_TOP_BAR"]!, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let theme = try #require(BuiltInThemes.all.first { $0.id == "glass" }?.theme)
+        PanelTopBar.hostsAppKitViews = false
+        defer { PanelTopBar.hostsAppKitViews = true }
+        for scheme in [ColorScheme.dark, .light] {
+            let palette = PanelPalette(theme: theme, dark: scheme == .dark, allowsGlass: false)
+            func bar(keepsOnTop: Bool, incognito: Bool) -> some View {
+                let placement = PanelPlacement()
+                placement.keepsOnTop = keepsOnTop
+                placement.offersLayouts = !incognito
+                if !incognito { placement.setKeepsOnTop = { _ in } }
+                return PanelTopBar(incognito: incognito ? .init(canClear: true, clear: {}) : nil)
+                    .environment(placement)
+                    .frame(width: 480)
+                    .background(incognito ? palette.incognitoTint : .clear)
+            }
+            let view = VStack(spacing: 8) {
+                bar(keepsOnTop: false, incognito: false)
+                bar(keepsOnTop: true, incognito: false)
+                bar(keepsOnTop: true, incognito: true)
+            }
+            .padding(8)
+            .foregroundStyle(palette.primary)
+            .background(palette.fallbackFill)
+            .environment(\.panelPalette, palette)
+            .environment(\.colorScheme, scheme)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 2
+            let image = try #require(renderer.nsImage)
+            let data = try #require(NSBitmapImageRep(data: image.tiffRepresentation!)?.representation(using: .png, properties: [:]))
+            try data.write(to: folder.appending(path: "top-bar-\(scheme == .dark ? "dark" : "light").png"))
+        }
+    }
+}
