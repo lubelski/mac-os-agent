@@ -163,6 +163,7 @@ private struct ConfirmationCard: View {
             Text(request.command)
                 .font(.system(.callout, design: .monospaced))
                 .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             HStack {
                 Spacer()

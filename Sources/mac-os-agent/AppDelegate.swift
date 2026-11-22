@@ -40,6 +40,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         Task { await session.start() }
 
+        // For checking the panel without pressing the hotkey, such as from a script.
+        if CommandLine.arguments.contains("--summon-at-launch") {
+            panel.summon()
+        }
+
         if let startupError {
             let alert = NSAlert()
             alert.messageText = "mac-os-agent could not open its thread"
