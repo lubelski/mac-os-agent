@@ -100,7 +100,7 @@ final class AgentSession {
     @ObservationIgnored var toolSources: [String: String] = [:]
     /// Errors since launch, for Settings > Debugging. Message content never goes here. The
     /// incognito session has a log of its own, which nothing shows and which goes with it.
-    @ObservationIgnored let problems = ProblemLog()
+    @ObservationIgnored let problems: ProblemLog
     @ObservationIgnored private var loop: AgentLoop?
     /// Makes the loop for a new incognito conversation, over a fresh `InMemoryThreadStore`.
     @ObservationIgnored private let makeLoop: (() -> AgentLoop)?
@@ -136,9 +136,10 @@ final class AgentSession {
     init(
         loop: AgentLoop?, authenticator: ChatGPTAuthenticator?,
         episodeTimeout: @escaping () -> TimeInterval = { EpisodeTimeoutSetting.current() },
-        signedIn: Bool = false
+        signedIn: Bool = false, problems: ProblemLog = ProblemLog()
     ) {
         kind = .kept
+        self.problems = problems
         self.loop = loop
         makeLoop = nil
         self.authenticator = authenticator
@@ -153,6 +154,7 @@ final class AgentSession {
     ///   - signedIn: Whether the main panel's session is signed in. The app keeps it in step.
     init(incognito makeLoop: @escaping () -> AgentLoop, signedIn: Bool) {
         kind = .incognito
+        problems = ProblemLog()
         self.makeLoop = makeLoop
         authenticator = nil
         episodeTimeout = { .infinity }
@@ -166,6 +168,7 @@ final class AgentSession {
         isRunning: Bool = false, runningCallIDs: [String] = [], freshStart: Bool = false, incognito: Bool = false
     ) {
         kind = incognito ? .incognito : .kept
+        problems = ProblemLog()
         loop = nil
         makeLoop = nil
         authenticator = nil

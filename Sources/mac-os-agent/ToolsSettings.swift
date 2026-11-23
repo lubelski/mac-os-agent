@@ -3,11 +3,11 @@ import MacOSAgentCore
 import Observation
 import SwiftUI
 
-/// The agent's tools, read-only, grouped by source in registry order.
+/// The agent's tools, grouped by source in registry order.
 ///
-/// Tools from MCP servers will arrive as more groups from `ToolRegistry.groups`, one per
-/// server, after the built-in group. Settings for one tool, such as turning it off, would go
-/// in `ToolDetailView` with a store of their own, as skills have `skill-settings.json`.
+/// Tools from MCP servers are more groups from `ToolRegistry.groups`, one per server, after the
+/// built-in group. Their one setting is the go-ahead, kept in `mcp-settings.json` by
+/// `MCPSettingsStore`. Built-in tools have no settings here.
 @MainActor
 @Observable
 final class ToolsSettingsModel {
@@ -17,12 +17,36 @@ final class ToolsSettingsModel {
     /// window comes forward, since the owner changes it in System Settings.
     private(set) var access: [PrivacyAccessKind: PrivacyAccessStatus] = [:]
     @ObservationIgnored private let gate: any PrivacyAccessGate
+    @ObservationIgnored let mcpSettings: MCPSettingsStore?
+    /// Changes when an MCP tool's go-ahead does, so the views read the store again.
+    private(set) var goAheadRevision = 0
+    var errorMessage: String?
 
-    init(registry: ToolRegistry, access gate: any PrivacyAccessGate) {
+    init(registry: ToolRegistry, access gate: any PrivacyAccessGate, mcpSettings: MCPSettingsStore? = nil) {
         groups = registry.groups
         selection = groups.first?.tools.first?.id
         self.gate = gate
+        self.mcpSettings = mcpSettings
         reloadAccess()
+    }
+
+    /// The tool's go-ahead as it is now. An MCP tool's can change while the app runs.
+    func goAhead(of tool: ToolSummary) -> ToolGoAhead {
+        _ = goAheadRevision
+        guard let mcp = tool.mcp, let mcpSettings else { return tool.goAhead }
+        return mcpSettings.goAhead(server: mcp.server, tool: mcp.tool, readOnly: mcp.readOnly).toolGoAhead
+    }
+
+    /// Whether an MCP tool asks before each call. The change applies to its next call.
+    func setAsks(_ asks: Bool, _ tool: ToolSummary) {
+        guard let mcp = tool.mcp, let mcpSettings else { return }
+        do {
+            try mcpSettings.setGoAhead(asks ? .ask : .dontAsk, server: mcp.server, tool: mcp.tool, readOnly: mcp.readOnly)
+            errorMessage = nil
+        } catch {
+            errorMessage = "Could not save the go-ahead: \(error.localizedDescription)"
+        }
+        goAheadRevision += 1
     }
 
     func reloadAccess() {
@@ -47,17 +71,25 @@ struct ToolsSettingsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            List(selection: $model.selection) {
-                ForEach(model.groups) { group in
-                    Section(group.source.title) {
-                        ForEach(group.tools) { tool in
-                            ToolRow(tool: tool).tag(tool.id)
+            ScrollViewReader { proxy in
+                List(selection: $model.selection) {
+                    ForEach(model.groups) { group in
+                        Section(group.source.title) {
+                            ForEach(group.tools) { tool in
+                                ToolRow(tool: tool, goAhead: model.goAhead(of: tool)).tag(tool.id).id(tool.id)
+                            }
                         }
                     }
                 }
+                .listStyle(.inset)
+                .scrollContentBackground(.hidden)
+                .task {
+                    // Waits a moment for the rows, then brings the selected tool into view, such
+                    // as an MCP tool at the end of the list.
+                    try? await Task.sleep(for: .milliseconds(100))
+                    if let selection = model.selection { proxy.scrollTo(selection, anchor: .center) }
+                }
             }
-            .listStyle(.inset)
-            .scrollContentBackground(.hidden)
             .frame(width: 260)
             Divider()
             Group {
@@ -74,6 +106,7 @@ struct ToolsSettingsView: View {
 
 struct ToolRow: View {
     let tool: ToolSummary
+    let goAhead: ToolGoAhead
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -85,7 +118,7 @@ struct ToolRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
-            if tool.goAhead != .never {
+            if goAhead != .never {
                 Image(systemName: "hand.raised")
                     .foregroundStyle(.secondary)
                     .help("Can ask for a go-ahead")
@@ -115,17 +148,19 @@ struct ToolDetailView: View {
                         model.requestAccess(kind)
                     }
                 }
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Asks for a go-ahead").font(.headline)
-                    Text("\(tool.goAhead.label). \(tool.goAhead.explanation)")
-                        .fixedSize(horizontal: false, vertical: true)
+                if let mcp = tool.mcp {
+                    MCPGoAheadControl(tool: tool, mcp: mcp, model: model)
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Asks for a go-ahead").font(.headline)
+                        Text("\(tool.goAhead.label). \(tool.goAhead.explanation)")
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("In the incognito window").font(.headline)
-                    Text(BuiltInTools.incognitoNames.contains(tool.name)
-                         ? "Available. The incognito window has only the three application tools."
-                         : "Not available. The incognito window only opens apps and answers questions, with the three application tools.")
+                    Text(incognitoText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -162,6 +197,50 @@ struct ToolDetailView: View {
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+extension ToolDetailView {
+    private var incognitoText: String {
+        if tool.mcp != nil {
+            return "Not available. The incognito window has no tools from MCP servers."
+        }
+        return BuiltInTools.incognitoNames.contains(tool.name)
+            ? "Available. The incognito window has only the three application tools."
+            : "Not available. The incognito window only opens apps and answers questions, with the three application tools."
+    }
+}
+
+/// An MCP tool's one setting: whether it asks before each call. A change applies to the next
+/// call, since it does not change what the model is sent.
+struct MCPGoAheadControl: View {
+    let tool: ToolSummary
+    let mcp: MCPToolReference
+    let model: ToolsSettingsModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Asks for a go-ahead").font(.headline)
+                Spacer()
+                Toggle("Ask before each call", isOn: Binding(
+                    get: { model.goAhead(of: tool) == .always },
+                    set: { model.setAsks($0, tool) }))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+            Text(model.goAhead(of: tool) == .always
+                 ? "Asks before each call, with the server, the tool, and the arguments."
+                 : "Runs without asking.")
+                .fixedSize(horizontal: false, vertical: true)
+            Text("\(mcp.defaultExplanation) A change applies to the next call.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let error = model.errorMessage {
+                Text(error).font(.callout).foregroundStyle(.red)
+            }
         }
     }
 }

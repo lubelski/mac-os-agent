@@ -7,6 +7,23 @@ MainActor.assumeIsolated {
 
     MainMenu.install()
     let arguments = CommandLine.arguments
+    if arguments.contains(MCPServerCheck.argument) {
+        // Starts the MCP servers in the data folder, reports to standard output and to
+        // mcp-check.txt there, and quits. Only with --data-folder, so it never starts the
+        // owner's own servers.
+        guard arguments.contains(AgentPaths.dataFolderArgument) else {
+            print("\(MCPServerCheck.argument) needs \(AgentPaths.dataFolderArgument) <folder>.")
+            exit(2)
+        }
+        Task.detached {
+            let report = await MCPServerCheck.run()
+            print(report)
+            try? report.write(to: AgentPaths.applicationSupport.appending(path: "mcp-check.txt"), atomically: true, encoding: .utf8)
+            exit(0)
+        }
+        app.run()
+        return
+    }
     if arguments.contains("--preview-settings") || arguments.contains("--preview-panel") {
         // Previews keep their theme choices in preferences of their own, never the owner's.
         // `--preview-theme <id>` shows a theme without saving it, and `--preview-glass off`

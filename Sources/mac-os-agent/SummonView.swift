@@ -360,6 +360,17 @@ struct ConfirmationCard: View {
                 if let detail { selectable(detail) }
             }
             .font(.callout)
+        case .toolCall(let server, let tool, let arguments):
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(verbatim: tool).foregroundStyle(.primary)
+                    selectable("on \(server)")
+                }
+                .font(.callout)
+                CodeBracket(font: .system(size: 12, design: .monospaced)) {
+                    scrollsWhenLong(selectable(arguments))
+                }
+            }
         }
     }
 

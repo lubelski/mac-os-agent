@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var updater: AppUpdater!
     /// Journals a change made to the memory folder outside the app, such as in an editor.
     private var memoryWatcher: FolderWatcher?
+    /// The MCP servers for this run, started in the background after launch.
+    private var mcp: MCPServerPool?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Before anything reads the quick actions folder, which used to be `actions/`.
@@ -35,8 +37,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } catch {
             startupError = error
         }
+        // The MCP servers' tools come from their cached lists, so launch never waits for a server.
+        let problems = ProblemLog()
+        let mcp = MCPServerPool.fromDataFolder(problems: problems)
+        self.mcp = mcp
         // Built once, so the tool list stays the same for the whole run, and shared with Settings.
-        let tools = ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: thread, memories: prompt.memories ?? MemoryLibrary()))
+        let tools = ToolRegistry(
+            builtIn: BuiltInTools.make(skills: prompt.skills, history: thread, memories: prompt.memories ?? MemoryLibrary()),
+            additional: mcp.makeTools())
         if let thread {
             let provider = OpenAIResponsesProvider(
                 authenticator: authenticator,
@@ -62,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             IncognitoWindowController.makeLoop(provider: incognitoProvider, prompt: prompt, usageLog: usageLog)
         }
 
-        session = AgentSession(loop: loop, authenticator: authenticator)
+        session = AgentSession(loop: loop, authenticator: authenticator, problems: problems)
         session.onStatusChange = { [weak self] in self?.statusDidChange() }
         session.toolSources = tools.sourceTitles
         session.instantActions = .live(summaries: tools.summaries)
@@ -132,10 +140,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             session: session, prompt: prompt, usageLog: usageLog, tools: tools, history: thread, problems: session.problems,
             signInStatus: { await authenticator.status() },
             secretStorage: secretStorage.status,
-            summonTrigger: summonTrigger, updater: updater)
+            summonTrigger: summonTrigger, mcp: mcp, updater: updater)
         log.notice("Hotkey \(self.summonTrigger.displayName ?? "none", privacy: .public) registered: \(self.summonTrigger.isRegistered, privacy: .public). Status item button: \(self.statusItem.button != nil, privacy: .public)")
 
         Task { await session.start() }
+        Task { await mcp.start() }
 
         // For checking the panel without pressing the hotkey, such as from a script.
         if CommandLine.arguments.contains("--summon-at-launch") {
@@ -153,6 +162,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         summonTrigger?.stop()
+        // Waits up to a second for the servers to exit, then kills what is left, so none
+        // outlives the app.
+        MCPServerProcess.stopAll()
     }
 
     /// The main panel's session changed: the icon follows it, and the incognito window's

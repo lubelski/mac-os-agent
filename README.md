@@ -20,6 +20,8 @@ The agent is called Iris unless you name it otherwise in Settings, General. The 
 - Typing a slash lists the panel's commands and the skills you can invoke. `/skill-name` and some text asks the agent to use that skill for the text.
 - Settings opens from the menu bar menu, or with Command-comma while the panel is in front.
 
+MCP servers go in `mcp-servers.json` in the same folder, in the `mcpServers` shape other apps use. Settings > MCP Servers shows them, and a new server's tools join at the next launch.
+
 Settings > Appearance picks the panel's theme. Everything the agent keeps (the thread, memory, skills, quick actions, instructions, themes, usage log) is in `~/Library/Application Support/mac-os-agent/`.
 
 ## Working on it

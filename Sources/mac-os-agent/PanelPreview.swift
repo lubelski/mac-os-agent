@@ -27,7 +27,7 @@ enum PanelPreview {
 
     /// The go-ahead card for each tool that asks, beside the shell tool's `confirmation`.
     static let goAheadStates = [
-        "confirmation-reminders", "confirmation-events", "confirmation-quit", "confirmation-theme",
+        "confirmation-reminders", "confirmation-events", "confirmation-quit", "confirmation-theme", "confirmation-mcp",
     ]
 
     /// The states that show the tool call inspector beside the panel, each open on one call.
@@ -92,7 +92,7 @@ enum PanelPreview {
                 previewEntries: thread.entries,
                 pendingConfirmation: ConfirmationRequest(callID: waiting, command: command, reason: "scripts an app to delete or quit"),
                 isRunning: true)
-        case "confirmation-reminders", "confirmation-events", "confirmation-quit", "confirmation-theme":
+        case "confirmation-reminders", "confirmation-events", "confirmation-quit", "confirmation-theme", "confirmation-mcp":
             return goAheadSession(named: name)
         case "draft", "multiline-draft":
             var thread = StandInThread(now: Date())
@@ -335,6 +335,14 @@ enum PanelPreview {
             request = ConfirmationRequest(
                 callID: callID, kind: .quitApplication, body: .item(name: "Safari", detail: "com.apple.Safari"),
                 reason: "may ask you to save unsaved work first")
+        case "confirmation-mcp":
+            thread.user("add a task to call the landlord on friday", minutesAgo: 1)
+            let arguments: JSONValue = ["title": "Call the landlord", "due": "2026-11-27", "list": "Home"]
+            thread.call(callID, name: "tasks__create_task", arguments: arguments, output: nil, details: nil)
+            request = ConfirmationRequest(
+                callID: callID, kind: .mcpToolCall,
+                body: .toolCall(server: "tasks", tool: "create_task", arguments: arguments.prettyEncodedString()),
+                reason: "comes from an MCP server and is set to ask before each call")
         default:
             thread.user("delete the night swim theme", minutesAgo: 1)
             thread.call(callID, name: ChangeThemeTool.name, arguments: ["action": "delete", "theme_id": "night-swim", "file": nil], output: nil, details: nil)

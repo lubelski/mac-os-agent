@@ -69,6 +69,22 @@ public enum AgentPaths {
         applicationSupport.appending(path: "skill-settings.json")
     }
 
+    /// The MCP servers the owner listed, in the `mcpServers` shape. The owner edits it. It can
+    /// hold tokens, so the app keeps it readable only by the owner. See `MCPServerConfig`.
+    public static var mcpServersFile: URL {
+        applicationSupport.appending(path: "mcp-servers.json")
+    }
+
+    /// What the app decides about each MCP server: whether it is on, and each tool's go-ahead.
+    public static var mcpSettingsFile: URL {
+        applicationSupport.appending(path: "mcp-settings.json")
+    }
+
+    /// Each MCP server's last tool list, which the tool list is built from at launch.
+    public static var mcpToolsCacheFile: URL {
+        applicationSupport.appending(path: "mcp-tools-cache.json")
+    }
+
     /// What the owner has opened through instant actions, for ranking. Never written from an
     /// incognito window.
     public static var instantActionHistoryFile: URL {
