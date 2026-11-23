@@ -225,6 +225,8 @@ public struct DiagnosticsReport: Sendable, Equatable {
     public var dataFolder: String
     public var model: String
     public var signIn: SignInStatus?
+    /// Where this run keeps the sign-in, the Keychain or the file, and why.
+    public var secretStorage: SecretStorage.Status?
     public var prompt: PromptInfo
     public var tools: Int
     public var skills: SkillCounts
@@ -240,7 +242,7 @@ public struct DiagnosticsReport: Sendable, Equatable {
         date: Date = Date(), build: BuildInfo, system: String = ProcessInfo.processInfo.operatingSystemVersionString,
         dataFolder: URL, model: String, signIn: SignInStatus?, instructions: String, tools: [ToolDefinition],
         skills: [Skill], memories: MemoryCounts = MemoryCounts(), threadFile: URL, usageLog: UsageLog,
-        problems: [DiagnosticProblem], calendar: Calendar = .current
+        problems: [DiagnosticProblem], secretStorage: SecretStorage.Status? = nil, calendar: Calendar = .current
     ) {
         self.date = date
         self.build = build
@@ -248,6 +250,7 @@ public struct DiagnosticsReport: Sendable, Equatable {
         self.dataFolder = dataFolder.plainPath
         self.model = model
         self.signIn = signIn
+        self.secretStorage = secretStorage
         let records = usageLog.records()
         prompt = PromptInfo(instructions: instructions, tools: tools, records: records)
         self.tools = tools.count
@@ -290,6 +293,9 @@ public struct DiagnosticsReport: Sendable, Equatable {
             }
         } else {
             lines.append("- Not available")
+        }
+        if let secretStorage {
+            lines.append("- Kept in: \(secretStorage.place). \(secretStorage.explanation)")
         }
         lines.append("")
         lines.append("Prompt")

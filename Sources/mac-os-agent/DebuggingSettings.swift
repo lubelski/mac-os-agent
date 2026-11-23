@@ -14,6 +14,8 @@ final class DebuggingSettingsModel {
     @ObservationIgnored let tools: ToolRegistry
     @ObservationIgnored let problems: ProblemLog
     @ObservationIgnored let signInStatus: @Sendable () async -> SignInStatus?
+    /// Where this run keeps the sign-in. Decided once at launch.
+    @ObservationIgnored let secretStorage: SecretStorage.Status?
     @ObservationIgnored let defaults: UserDefaults
     @ObservationIgnored private var loading: Task<Void, Never>?
     /// A part to scroll to when the section appears, such as "sign-in". Used by previews.
@@ -21,13 +23,15 @@ final class DebuggingSettingsModel {
 
     init(
         prompt: AgentPrompt, usageLog: UsageLog, tools: ToolRegistry, problems: ProblemLog,
-        signInStatus: @escaping @Sendable () async -> SignInStatus?, defaults: UserDefaults
+        signInStatus: @escaping @Sendable () async -> SignInStatus?, secretStorage: SecretStorage.Status?,
+        defaults: UserDefaults
     ) {
         self.prompt = prompt
         self.usageLog = usageLog
         self.tools = tools
         self.problems = problems
         self.signInStatus = signInStatus
+        self.secretStorage = secretStorage
         self.defaults = defaults
     }
 
@@ -47,7 +51,8 @@ final class DebuggingSettingsModel {
                 memories: prompt.memories.map { MemoryCounts($0, block: prompt.latestMemoryContents()) } ?? MemoryCounts(),
                 threadFile: AgentPaths.threadFile,
                 usageLog: usageLog,
-                problems: problems.problems)
+                problems: problems.problems,
+                secretStorage: secretStorage)
         }
     }
 
@@ -149,7 +154,7 @@ struct DebuggingSettingsView: View {
                      : "The fingerprint covers the instructions and the tool list. When it changes, the prompt cache starts over.")
                     .foregroundStyle(.secondary)
             }
-            Section("Sign-in") {
+            Section {
                 if let signIn = report.signIn {
                     LabeledContent("Signed in", value: signIn.isSignedIn ? "Yes" : "No")
                     LabeledContent("Access token expires", value: Self.time(signIn.accessTokenExpires, none: "Not fetched since launch"))
@@ -161,6 +166,17 @@ struct DebuggingSettingsView: View {
                     }
                 } else {
                     Text("Not available.").foregroundStyle(.secondary)
+                }
+                if let storage = report.secretStorage {
+                    LabeledContent("Kept in", value: storage.place)
+                }
+            } header: {
+                Text("Sign-in")
+            } footer: {
+                if let storage = report.secretStorage {
+                    Text(storage.explanation)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .id("sign-in")
