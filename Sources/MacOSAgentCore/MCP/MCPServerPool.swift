@@ -91,6 +91,9 @@ public actor MCPServerPool {
         /// Counts attempts, so one that finishes after the server was turned off is ignored.
         var generation = 0
         var liveTools: [MCPToolInfo]?
+        /// The last failure reported to the problems list, so a retry that fails the same way
+        /// is not reported again.
+        var lastReported: String?
     }
 
     /// - Parameters:
@@ -237,6 +240,7 @@ public actor MCPServerPool {
         servers[name]?.connection = connection
         servers[name]?.attempt = nil
         servers[name]?.liveTools = tools
+        servers[name]?.lastReported = nil
         if cache.servers[name]?.tools != tools {
             cache.servers[name] = MCPToolCache.Entry(tools: tools)
             if let cacheFile {
@@ -255,9 +259,15 @@ public actor MCPServerPool {
         servers[name]?.attempt = nil
         servers[name]?.connection = nil
         guard settings.isEnabled(name) else { return }
-        let message = Self.describe(error)
+        report(name, Self.describe(error))
+    }
+
+    private func report(_ name: String, _ message: String) {
         servers[name]?.state = .failed(message)
-        problems?.record("MCP server \(name)", message)
+        if servers[name]?.lastReported != message {
+            servers[name]?.lastReported = message
+            problems?.record("MCP server \(name)", message)
+        }
         notify()
     }
 
@@ -267,10 +277,7 @@ public actor MCPServerPool {
         guard let connection = servers[name]?.connection else { return }
         servers[name]?.connection = nil
         servers[name]?.generation += 1
-        let message = Self.describe(error)
-        servers[name]?.state = .failed(message)
-        problems?.record("MCP server \(name)", message)
-        notify()
+        report(name, Self.describe(error))
         await connection.stop()
     }
 

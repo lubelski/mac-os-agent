@@ -71,17 +71,25 @@ struct ToolsSettingsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            List(selection: $model.selection) {
-                ForEach(model.groups) { group in
-                    Section(group.source.title) {
-                        ForEach(group.tools) { tool in
-                            ToolRow(tool: tool, goAhead: model.goAhead(of: tool)).tag(tool.id)
+            ScrollViewReader { proxy in
+                List(selection: $model.selection) {
+                    ForEach(model.groups) { group in
+                        Section(group.source.title) {
+                            ForEach(group.tools) { tool in
+                                ToolRow(tool: tool, goAhead: model.goAhead(of: tool)).tag(tool.id).id(tool.id)
+                            }
                         }
                     }
                 }
+                .listStyle(.inset)
+                .scrollContentBackground(.hidden)
+                .task {
+                    // Waits a moment for the rows, then brings the selected tool into view, such
+                    // as an MCP tool at the end of the list.
+                    try? await Task.sleep(for: .milliseconds(100))
+                    if let selection = model.selection { proxy.scrollTo(selection, anchor: .center) }
+                }
             }
-            .listStyle(.inset)
-            .scrollContentBackground(.hidden)
             .frame(width: 260)
             Divider()
             Group {
