@@ -56,7 +56,7 @@ enum FooterPreview {
         return [
             ThreadEntry(date: now.addingTimeInterval(-60), item: .userMessage(text: "light mode")),
             ThreadEntry(date: now.addingTimeInterval(-55), item: .assistantMessage(.init(
-                text: "For the whole Mac or just the Iris panel?", provider: "openai", model: "gpt-6-luna"))),
+                text: "For the whole Mac or just this panel?", provider: "openai", model: "gpt-6-luna"))),
         ]
     }
 

@@ -55,10 +55,10 @@ final class PanelPlacement {
 /// controls, and a double click on it puts the panel back in its layout's default frame. The
 /// pointer stays the arrow over it. It has three areas:
 ///
-/// - `title`, in the middle of the bar: the agent's name from Settings, General. It is
-///   centered on the whole bar, not on the room between the other two areas, and it is cut
-///   short before it would reach them. In the incognito window the incognito label follows
-///   the name. Its font and weight never change.
+/// - `title`, in the middle of the bar: the app's name, mac-os-agent. The agent has no name
+///   of its own. It is centered on the whole bar, not on the room between the other two
+///   areas, and it is cut short before it would reach them. In the incognito window the
+///   incognito label follows it. Its font and weight never change.
 /// - `leading`: the close button, then, in the incognito window, the Clear control. The close
 ///   button is hidden at rest and fades in while the pointer is anywhere over the bar. Its
 ///   room is kept while it is hidden, so the bar never shifts, and it is a button there
@@ -89,7 +89,6 @@ struct PanelTopBar: View {
     /// Set for the incognito window.
     var incognito: Incognito?
     @Environment(PanelPlacement.self) private var placement: PanelPlacement?
-    @AgentName private var agentName
     @State private var leadingWidth: CGFloat = 0
     @State private var trailingWidth: CGFloat = 0
 
@@ -122,10 +121,13 @@ struct PanelTopBar: View {
         .background(PanelBarFill())
     }
 
-    /// The agent's name, and in the incognito window the incognito label after it.
+    /// What the middle of the bar says: the app's name, not a name for the agent.
+    static let titleText = "mac-os-agent"
+
+    /// The app's name, and in the incognito window the incognito label after it.
     private var title: some View {
         HStack(spacing: 6) {
-            Text(agentName)
+            Text(verbatim: Self.titleText)
                 .font(Self.titleFont)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

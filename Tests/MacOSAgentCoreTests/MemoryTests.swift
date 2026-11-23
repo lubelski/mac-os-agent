@@ -271,7 +271,7 @@ private func write(_ text: String, _ path: String, in library: MemoryLibrary) th
     private func prompt(_ library: MemoryLibrary) -> AgentPrompt {
         let folder = library.folder.deletingLastPathComponent()
         return AgentPrompt(
-            instructions: InstructionsStore(fileURL: folder.appending(path: "instructions.md"), agentName: { "Iris" }),
+            instructions: InstructionsStore(fileURL: folder.appending(path: "instructions.md")),
             skills: SkillLibrary(folder: folder.appending(path: "skills"), settingsFile: folder.appending(path: "skill-settings.json")),
             memories: library)
     }

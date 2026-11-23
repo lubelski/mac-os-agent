@@ -19,7 +19,7 @@ private func standInMemory() throws -> (MemoryLibrary, AgentPrompt) {
     try library.apply(.create(name: "old-car", description: "The car sold last year.", body: "A blue hatchback."), cause: .episode(episode))
     try library.apply(.delete(file: "old-car"), cause: .episode(episode))
     let prompt = AgentPrompt(
-        instructions: InstructionsStore(fileURL: root.appending(path: "instructions.md"), agentName: { "Iris" }),
+        instructions: InstructionsStore(fileURL: root.appending(path: "instructions.md")),
         skills: SkillLibrary(folder: root.appending(path: "skills"), settingsFile: root.appending(path: "skill-settings.json")),
         memories: library)
     return (library, prompt)

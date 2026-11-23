@@ -13,18 +13,9 @@ struct GeneralSettingsView: View {
     @State private var updatesAutomatically = false
     @AppStorage(ModelSetting.key) private var model = OpenAIModel.defaultID
     @AppStorage(EpisodeTimeoutSetting.key) private var episodeTimeout = EpisodeTimeoutSetting.defaultMinutes
-    @AppStorage(AgentNameSetting.key) private var agentName = ""
 
     var body: some View {
         Form {
-            Section {
-                TextField("Name", text: $agentName, prompt: Text(AgentNameSetting.defaultName))
-            } header: {
-                Text("Agent")
-            } footer: {
-                Text("Shown in the panel's top bar and in Settings, and given to the agent in the default instructions. Left blank, it is \(AgentNameSetting.defaultName). Instructions you have edited keep the name you wrote in them. A new name applies from the next reply.")
-                    .foregroundStyle(.secondary)
-            }
             Section {
                 LabeledContent("Account") {
                     switch session.signInState {
@@ -147,7 +138,7 @@ final class InstructionsSettingsModel {
     }
 
     var hasChanges: Bool { draft != saved }
-    var isDefault: Bool { draft == prompt.instructions.defaultText }
+    var isDefault: Bool { draft == AgentInstructions.defaultEditable }
 
     /// Picks up changes made outside the window, unless there are edits that are not saved yet.
     func reloadIfUnchanged() {
@@ -173,7 +164,7 @@ final class InstructionsSettingsModel {
     }
 
     func restoreDefault() {
-        draft = prompt.instructions.defaultText
+        draft = AgentInstructions.defaultEditable
         save()
     }
 
@@ -191,11 +182,10 @@ struct InstructionsSettingsView: View {
     @Bindable var model: InstructionsSettingsModel
     @State private var confirmingRestore = false
     @State private var showingFullPrompt = false
-    @AgentName private var agentName
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("What \(agentName) is told before every instruction. Changes apply from your next instruction.")
+            Text("What the agent is told before every instruction. Changes apply from your next instruction.")
                 .foregroundStyle(.secondary)
             PromptEditor(text: $model.draft)
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 120, maxHeight: .infinity)
@@ -234,8 +224,6 @@ struct InstructionsSettingsView: View {
         .sheet(isPresented: $showingFullPrompt) {
             FullPromptView(text: model.fullPrompt)
         }
-        // Default instructions say the name, so a new name shows in them at once.
-        .onChange(of: agentName) { model.reloadIfUnchanged() }
     }
 }
 
@@ -306,15 +294,4 @@ struct NewSkillView: View {
         .padding(20)
         .frame(width: 440)
     }
-}
-
-// MARK: - The agent's name
-
-/// The agent's name from Settings, General, for a view that says it. It follows the setting
-/// live, and a blank name reads as the default. See `AgentNameSetting`.
-@propertyWrapper
-struct AgentName: DynamicProperty {
-    @AppStorage(AgentNameSetting.key) private var stored = ""
-
-    var wrappedValue: String { AgentNameSetting.resolve(stored) }
 }

@@ -22,7 +22,6 @@ struct SummonView: View {
     @AppStorage(Experiment.suggestionsInFieldAndFooter.key) private var suggestionsSwitch = false
     @AppStorage(HarnessBehavior.recallEarlierMessages.key) private var recallSwitch = HarnessBehavior.recallEarlierMessages.defaultValue
     @AppStorage(ModelSetting.key) private var modelID = OpenAIModel.defaultID
-    @AgentName private var agentName
 
     var body: some View {
         VStack(spacing: 0) {
@@ -159,14 +158,14 @@ struct SummonView: View {
         // No hairline above it: the footer continues the band with the field on the same fill,
         // so the two read as one bar at the bottom of the panel.
         return InputFooter(content: .make(
-            session.footerState, agentName: agentName, modelName: InputFooterContent.modelName(id: modelID),
+            session.footerState, modelName: InputFooterContent.modelName(id: modelID),
             recallsMessages: HarnessBehavior.recallEarlierMessages.isOn(session.preferences),
             queuesWhileRunning: session.queuesWhileRunning))
     }
 
     private var suggestionList: some View {
         SuggestionListView(
-            rows: session.suggestionRows, highlight: session.highlightedRowIndex, agentName: agentName,
+            rows: session.suggestionRows, highlight: session.highlightedRowIndex,
             incognito: session.isIncognito, activate: session.activateSuggestionRow)
     }
 

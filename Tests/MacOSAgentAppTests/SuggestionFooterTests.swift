@@ -21,8 +21,8 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
 /// What the footer says in each state, for each setting that changes it.
 @MainActor
 struct InputFooterContentTests {
-    private func make(_ state: InputFooterContent.State, name: String = "Iris", recall: Bool = true, queue: Bool = false) -> InputFooterContent {
-        .make(state, agentName: name, modelName: "GPT-6 Luna", recallsMessages: recall, queuesWhileRunning: queue)
+    private func make(_ state: InputFooterContent.State, recall: Bool = true, queue: Bool = false) -> InputFooterContent {
+        .make(state, modelName: "GPT-6 Luna", recallsMessages: recall, queuesWhileRunning: queue)
     }
 
     @Test func idleSaysWhatAnEmptyFieldCanDoAndTheModel() {
@@ -33,8 +33,8 @@ struct InputFooterContentTests {
     }
 
     @Test func typingAMessage() {
-        let content = make(.typing, name: "Juno")
-        #expect(content.leading.map(\.text) == ["↵ ask Juno", "⇧↵ new line"])
+        let content = make(.typing)
+        #expect(content.leading.map(\.text) == ["↵ ask the agent", "⇧↵ new line"])
         #expect(content.trailing?.text == "GPT-6 Luna")
     }
 
@@ -46,9 +46,9 @@ struct InputFooterContentTests {
 
     @Test func whileASuggestionShows() {
         let app = InstantActionTarget.application(FooterPreview.applications[0])
-        let content = make(.suggestion(app, others: 2), name: "Juno")
+        let content = make(.suggestion(app, others: 2))
         #expect(content.leading.map(\.text) == ["↵ open", "↓ 2 more"])
-        #expect(content.trailing?.text == "⌘↵ ask Juno", "the agent's name comes from the setting")
+        #expect(content.trailing?.text == "⌘↵ ask the agent")
         #expect(make(.suggestion(.quickAction(id: "x"), others: 0)).leading.map(\.text) == ["↵ run"])
     }
 
@@ -57,7 +57,7 @@ struct InputFooterContentTests {
         #expect(make(.list(app)).leading.map(\.text) == ["↵ open", "↑↓ choose", "esc close"])
         #expect(make(.list(.quickAction(id: "x"))).leading.first?.text == "↵ run")
         #expect(make(.list(nil)).leading.first?.text == "↵ ask", "on the Ask row")
-        #expect(make(.list(app)).trailing?.text == "⌘↵ ask Iris")
+        #expect(make(.list(app)).trailing?.text == "⌘↵ ask the agent")
     }
 
     @Test func withTheSlashList() {
@@ -67,7 +67,7 @@ struct InputFooterContentTests {
 
     @Test func voiceOverReadsTheKeysInWords() {
         let content = make(.suggestion(.application(FooterPreview.applications[0]), others: 2))
-        #expect(content.spoken == "Return, open. Down Arrow, 2 more. Command-Return, ask Iris")
+        #expect(content.spoken == "Return, open. Down Arrow, 2 more. Command-Return, ask the agent")
     }
 
     @Test func theModelIsShownByItsName() {

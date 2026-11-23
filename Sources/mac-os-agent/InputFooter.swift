@@ -42,10 +42,10 @@ struct InputFooterContent: Equatable {
     }
 
     static func make(
-        _ state: State, agentName: String, modelName: String, recallsMessages: Bool, queuesWhileRunning: Bool
+        _ state: State, modelName: String, recallsMessages: Bool, queuesWhileRunning: Bool
     ) -> InputFooterContent {
         let model = FooterHint(keys: "", words: modelName, spokenKeys: "")
-        let ask = FooterHint(keys: Mark.commandReturn, words: "ask \(agentName)", spokenKeys: "Command-Return")
+        let ask = FooterHint(keys: Mark.commandReturn, words: "ask the agent", spokenKeys: "Command-Return")
         switch state {
         case .idle:
             var hints: [FooterHint] = []
@@ -54,7 +54,7 @@ struct InputFooterContent: Equatable {
             return InputFooterContent(leading: hints, trailing: model)
         case .typing:
             return InputFooterContent(leading: [
-                FooterHint(keys: Mark.returnKey, words: "ask \(agentName)", spokenKeys: "Return"),
+                FooterHint(keys: Mark.returnKey, words: "ask the agent", spokenKeys: "Return"),
                 FooterHint(keys: "⇧↵", words: "new line", spokenKeys: "Shift-Return"),
             ], trailing: model)
         case .running(let queued):
@@ -230,7 +230,6 @@ struct SuggestionIcon: View {
 struct SuggestionListView: View {
     let rows: [SuggestionRow]
     let highlight: Int
-    let agentName: String
     let incognito: Bool
     var activate: (Int) -> Void = { _ in }
 
@@ -251,7 +250,7 @@ struct SuggestionListView: View {
             PanelDivider()
             VStack(spacing: 0) {
                 ForEach(window, id: \.self) { index in
-                    SuggestionRowView(row: rows[index], highlighted: index == highlight, agentName: agentName, incognito: incognito)
+                    SuggestionRowView(row: rows[index], highlighted: index == highlight, incognito: incognito)
                         .contentShape(.rect)
                         .onTapGesture { activate(index) }
                 }
@@ -267,7 +266,6 @@ struct SuggestionListView: View {
 private struct SuggestionRowView: View {
     let row: SuggestionRow
     let highlighted: Bool
-    let agentName: String
     let incognito: Bool
     @Environment(\.panelPalette) private var palette
 
@@ -316,7 +314,7 @@ private struct SuggestionRowView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
         case .ask(let text):
-            Text(verbatim: "Ask \(agentName): “\(text)”")
+            Text(verbatim: "Ask the agent: “\(text)”")
                 .font(.system(size: 13))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
@@ -359,7 +357,7 @@ private struct SuggestionRowView: View {
             case .application: "\(candidate.title), app"
             case .quickAction: "\(candidate.title), quick action"
             }
-        case .ask(let text): "Ask \(agentName): \(text)"
+        case .ask(let text): "Ask the agent: \(text)"
         case .command(let item): "\(item.name), \(item.summary(incognito: incognito))"
         }
     }
