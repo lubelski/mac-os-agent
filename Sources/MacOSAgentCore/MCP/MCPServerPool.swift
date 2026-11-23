@@ -52,9 +52,12 @@ public enum MCPPoolError: Error, Equatable, LocalizedError {
     case off
     case unknown
     case invalid(String)
+    /// The MCP servers experiment is off.
+    case experimentOff
 
     public var errorDescription: String? {
         switch self {
+        case .experimentOff: "MCP servers are turned off in Settings, Experiments."
         case .off: "The server is turned off in Settings."
         case .unknown: "The server is no longer in mcp-servers.json."
         case .invalid(let problem): problem
@@ -69,8 +72,14 @@ public enum MCPPoolError: Error, Equatable, LocalizedError {
 /// `mcp-tools-cache.json`, without waiting for any server. The servers are then started in the
 /// background. A call to a tool whose server is still starting waits for it, up to the connect
 /// timeout. A server that fails is tried again at the next call to one of its tools.
+///
+/// The whole of it is behind `Experiment.mcpServers`. With the experiment off at launch the
+/// pool reads no file, makes no tools, and starts nothing. Turning it on while the app runs
+/// reads the files then and starts the servers, so their lists are cached for the next launch.
+/// Turning it off stops every server, and a call to a tool still in this run's list says so.
 public actor MCPServerPool {
-    public nonisolated let config: MCPServerConfig
+    /// What `mcp-servers.json` said when the pool was made active. Empty while it never was.
+    public private(set) var config: MCPServerConfig
     public nonisolated let settings: MCPSettingsStore
     /// Each server's tools as the model was given them at launch.
     public nonisolated let launchLists: [String: [MCPToolInfo]]
@@ -83,6 +92,10 @@ public actor MCPServerPool {
 
     private var cache: MCPToolCache
     private var servers: [String: Server] = [:]
+    /// False while the MCP servers experiment is off.
+    public private(set) var isActive: Bool
+    /// Reads the files the first time the pool is made active, for a pool made inactive.
+    private var loader: (@Sendable () -> (MCPServerConfig, MCPToolCache))?
 
     private struct Server {
         var state: MCPServerStatus.State
@@ -99,11 +112,16 @@ public actor MCPServerPool {
     /// - Parameters:
     ///   - cacheFile: Where a changed tool list is written. Nil writes nothing, for previews.
     ///   - problems: Where a server that fails is reported.
+    ///   - loader: For an inactive pool, reads the servers file and the cache when it is made
+    ///     active. Nil for an active one, which is given them.
     public init(
         config: MCPServerConfig, settings: MCPSettingsStore, cache: MCPToolCache, cacheFile: URL?,
         problems: ProblemLog? = nil, connectTimeout: Duration = .seconds(60), callTimeout: Duration = .seconds(120),
+        loader: (@Sendable () -> (MCPServerConfig, MCPToolCache))? = nil,
         factory: @escaping MCPConnectionFactory
     ) {
+        isActive = loader == nil
+        self.loader = loader
         self.config = config
         self.settings = settings
         self.cache = cache
@@ -112,7 +130,12 @@ public actor MCPServerPool {
         self.connectTimeout = connectTimeout
         self.callTimeout = callTimeout
         self.factory = factory
-        launchLists = cache.launchLists(config: config, settings: settings)
+        launchLists = loader == nil ? cache.launchLists(config: config, settings: settings) : [:]
+        servers = Self.initialStates(config: config, settings: settings)
+    }
+
+    private static func initialStates(config: MCPServerConfig, settings: MCPSettingsStore) -> [String: Server] {
+        var servers: [String: Server] = [:]
         for entry in config.servers {
             let state: MCPServerStatus.State = if let problem = entry.problem {
                 .invalid(problem)
@@ -123,17 +146,47 @@ public actor MCPServerPool {
             }
             servers[entry.name] = Server(state: state)
         }
+        return servers
     }
 
-    /// The pool for this run, from the files in the data folder, with the SDK's client. Reports
-    /// what is wrong with the servers file to the problems list.
-    public static func fromDataFolder(problems: ProblemLog?) -> MCPServerPool {
-        let config = MCPServerConfig.read()
-        for problem in config.problems { problems?.record("MCP servers", problem) }
+    /// The pool for this run, with the SDK's client. With the experiment on, it reads the files
+    /// in the data folder now and reports what is wrong with the servers file to the problems
+    /// list. With it off, it reads nothing until it is turned on.
+    public static func fromDataFolder(problems: ProblemLog?, experimentOn: Bool) -> MCPServerPool {
+        let read: @Sendable () -> (MCPServerConfig, MCPToolCache) = {
+            let config = MCPServerConfig.read()
+            for problem in config.problems { problems?.record("MCP servers", problem) }
+            return (config, MCPToolCache.read())
+        }
+        let (config, cache) = experimentOn ? read() : (MCPServerConfig(fileExists: false), MCPToolCache())
         return MCPServerPool(
-            config: config, settings: MCPSettingsStore(), cache: MCPToolCache.read(),
+            config: config, settings: MCPSettingsStore(), cache: cache,
             cacheFile: AgentPaths.mcpToolsCacheFile, problems: problems,
+            loader: experimentOn ? nil : read,
             factory: { MCPSDKConnection(entry: $0) })
+    }
+
+    /// Turns the MCP servers experiment on or off for this run. On reads the files if they
+    /// have not been read and starts the servers. Off stops every server. The tool list does
+    /// not change until the next launch.
+    public func setActive(_ active: Bool) async {
+        guard active != isActive else { return }
+        isActive = active
+        if active {
+            if let loader {
+                self.loader = nil
+                (config, cache) = loader()
+                servers = Self.initialStates(config: config, settings: settings)
+            } else {
+                for entry in config.servers where entry.problem == nil {
+                    servers[entry.name]?.state = settings.isEnabled(entry.name) ? .starting : .off
+                }
+            }
+            start()
+        } else {
+            await stopAll()
+        }
+        notify()
     }
 
     /// No servers, for tests and for a preview without a data folder of its own.
@@ -174,13 +227,15 @@ public actor MCPServerPool {
 
     /// Starts every server that is on and can be used, in the background. Returns at once.
     public func start() {
+        guard isActive else { return }
         for entry in config.usableServers where settings.isEnabled(entry.name) && servers[entry.name]?.attempt == nil {
             begin(entry)
         }
     }
 
     public func statuses() -> [MCPServerStatus] {
-        config.servers.map { entry in
+        guard isActive else { return [] }
+        return config.servers.map { entry in
             let server = servers[entry.name]
             let live = server?.liveTools
             return MCPServerStatus(
@@ -193,6 +248,7 @@ public actor MCPServerPool {
     /// The server's connection, once it has connected. Waits while it starts, and starts it
     /// again if it failed. Throws when it is off, wrong, or does not connect in time.
     public func connection(to name: String) async throws -> any MCPServerConnection {
+        guard isActive else { throw MCPPoolError.experimentOff }
         guard let entry = config.servers.first(where: { $0.name == name }) else { throw MCPPoolError.unknown }
         if let problem = entry.problem { throw MCPPoolError.invalid(problem) }
         guard settings.isEnabled(name) else { throw MCPPoolError.off }
@@ -232,7 +288,7 @@ public actor MCPServerPool {
     }
 
     private func didConnect(_ name: String, generation: Int, connection: any MCPServerConnection, tools: [MCPToolInfo]) async {
-        guard servers[name]?.generation == generation, settings.isEnabled(name) else {
+        guard isActive, servers[name]?.generation == generation, settings.isEnabled(name) else {
             await connection.stop()
             return
         }
@@ -290,7 +346,7 @@ public actor MCPServerPool {
             return
         }
         if enabled {
-            if servers[name]?.connection == nil, servers[name]?.attempt == nil { begin(entry) }
+            if isActive, servers[name]?.connection == nil, servers[name]?.attempt == nil { begin(entry) }
         } else {
             let connection = servers[name]?.connection
             servers[name]?.attempt?.cancel()
@@ -309,6 +365,7 @@ public actor MCPServerPool {
         let connections = servers.values.compactMap(\.connection)
         for name in servers.keys {
             servers[name]?.attempt?.cancel()
+            servers[name]?.attempt = nil
             servers[name]?.generation += 1
             servers[name]?.connection = nil
         }
