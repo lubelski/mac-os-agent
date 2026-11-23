@@ -42,6 +42,24 @@ if [[ "$STAMPED" != "$SDK_VERSION" ]]; then
   exit 1
 fi
 
+# The app icon. actool compiles the Icon Composer file into Assets.car, which macOS draws
+# with the system's glass, and AppIcon.icns, a flat copy for places that read only that.
+# Info.plist names both below. This runs before signing, so the signature covers the icon.
+# scripts/render-icon.sh redraws the icon's artwork.
+mkdir -p "$APP/Contents/Resources"
+ICON_PLIST_DIR="$(mktemp -d)"
+xcrun actool Resources/AppIcon.icon --compile "$APP/Contents/Resources" \
+  --platform macosx --minimum-deployment-target "$MIN_OS" --app-icon AppIcon \
+  --output-partial-info-plist "$ICON_PLIST_DIR/icon.plist" --errors --warnings \
+  --output-format human-readable-text >/dev/null
+rm -rf "$ICON_PLIST_DIR"
+for f in Assets.car AppIcon.icns; do
+  if [[ ! -f "$APP/Contents/Resources/$f" ]]; then
+    echo "error: actool did not produce $f from Resources/AppIcon.icon" >&2
+    exit 1
+  fi
+done
+
 GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
   GIT_COMMIT="$GIT_COMMIT-dirty"
@@ -71,6 +89,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>dev.lubelski.mac-os-agent</string>
   <key>CFBundleExecutable</key><string>mac-os-agent</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundleIconName</key><string>AppIcon</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
   <key>MacOSAgentGitCommit</key><string>$GIT_COMMIT</string>

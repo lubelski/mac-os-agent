@@ -274,6 +274,11 @@ What has been decided for mac-os-agent and built. [planned.md](planned.md) has w
   - It lives in the menu bar.
   - It uses Liquid Glass and the newest macOS APIs. Supporting older macOS versions is not a goal.
   - The summon interaction will change as we use it. The first version only has to exist.
+- An app icon
+  - The icon is the panel's `›` prompt mark with a spark beside it, in white on a teal gradient. It is a mark for a tool, not a character: no face, no mascot, and no text. Teal keeps it apart from Claude FM's violet and AI Meter's graphite.
+  - It is an Icon Composer file, `Resources/AppIcon.icon`, with the prompt and the spark as two layers and the gradient as the fill, so the system adds the rounded shape, the glass, and the dark, tinted, and clear looks. `bundle.sh` compiles it with `actool` before signing, and stops when `actool` does not produce `Assets.car` and `AppIcon.icns`.
+  - The artwork is drawn by code, `AppIconDrawing` in `MacOSAgentCore`, as in the owner's other apps. It keeps four designs: prompt and spark (shipped), a summoned bar, a pointer that acts, and a key chord. `scripts/render-icon.sh` redraws the file and `docs/icon.png`, and a number picks another design. A test fails when the file in the repo is not the shipped design.
+  - The menu bar item still uses the SF Symbol `sparkle`. Whether it should use the new mark is not decided.
 
 - Habits from terminal coding agents
   - The owner uses Claude Code, pi, and Codex all day, so the panel's text field can follow their habits. Each is a switch in Settings, Behaviors, with a line saying exactly what the keys do. They are kept in the preferences by `HarnessBehavior`, and apply in both windows. The incognito window reads them and never writes them.
