@@ -104,12 +104,18 @@ public final class MCPServerProcess: Sendable {
     /// The app writes to the server's standard input here.
     public let inputDescriptor: Int32
     private let errorTail: Mutex<Data>
+    /// Whether the leader has been reaped, its exit status, and who waits for it. Every signal
+    /// to the group is sent under this lock and only before the reap, while the leader, alive
+    /// or a zombie, still holds its process ID and so the group's. After the reap the number
+    /// can be reused, by a shell job of the owner's for one, so nothing is sent to it again.
     private let exit: Mutex<(status: Int32?, waiters: [CheckedContinuation<Int32, Never>])>
+    /// Signals sent by `stop` and `stopAll`, for tests.
+    private let sentSignals = Mutex(0)
     private let errorHandle: FileHandle
     private let closed = Mutex(false)
 
-    /// The process groups of every server still running, so the app can stop them all as it quits.
-    private static let running = Mutex<Set<pid_t>>([])
+    /// Every server not yet reaped, by process ID, so the app can stop them all as it quits.
+    private static let running = Mutex<[pid_t: MCPServerProcess]>([:])
 
     /// How much of standard error is kept, for the reason a server failed.
     static let errorTailLimit = 2_000
@@ -184,8 +190,8 @@ public final class MCPServerProcess: Sendable {
             throw MCPConnectionError.couldNotStart(String(cString: strerror(result)))
         }
         let launchedID = processID
-        running.withLock { _ = $0.insert(launchedID) }
         let process = MCPServerProcess(processID: launchedID, output: output[0], input: input[1], error: error[0])
+        running.withLock { $0[launchedID] = process }
         process.errorHandle.readabilityHandler = { [weak process] handle in
             let chunk = handle.availableData
             guard let process else { return }
@@ -199,16 +205,22 @@ public final class MCPServerProcess: Sendable {
             }
         }
         DispatchQueue.global().async { [process] in
-            var status: Int32 = 0
-            while waitpid(launchedID, &status, 0) == -1 && errno == EINTR {}
-            let signal = status & 0x7f
-            let code = signal == 0 ? (status >> 8) & 0xff : 128 + signal
-            running.withLock { _ = $0.remove(launchedID) }
-            let waiters = process.exit.withLock { state in
+            // Waits for the leader to exit without reaping it, so it stays a zombie that holds
+            // its process ID, and with it the group's, until the group has been cleared.
+            var info = siginfo_t()
+            while waitid(P_PID, id_t(launchedID), &info, WEXITED | WNOWAIT) == -1 && errno == EINTR {}
+            let (code, waiters) = process.exit.withLock { state -> (Int32, [CheckedContinuation<Int32, Never>]) in
+                // Children the leader left behind, such as the node process npx started.
+                killpg(launchedID, SIGKILL)
+                var status: Int32 = 0
+                while waitpid(launchedID, &status, 0) == -1 && errno == EINTR {}
+                let signal = status & 0x7f
+                let code = signal == 0 ? (status >> 8) & 0xff : 128 + signal
                 state.status = code
                 defer { state.waiters = [] }
-                return state.waiters
+                return (code, state.waiters)
             }
+            running.withLock { _ = $0.removeValue(forKey: launchedID) }
             for waiter in waiters { waiter.resume(returning: code) }
         }
         return process
@@ -236,11 +248,27 @@ public final class MCPServerProcess: Sendable {
         return lines.suffix(3).joined(separator: " ")
     }
 
-    /// Asks the process group to end, and kills what is left after the grace period. Closes
-    /// the app's ends of the pipes.
+    /// Sends a signal to the process group, unless the leader has been reaped. Returns false
+    /// when it has, and nothing was sent.
+    @discardableResult
+    func signalGroup(_ signal: Int32) -> Bool {
+        exit.withLock { state in
+            guard state.status == nil else { return false }
+            killpg(processID, signal)
+            sentSignals.withLock { $0 += 1 }
+            return true
+        }
+    }
+
+    /// How many signals `stop` and `stopAll` have sent this process, for tests.
+    var signalsSent: Int { sentSignals.withLock { $0 } }
+
+    /// Asks the process group to end, and kills it if the leader has not exited after the grace
+    /// period. Children a leader leaves behind are killed when it is reaped. Closes the app's
+    /// ends of the pipes. Sends nothing to a process that has already exited.
     public func stop(gracePeriod: Duration = .seconds(2)) async {
         closeDescriptors()
-        killpg(processID, SIGTERM)
+        guard signalGroup(SIGTERM) else { return }
         let exited = await withTaskGroup(of: Bool.self) { group in
             group.addTask { _ = await self.waitForExit(); return true }
             group.addTask { try? await Task.sleep(for: gracePeriod); return false }
@@ -248,9 +276,7 @@ public final class MCPServerProcess: Sendable {
             group.cancelAll()
             return first
         }
-        // The leader may have exited and left a child behind, so the rest of the group goes too.
-        _ = exited
-        killpg(processID, SIGKILL)
+        if !exited { signalGroup(SIGKILL) }
     }
 
     /// Closes the app's ends of the pipes, once. The server sees its input end.
@@ -267,17 +293,17 @@ public final class MCPServerProcess: Sendable {
     /// Stops every server process still running, for the app quitting. It waits up to the grace
     /// period for them to exit, then kills what is left, so none outlives the app.
     public static func stopAll(gracePeriod: TimeInterval = 1) {
-        let groups = running.withLock { $0 }
-        guard !groups.isEmpty else { return }
-        for group in groups { killpg(group, SIGTERM) }
+        let processes = running.withLock { Array($0.values) }
+        guard !processes.isEmpty else { return }
+        for process in processes { process.signalGroup(SIGTERM) }
         let deadline = Date().addingTimeInterval(gracePeriod)
         while Date() < deadline, !running.withLock({ $0.isEmpty }) {
             Thread.sleep(forTimeInterval: 0.02)
         }
-        // Whatever is left in each group, leader or not.
-        for group in groups { killpg(group, SIGKILL) }
+        // A leader still running. One that exited is reaped with its group cleared already.
+        for process in processes { process.signalGroup(SIGKILL) }
     }
 
     /// The process groups still running, for tests.
-    public static var runningProcessGroups: Set<pid_t> { running.withLock { $0 } }
+    public static var runningProcessGroups: Set<pid_t> { running.withLock { Set($0.keys) } }
 }
