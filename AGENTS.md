@@ -27,6 +27,7 @@ Read `README.md` first for what the product is, then `planning/`: `decided.md` r
 ## Previews and captures
 
 - `scripts/bundle.sh` builds `build/mac-os-agent.app` without installing it.
+- `scripts/render-icon.sh` redraws `Resources/AppIcon.icon` and `docs/icon.png` from `AppIconDrawing.swift`. Run it after changing the drawing, and commit what it writes. `scripts/render-icon.sh <1-4>` draws one of the other designs. It writes files only and launches nothing.
 - `scripts/capture-panel-previews.sh` shows the panel in a few stand-in states and captures each one, for pull request screenshots. `--backdrop` captures it over a busy page instead, which shows the glass and its edges.
 - `scripts/capture-settings-previews.sh` does the same for each Settings section, against a temporary data folder with sample skills, usage lines, and a thread file. `--preview-settings <section>` shows one section, and `--preview-item <name>` selects a skill or tool in it.
 - Each preview quits on its own after a few seconds and never takes keyboard focus. Check that none is left running when you finish.

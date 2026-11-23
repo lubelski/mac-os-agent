@@ -1,5 +1,7 @@
 # mac-os-agent
 
+<img src="docs/icon.png" width="128" alt="The mac-os-agent app icon: a white bar with a text cursor in it, and a spark above, on a teal background">
+
 An agent for this Mac that lives in the menu bar. You summon it with a hotkey, tell it what you want ("change the wallpaper to a sunset", "delete zoom"), and it acts on the system.
 
 It is like Siri in shape, without being slow or locked down, and it keeps a visible conversation like an agent chat. It is not a coding tool.
@@ -24,6 +26,12 @@ Settings > Appearance picks the panel's theme. Everything the agent keeps (the t
 
 - `swift build` and `swift test` build the code and run the tests.
 - Run only the bundle, not `swift run`. The bundle has the `Info.plist` that keeps the app out of the Dock.
+- The app icon is `Resources/AppIcon.icon`, an Icon Composer file that `bundle.sh` compiles, which needs full Xcode. Its artwork is drawn by `AppIconDrawing.swift`, which has four designs. After changing the drawing, redraw the artwork and `docs/icon.png`. A number picks another design.
+
+  ```sh
+  scripts/render-icon.sh      # the shipped design
+  scripts/render-icon.sh 3    # design 3 instead
+  ```
 - [planning/](planning/README.md) records what has been decided, what is planned, and ideas to try later.
 - [AGENTS.md](AGENTS.md) has the rules for changing this repo, including how to preview and capture the interface.
 
