@@ -31,7 +31,7 @@ public enum OpenAIResponses {
                     "name": .string(tool.name),
                     "description": .string(tool.description),
                     "parameters": tool.parameters,
-                    "strict": true,
+                    "strict": .bool(tool.strict),
                 ]
             })
         }

@@ -6,11 +6,15 @@ public struct ToolDefinition: Sendable, Equatable {
     public var description: String
     /// A JSON Schema object for the arguments.
     public var parameters: JSONValue
+    /// The model is held to the schema exactly. The built-in tools' schemas are written for
+    /// that. A schema from an MCP server is not, so its tools are sent without it.
+    public var strict: Bool
 
-    public init(name: String, description: String, parameters: JSONValue) {
+    public init(name: String, description: String, parameters: JSONValue, strict: Bool = true) {
         self.name = name
         self.description = description
         self.parameters = parameters
+        self.strict = strict
     }
 }
 
@@ -26,6 +30,8 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case quitApplication
         case deleteTheme
         case deleteQuickAction
+        /// A tool from an MCP server.
+        case mcpToolCall
     }
 
     /// One change in a list of them, such as deleting one reminder.
@@ -57,6 +63,8 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case changes([Change])
         /// The one thing acted on, such as an app or a theme, by its name and a detail.
         case item(name: String, detail: String?)
+        /// A call to a tool on an MCP server, with its arguments as indented JSON.
+        case toolCall(server: String, tool: String, arguments: String)
     }
 
     public var id: String { callID }
@@ -86,6 +94,10 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         if case .item(let name, _) = body { name } else { nil }
     }
 
+    private var toolCallName: String? {
+        if case .toolCall(_, let tool, _) = body { tool } else { nil }
+    }
+
     /// The question the card asks, such as "Run this command?".
     public var question: String {
         switch kind {
@@ -95,6 +107,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .quitApplication: "Quit this app?"
         case .deleteTheme: "Delete this theme?"
         case .deleteQuickAction: "Delete this quick action?"
+        case .mcpToolCall: "Call this tool?"
         }
     }
 
@@ -111,6 +124,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .reminderChanges, .eventChanges: changeCount == 1 ? "Make Change" : "Make Changes"
         case .quitApplication: "Quit"
         case .deleteTheme, .deleteQuickAction: "Delete"
+        case .mcpToolCall: "Call"
         }
     }
 
@@ -121,6 +135,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .reminderChanges, .eventChanges: "Don’t Change"
         case .quitApplication: "Don’t Quit"
         case .deleteTheme, .deleteQuickAction: "Don’t Delete"
+        case .mcpToolCall: "Don’t Call"
         }
     }
 
@@ -142,6 +157,8 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
             return itemName.map { "\(waiting) to delete the theme \($0)" } ?? waiting
         case .deleteQuickAction:
             return itemName.map { "\(waiting) to delete the quick action \($0)" } ?? waiting
+        case .mcpToolCall:
+            return toolCallName.map { "\(waiting) to call \($0)" } ?? waiting
         }
     }
 
@@ -151,6 +168,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .command(let command): command
         case .changes(let changes): changes.map(\.text).joined(separator: "\n")
         case .item(let name, let detail): detail.map { "\(name) (\($0))" } ?? name
+        case .toolCall(let server, let tool, let arguments): "\(tool) on \(server)\n\(arguments)"
         }
     }
 }
