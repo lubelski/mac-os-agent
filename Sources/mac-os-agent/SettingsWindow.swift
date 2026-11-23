@@ -6,8 +6,8 @@ import SwiftUI
 
 /// The sections of the Settings window, in sidebar order.
 ///
-/// Debugging is always last. A new section, such as MCP servers, goes above it, with its view
-/// in `SettingsRootView.detail`.
+/// Debugging is always last. A new section goes above it, with its view in
+/// `SettingsRootView.detail`.
 enum SettingsSection: String, CaseIterable, Identifiable {
     case general
     case appearance
@@ -18,6 +18,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     // name `--preview-settings` takes, from before quick actions were renamed.
     case quickActions = "actions"
     case tools
+    case mcpServers = "mcp-servers"
     case history
     case behaviors
     case experiments
@@ -34,6 +35,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .skills: "Skills"
         case .quickActions: "Quick Actions"
         case .tools: "Tools"
+        case .mcpServers: "MCP Servers"
         case .history: "History"
         case .behaviors: "Behaviors"
         case .experiments: "Experiments"
@@ -50,6 +52,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .skills: "puzzlepiece.extension"
         case .quickActions: "bolt"
         case .tools: "wrench.and.screwdriver"
+        case .mcpServers: "server.rack"
         case .history: "clock.arrow.circlepath"
         case .behaviors: "keyboard"
         case .experiments: "flask"
@@ -93,6 +96,7 @@ struct SettingsModels {
     let skills: SkillsSettingsModel
     let quickActions: QuickActionsSettingsModel
     let tools: ToolsSettingsModel
+    let mcpServers: MCPServersSettingsModel
     let history: HistorySettingsModel
     let debugging: DebuggingSettingsModel
     let updater: AppUpdater
@@ -153,6 +157,8 @@ struct SettingsRootView: View {
             QuickActionsSettingsView(model: models.quickActions)
         case .tools:
             ToolsSettingsView(model: models.tools)
+        case .mcpServers:
+            MCPServersSettingsView(model: models.mcpServers)
         case .history:
             HistorySettingsView(model: models.history)
         case .behaviors:
@@ -188,6 +194,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         summonTrigger: SummonTriggerController, defaults: UserDefaults = .standard, remembersFrame: Bool = true,
         privacyAccess: any PrivacyAccessGate = EventKitStore.shared,
         quickActions: QuickActionLibrary = QuickActionLibrary(),
+        mcp: MCPServerPool = .empty,
         updater: AppUpdater = .unavailable()
     ) {
         models = SettingsModels(
@@ -198,7 +205,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             memory: MemorySettingsModel(prompt: prompt),
             skills: SkillsSettingsModel(library: prompt.skills),
             quickActions: QuickActionsSettingsModel(library: quickActions, tools: tools.definitions, summaries: tools.summaries),
-            tools: ToolsSettingsModel(registry: tools, access: privacyAccess),
+            tools: ToolsSettingsModel(registry: tools, access: privacyAccess, mcpSettings: mcp.settings),
+            mcpServers: MCPServersSettingsModel(pool: mcp),
             history: HistorySettingsModel(history: history),
             debugging: DebuggingSettingsModel(
                 prompt: prompt, usageLog: usageLog, tools: tools, problems: problems,
@@ -279,6 +287,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         models.debugging.reload()
         models.history.reload()
         models.tools.reloadAccess()
+        Task { await models.mcpServers.reload() }
     }
 }
 
@@ -345,9 +354,10 @@ enum SettingsPreview {
         // A stand-in hotkey that never registers, so a preview cannot take the installed app's.
         let hotKey = StandInHotKey()
         let summonTrigger = SettingsPreview.summonTrigger(hotKey: hotKey, defaults: defaults, state: section == .general ? item : nil)
+        let mcp = standInMCPServers()
         let controller = SettingsWindowController(
             session: session, prompt: prompt, usageLog: UsageLog(),
-            tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: history)),
+            tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: history), additional: mcp.makeTools()),
             history: history,
             problems: problems,
             signInStatus: {
@@ -358,7 +368,7 @@ enum SettingsPreview {
             // A stand-in. A preview decides nothing about the real store and never opens the Keychain.
             secretStorage: SecretStorage.Status(location: .file, reason: .anotherDataFolder, migration: nil),
             summonTrigger: summonTrigger, defaults: defaults, remembersFrame: false,
-            privacyAccess: StandInPrivacyAccess())
+            privacyAccess: StandInPrivacyAccess(), mcp: mcp)
         self.controller = controller
         if section == .general, let item {
             showShortcut(item, in: controller.models.shortcut)
@@ -367,6 +377,7 @@ enum SettingsPreview {
             controller.models.skills.selection = item
             if section == .quickActions { controller.models.quickActions.selection = item }
             controller.models.tools.selection = item
+            if section == .mcpServers { controller.models.mcpServers.selection = item }
             controller.models.debugging.scrollTarget = item
         }
         controller.show(section, takeFocus: false)
@@ -416,6 +427,55 @@ enum SettingsPreview {
         }
 
         func requestAccess(_ kind: PrivacyAccessKind) async -> PrivacyAccessStatus { status(kind) }
+    }
+
+    /// The MCP servers in the data folder's files, with stand-in connections that start no
+    /// process. Without `--data-folder` it reads nothing and shows no servers. Each server acts
+    /// by its name: `notes` fails, `files` never finishes starting, and the rest connect with
+    /// their cached tools, or a stand-in list when they have none.
+    private static func standInMCPServers() -> MCPServerPool {
+        guard CommandLine.arguments.contains(AgentPaths.dataFolderArgument) else { return .empty }
+        let settings = MCPSettingsStore()
+        let cache = MCPToolCache.read()
+        let pool = MCPServerPool(
+            config: MCPServerConfig.read(), settings: settings, cache: cache, cacheFile: nil,
+            factory: { entry in StandInMCPConnection(name: entry.name, cached: cache.servers[entry.name]?.tools) })
+        Task { await pool.start() }
+        return pool
+    }
+
+    /// A connection that acts by the server's name and never starts a process.
+    private struct StandInMCPConnection: MCPServerConnection {
+        let name: String
+        let cached: [MCPToolInfo]?
+
+        func connect() async throws {
+            switch name {
+            case "notes":
+                throw MCPConnectionError.exited(status: 1, message: "Error: NOTES_API_TOKEN is not set.")
+            case "files":
+                try await Task.sleep(for: .seconds(60))
+            default:
+                break
+            }
+        }
+
+        func listTools() async throws -> [MCPToolInfo] {
+            cached ?? [
+                MCPToolInfo(name: "current_time", description: "The current time in a time zone.", inputSchema: [
+                    "type": "object", "properties": ["zone": ["type": "string", "description": "An IANA time zone, such as Europe/Lisbon."]],
+                ], readOnly: true),
+                MCPToolInfo(name: "set_timer", description: "Starts a countdown timer.", inputSchema: [
+                    "type": "object", "properties": ["minutes": ["type": "number"]], "required": ["minutes"],
+                ]),
+            ]
+        }
+
+        func callTool(name: String, arguments: JSONValue) async throws -> MCPCallResult {
+            MCPCallResult(content: [.text("A stand-in result.")])
+        }
+
+        func stop() async {}
     }
 
     /// A few episodes of stand-in conversation in a temporary folder, never the real thread.

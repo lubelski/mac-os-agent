@@ -2,7 +2,7 @@ import Foundation
 
 /// Where a tool comes from. Tools are shown in Settings grouped by source.
 ///
-/// Every tool is built in today. An MCP server will be a source of its own, such as
+/// An MCP server is a source of its own, `ToolSource.mcp("calendar")`, which is
 /// `ToolSource(id: "mcp:calendar", title: "calendar")`, set by its tools' `source`.
 public struct ToolSource: Sendable, Hashable, Identifiable {
     public var id: String
@@ -110,6 +110,8 @@ public struct ToolSummary: Sendable, Equatable, Identifiable {
     public var source: ToolSource
     /// The parameters' JSON Schema, indented for reading.
     public var schemaText: String
+    /// Where an MCP tool comes from, for its go-ahead control. Nil for a built-in tool.
+    public var mcp: MCPToolReference?
 
     public init(_ tool: any AgentTool) {
         let definition = tool.definition
@@ -119,6 +121,9 @@ public struct ToolSummary: Sendable, Equatable, Identifiable {
         goAhead = tool.goAhead
         source = tool.source
         schemaText = definition.parameters.prettyEncodedString()
+        if let tool = tool as? MCPTool {
+            mcp = MCPToolReference(server: tool.server, tool: tool.info.name, readOnly: tool.info.readOnly)
+        }
     }
 
     /// The first sentence of the description, for a list row.
@@ -126,6 +131,26 @@ public struct ToolSummary: Sendable, Equatable, Identifiable {
         let text = AgentInstructions.singleLine(description)
         guard let end = text.range(of: ". ") else { return text }
         return String(text[..<end.lowerBound]) + "."
+    }
+}
+
+/// An MCP tool by its server and the name its server gave it.
+public struct MCPToolReference: Sendable, Equatable {
+    public var server: String
+    public var tool: String
+    public var readOnly: Bool
+
+    public init(server: String, tool: String, readOnly: Bool) {
+        self.server = server
+        self.tool = tool
+        self.readOnly = readOnly
+    }
+
+    /// What the tool does without an override, in a sentence for Settings.
+    public var defaultExplanation: String {
+        readOnly
+            ? "By default it runs without asking, since its server marks it read-only."
+            : "By default it asks, since its server does not mark it read-only."
     }
 }
 

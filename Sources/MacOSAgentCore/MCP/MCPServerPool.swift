@@ -133,6 +133,20 @@ public actor MCPServerPool {
             factory: { MCPSDKConnection(entry: $0) })
     }
 
+    /// No servers, for tests and for a preview without a data folder of its own.
+    public static var empty: MCPServerPool {
+        MCPServerPool(
+            config: MCPServerConfig(fileExists: false), settings: MCPSettingsStore(file: FileManager.default.temporaryDirectory.appending(path: "mac-os-agent-no-mcp-settings.json")),
+            cache: MCPToolCache(), cacheFile: nil, factory: { _ in UnusedConnection() })
+    }
+
+    private struct UnusedConnection: MCPServerConnection {
+        func connect() async throws { throw MCPConnectionError.notConnected }
+        func listTools() async throws -> [MCPToolInfo] { [] }
+        func callTool(name: String, arguments: JSONValue) async throws -> MCPCallResult { throw MCPConnectionError.notConnected }
+        func stop() async {}
+    }
+
     /// The tools that join the list at launch, one per tool in each server's cached list.
     public nonisolated func makeTools() -> [any AgentTool] {
         var tools: [any AgentTool] = []
