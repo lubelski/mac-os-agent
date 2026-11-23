@@ -98,7 +98,7 @@ struct SummonView: View {
 
     private var inputRow: some View {
         HStack(alignment: .top, spacing: 10) {
-            // A prompt mark in the text color, in the scheme of the tool rows. With the
+            // The field holds one icon and the text. The icon is the sparkle, and with the
             // suggestions experiment on, the icon of what Return will act on takes its place.
             InputMark(target: session.returnTarget)
             InputField(
@@ -132,16 +132,7 @@ struct SummonView: View {
                             .accessibilityHidden(true)
                     }
                 }
-            if session.isRunning {
-                HStack(spacing: 10) {
-                    ProgressView().controlSize(.small)
-                    // Command-Period reaches it through Stop in the main menu.
-                    Button("Stop", action: session.stop)
-                        .buttonStyle(.glass)
-                        .help("Stop the task (Command-Period)")
-                }
-                .frame(height: InputField.rowHeight)
-            }
+            // Nothing else goes in the field. Stop is at the end of the thread, on the working row.
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

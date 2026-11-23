@@ -12,6 +12,18 @@ What is not built yet: proposals waiting for agreement, open questions, and work
   - Control-R searches the owner's earlier messages backward as they type, as in a shell.
   - Escape twice clears the field. Escape today dismisses a suggestion, then closes the inspector, then hides the panel, so the second press would need to change meaning only when the field has text.
   - A leading `!` runs the rest of the line as a shell command with no model call, through the shell tool, so the go-ahead and the destructive check apply, and shows it as a `Bash` row. Not in the incognito window. Undecided: how the run is kept so the agent knows of it next time. A quick action's run is kept as the owner's message with an `action` record and a note for the model, but that record names a quick action and says the run was pre-approved, which a `!` command is not. Either it gets a record kind of its own, or the action record is widened to a typed command with a real go-ahead.
+- Voice dictation. Not built. The mockups are in Figma: https://www.figma.com/design/8EIhw6IhPM67ZJq7NcfkdJ?node-id=26-345
+  - Settled so far:
+    - The engine is a setting with three values: Off, macOS (on this Mac, through the Speech framework), and OpenAI.
+    - There are two ways to start: a microphone button, and holding the summon shortcut. A tap of the shortcut still summons the panel for typing.
+    - The transcription fills the field. The footer line says how it is being heard: that it is listening, which engine, and the keys. Nothing is added to the field for it.
+    - A voice color marks everything that means the microphone is live, and a theme can set it. It is not in the theme yet, since nothing would draw in it.
+  - Open:
+    - What letting go of the shortcut does: send the message, or leave the text in the field.
+    - Whether the microphone button lives in the field, as the one exception to the field's rule, or in the footer line.
+    - Whether a spoken app or quick action name may run without Return.
+    - Whether the ChatGPT sign-in covers OpenAI's transcription, or it needs an API key.
+    - How long a hold is. 0.3 seconds is the starting value.
 - One typed parameter per quick action, such as the 40 in "volume 40": the rest of the typed text, checked against a declared type, filled into one argument. The file has room for it: a top-level `parameters` list, and an argument value of the form `{"$parameter": "level"}`, in a file marked `"format": 2`, which this version lists with a problem instead of running the placeholder as written. A stored call with a parameter is the same piece the agent-built controls idea needs (a slider or field that fills one argument of a fixed call), so the two should share it.
 
 ## Open

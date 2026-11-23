@@ -102,7 +102,7 @@ struct PanelShapeRenders {
                     .padding(.bottom, 10)
                 PanelDivider()
                 HStack(spacing: 10) {
-                    Text(verbatim: Mark.prompt).font(.system(size: 17, design: .monospaced)).foregroundStyle(.secondary)
+                    InputMark(target: nil)
                     Text(verbatim: "Tell your Mac what to do").font(.system(size: 15)).foregroundStyle(.tertiary)
                     Spacer()
                 }
@@ -163,7 +163,7 @@ struct DockedPanelRenders {
             Spacer(minLength: 0)
             PanelDivider()
             HStack(spacing: 10) {
-                Text(verbatim: Mark.prompt).font(.system(size: 17, design: .monospaced)).foregroundStyle(.secondary)
+                InputMark(target: nil)
                 Text(verbatim: "Tell your Mac what to do").font(.system(size: 15)).foregroundStyle(.tertiary)
                 Spacer()
             }

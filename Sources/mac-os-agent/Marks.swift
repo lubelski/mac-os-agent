@@ -13,6 +13,9 @@ import SwiftUI
 /// - A code block is held by an open bracket: its label or `┌──` above, a `│` rule down its
 ///   left side, and `└──` below.
 /// - `↑`, `↓`, and `↵` stand in for arrows, as in Pi's footer hints.
+///
+/// The text field's own mark is the one symbol among them: the SF Symbol `sparkle`, the single
+/// four-pointed star, drawn by `PromptMark`.
 enum Mark {
     static let call = "›"
     static let failed = "✗"
@@ -20,7 +23,8 @@ enum Mark {
     static let lastBranch = "└"
     static let bracketTop = "┌──"
     static let bracketBottom = "└──"
-    static let prompt = "›"
+    /// The SF Symbol the text field starts with: one four-pointed star, not `sparkles`.
+    static let promptSymbol = "sparkle"
     static let up = "↑"
     static let down = "↓"
     static let returnKey = "↵"
@@ -30,6 +34,21 @@ enum Mark {
     static let rowFont = Font.system(size: 11, design: .monospaced)
     /// The width of one character of `rowFont`, which is the mark's column.
     static let rowColumn: CGFloat = 13
+}
+
+/// The text field's resting mark, the four-pointed sparkle, in the secondary level. The field,
+/// the list's Ask row, and the theme samples in Settings all draw this one view, so every
+/// picture of the field matches the field.
+struct PromptMark: View {
+    /// The point size of the symbol.
+    var size: CGFloat = 13
+
+    var body: some View {
+        Image(systemName: Mark.promptSymbol)
+            .font(.system(size: size))
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+    }
 }
 
 extension ToolSignal.Tone {

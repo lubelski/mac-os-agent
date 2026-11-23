@@ -81,6 +81,12 @@ struct HistoryView: View {
                     }
                     StreamingReply(session: session, after: rows.last)
                 }
+                // Last in the thread, after the newest row of the running turn, so Stop sits
+                // with the block that is working and the view follows it as it follows new rows.
+                if session.isRunning {
+                    WorkingRow(stop: session.stop)
+                        .padding(.top, Self.spacing(.regular))
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, Self.topPadding)
@@ -263,6 +269,36 @@ struct EpisodeSeparator: View {
             .opacity(0.5)
             .frame(height: 1)
             .frame(maxWidth: .infinity)
+    }
+}
+
+/// The last row of the thread while a task runs: a spinner, then Stop. It is the thread's one
+/// working indicator, about as tall as a tool row and in line with the replies, and it goes
+/// away when the task ends or is stopped. Command-Period reaches the same stop through Stop in
+/// the main menu.
+struct WorkingRow: View {
+    let stop: () -> Void
+
+    static let height: CGFloat = 20
+    static let title = "Stop"
+    static let help = "Stop the task (Command-Period)"
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.mini)
+                .accessibilityLabel("Working")
+            Button(Self.title, action: stop)
+                .buttonStyle(.glass)
+                .controlSize(.small)
+                .font(.system(size: 11))
+                .help(Self.help)
+                .accessibilityLabel(Self.title)
+        }
+        .frame(height: Self.height)
+        .padding(.leading, MessageStyle.horizontalPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
     }
 }
 
