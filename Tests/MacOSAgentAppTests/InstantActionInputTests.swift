@@ -360,7 +360,7 @@ struct InstantActionRowRenders {
                     InstantActionRow(actions: session.instantActions)
                     PanelDivider()
                     HStack(spacing: 10) {
-                        Text(verbatim: Mark.prompt).font(.system(size: 17, design: .monospaced)).foregroundStyle(.secondary)
+                        InputMark(target: nil)
                         Text(verbatim: session.draft).font(.system(size: 15))
                         Spacer()
                     }

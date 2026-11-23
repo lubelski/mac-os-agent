@@ -271,7 +271,7 @@ struct SkillCommandRenders {
                     CommandHint(suggestions: session.commandSuggestions, selection: session.hintSelection, incognito: false)
                     PanelDivider()
                     HStack(spacing: 10) {
-                        Text(verbatim: Mark.prompt).font(.system(size: 17, design: .monospaced)).foregroundStyle(.secondary)
+                        InputMark(target: nil)
                         Text(verbatim: session.draft.isEmpty ? "Tell your Mac what to do" : session.draft)
                             .font(.system(size: 15))
                             .foregroundStyle(session.draft.isEmpty ? .tertiary : .primary)

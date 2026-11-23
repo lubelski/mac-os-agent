@@ -148,25 +148,25 @@ struct InputFooter: View {
     }
 }
 
-/// The mark to the left of the text field. It is `›` whenever Return sends the text as a
-/// message, and the icon of the app or quick action Return will act on otherwise, so the
-/// owner can see at a glance whether Return runs something or sends it.
+/// The one icon at the left of the text field. It is the sparkle whenever Return sends the
+/// text as a message, and the icon of the app or quick action Return will act on otherwise, so
+/// the owner can see at a glance whether Return runs something or sends it. Both take the same
+/// square slot, centered on the first line, so the text never moves when one replaces the other.
 struct InputMark: View {
     let target: InstantActionCandidate?
+
+    static let size: CGFloat = 18
 
     var body: some View {
         Group {
             if let target {
-                SuggestionIcon(target: target.target, size: 18)
+                SuggestionIcon(target: target.target, size: Self.size)
                     .accessibilityLabel("Return \(target.target.actionLabel) \(target.title)")
             } else {
-                Text(verbatim: Mark.prompt)
-                    .font(.system(size: 17, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
+                PromptMark()
             }
         }
-        .frame(width: 18, height: InputField.rowHeight)
+        .frame(width: Self.size, height: InputField.rowHeight)
     }
 }
 
@@ -299,9 +299,8 @@ private struct SuggestionRowView: View {
         case .candidate(let candidate):
             SuggestionIcon(target: candidate.target, size: 16)
         case .ask:
-            Text(verbatim: Mark.prompt)
-                .font(.system(size: 14, design: .monospaced))
-                .foregroundStyle(.secondary)
+            // The field shows its own mark when the Ask row is highlighted, so the row does too.
+            PromptMark(size: 11)
         case .command:
             Color.clear
         }
