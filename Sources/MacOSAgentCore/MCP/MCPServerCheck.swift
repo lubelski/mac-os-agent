@@ -10,13 +10,16 @@ public enum MCPServerCheck {
     public static func run() async -> String {
         var lines: [String] = []
         let problems = ProblemLog()
-        let pool = MCPServerPool.fromDataFolder(problems: problems)
+        // An explicit request for MCP, so it acts as if the experiment is on, without reading
+        // or writing the preference.
+        let pool = MCPServerPool.fromDataFolder(problems: problems, experimentOn: true)
+        let config = await pool.config
         let tools = pool.makeTools()
-        lines.append("servers in file: \(pool.config.servers.map(\.name).joined(separator: ", "))")
+        lines.append("servers in file: \(config.servers.map(\.name).joined(separator: ", "))")
         lines.append("tools at launch, from the cache: \(tools.count)")
         lines.append("PATH: \(MCPEnvironment.searchPath.joined(separator: ":"))")
         await pool.start()
-        for entry in pool.config.usableServers where pool.settings.isEnabled(entry.name) {
+        for entry in config.usableServers where pool.settings.isEnabled(entry.name) {
             do {
                 _ = try await pool.connection(to: entry.name)
             } catch {

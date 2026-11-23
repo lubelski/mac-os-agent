@@ -64,6 +64,12 @@ public struct MCPTool: AgentTool {
     }
 
     public static let declinedOutput = "The person declined this call. It did not run."
+    /// The output when the MCP servers experiment was turned off after launch, while the tool
+    /// is still in this run's list.
+    public static func experimentOffOutput(tool: String, server: String) -> String {
+        "MCP servers are turned off in Settings, Experiments, so \(tool) on \(server) did not run."
+    }
+
     public static let stoppedOutput = "The task was stopped before the call finished."
 
     public func run(arguments: JSONValue, context: ToolRunContext) async -> String {
@@ -72,6 +78,8 @@ public struct MCPTool: AgentTool {
             connection = try await pool.connection(to: server)
         } catch is CancellationError {
             return Self.stoppedOutput
+        } catch MCPPoolError.experimentOff {
+            return Self.experimentOffOutput(tool: info.name, server: server)
         } catch {
             return "The MCP server \(server) is not available, so \(info.name) did not run: \(MCPServerPool.describe(error))"
         }

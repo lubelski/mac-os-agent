@@ -23,9 +23,11 @@ final class MCPServersSettingsModel {
         Task { await reload() }
     }
 
-    var config: MCPServerConfig { pool.config }
+    /// What the servers file said when the pool read it.
+    private(set) var config = MCPServerConfig(fileExists: false)
 
     func reload() async {
+        config = await pool.config
         statuses = await pool.statuses()
         if let selection, !statuses.contains(where: { $0.id == selection }) { self.selection = nil }
         if selection == nil { selection = statuses.first?.id }

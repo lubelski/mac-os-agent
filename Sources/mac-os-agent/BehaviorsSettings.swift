@@ -45,6 +45,7 @@ struct BehaviorsSettingsView: View {
 struct ExperimentsSettingsView: View {
     @AppStorage(Experiment.queueMessagesWhileRunning.key) private var queuesMessages = false
     @AppStorage(Experiment.suggestionsInFieldAndFooter.key) private var suggestionsInField = false
+    @AppStorage(Experiment.mcpServers.key) private var mcpServers = false
 
     var body: some View {
         Form {
@@ -56,6 +57,10 @@ struct ExperimentsSettingsView: View {
                 Toggle(isOn: $suggestionsInField) {
                     Text("Suggestions in the field and a footer")
                     Text("An app or quick action that Return would open is shown in the field itself, with its icon beside it and its name in gray after what you typed, and a line under the field says what the keys do. Down Arrow lists the other matches under the field. Nothing is added above the field, so the conversation stays where it is.")
+                }
+                Toggle(isOn: $mcpServers) {
+                    Text("MCP servers")
+                    Text("The agent gets the tools of the MCP servers listed in mcp-servers.json, and Settings gets an MCP Servers section. Turning it on starts the servers now, and their tools join at the next launch. Turning it off stops them, and their tools leave at the next launch.")
                 }
             } header: {
                 Text("Features being tried. They may change or go.")

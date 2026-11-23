@@ -507,3 +507,95 @@ private func context(approve: Bool, asked: Asked? = nil) -> ToolRunContext {
         #expect(text == String(repeating: "a", count: 20) + "\n[Cut at 20 of 50 characters.]")
     }
 }
+
+// MARK: - Behind the experiment
+
+@Suite struct MCPExperimentTests {
+    private final class Counter: Sendable {
+        private let value = Mutex(0)
+        func add() { value.withLock { $0 += 1 } }
+        var count: Int { value.withLock { $0 } }
+    }
+
+    private func inactivePool(folder: Folder, connections: Counter, loads: Counter, tools: [MCPToolInfo] = [forecast]) -> MCPServerPool {
+        let cacheFile = folder.cache
+        return MCPServerPool(
+            config: MCPServerConfig(fileExists: false), settings: MCPSettingsStore(file: folder.settings), cache: MCPToolCache(),
+            cacheFile: cacheFile,
+            loader: {
+                loads.add()
+                return (config("weather"), MCPToolCache.read(from: cacheFile))
+            },
+            factory: { _ in
+                connections.add()
+                return StandInConnection(tools: tools)
+            })
+    }
+
+    @Test func itIsOffByDefault() throws {
+        let suite = "mac-os-agent-mcp-experiment-tests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        #expect(!Experiment.mcpServers.isOn(defaults))
+        Experiment.mcpServers.set(true, defaults)
+        #expect(Experiment.mcpServers.isOn(defaults))
+        #expect(!Experiment.mcpServers.key.isEmpty)
+    }
+
+    @Test func offReadsNothingStartsNothingAndMakesNoTools() async throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        try MCPToolCache(servers: ["weather": .init(tools: [forecast])]).write(to: folder.cache)
+        let connections = Counter()
+        let loads = Counter()
+        let pool = inactivePool(folder: folder, connections: connections, loads: loads)
+        await pool.start()
+        #expect(pool.makeTools().isEmpty)
+        #expect(await pool.statuses().isEmpty)
+        #expect(await !pool.isActive)
+        await #expect(throws: MCPPoolError.experimentOff) { try await pool.connection(to: "weather") }
+        #expect(connections.count == 0, "no connection factory is called")
+        #expect(loads.count == 0, "no file is read")
+        let builtIn = BuiltInTools.make()
+        let registry = ToolRegistry(builtIn: builtIn, additional: pool.makeTools())
+        #expect(registry.definitions == ToolRegistry(builtIn: builtIn).definitions)
+    }
+
+    @Test func turningItOnReadsTheFilesStartsTheServersAndFillsTheCache() async throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let connections = Counter()
+        let loads = Counter()
+        let pool = inactivePool(folder: folder, connections: connections, loads: loads, tools: [forecast, addAlert])
+        await pool.setActive(true)
+        #expect(loads.count == 1)
+        _ = try await pool.connection(to: "weather")
+        #expect(connections.count == 1)
+        #expect(MCPToolCache.read(from: folder.cache).servers["weather"]?.tools == [forecast, addAlert])
+        let status = try #require(await pool.statuses().first)
+        #expect(status.state == .connected)
+        #expect(status.nextLaunchNote == "Its tools join the tool list at the next launch.")
+        // The tool list for this run does not change.
+        #expect(pool.makeTools().isEmpty)
+    }
+
+    @Test func turningItOffStopsTheServersAndACallSaysSo() async throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let connection = StandInConnection(tools: [forecast])
+        let pool = pool(config("weather"), folder: folder, cache: MCPToolCache(servers: ["weather": .init(tools: [forecast])])) { _ in connection }
+        let tool = try #require(pool.makeTools().first)
+        #expect(await tool.run(arguments: [:], context: context(approve: true)) == "done")
+        await pool.setActive(false)
+        #expect(connection.stops == 1)
+        #expect(await pool.statuses().isEmpty)
+        #expect(await tool.run(arguments: [:], context: context(approve: true))
+            == "MCP servers are turned off in Settings, Experiments, so get_forecast on weather did not run.")
+        #expect(connection.calls == ["get_forecast"])
+
+        // On again starts it again.
+        await pool.setActive(true)
+        #expect(await tool.run(arguments: [:], context: context(approve: true)) == "done")
+        #expect(connection.connects == 2)
+    }
+}

@@ -50,6 +50,9 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
     /// footer under it that says what the keys do, and Down Arrow grows the footer into a short
     /// list of matches. The row above the field is not shown. See `InputFooter`.
     case suggestionsInFieldAndFooter
+    /// Tools from MCP servers listed in `mcp-servers.json`, and the MCP Servers section in
+    /// Settings. A change takes effect in the tool list at the next launch. See `MCPServerPool`.
+    case mcpServers
 
     public var id: String { rawValue }
 
@@ -57,6 +60,7 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .queueMessagesWhileRunning: "ExperimentQueueMessagesWhileRunning"
         case .suggestionsInFieldAndFooter: "ExperimentSuggestionsInFieldAndFooter"
+        case .mcpServers: "ExperimentMCPServers"
         }
     }
 

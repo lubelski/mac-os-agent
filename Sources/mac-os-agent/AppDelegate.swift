@@ -19,8 +19,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var updater: AppUpdater!
     /// Journals a change made to the memory folder outside the app, such as in an editor.
     private var memoryWatcher: FolderWatcher?
-    /// The MCP servers for this run, started in the background after launch.
+    /// The MCP servers for this run, started in the background after launch. Behind the MCP
+    /// servers experiment: with it off, nothing is read or started.
     private var mcp: MCPServerPool?
+    /// Follows the MCP servers experiment's switch while the app runs.
+    private var mcpExperimentObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Before anything reads the quick actions folder, which used to be `actions/`.
@@ -39,8 +42,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         // The MCP servers' tools come from their cached lists, so launch never waits for a server.
         let problems = ProblemLog()
-        let mcp = MCPServerPool.fromDataFolder(problems: problems)
+        var mcpExperimentOn = Experiment.mcpServers.isOn()
+        let mcp = MCPServerPool.fromDataFolder(problems: problems, experimentOn: mcpExperimentOn)
         self.mcp = mcp
+        // The tool list stays as it was built. Turning the experiment on starts the servers now,
+        // so their lists are cached for the next launch, and off stops them.
+        mcpExperimentObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: UserDefaults.standard, queue: .main
+        ) { _ in
+            let on = Experiment.mcpServers.isOn()
+            MainActor.assumeIsolated {
+                guard on != mcpExperimentOn else { return }
+                mcpExperimentOn = on
+                Task { await mcp.setActive(on) }
+            }
+        }
         // Built once, so the tool list stays the same for the whole run, and shared with Settings.
         let tools = ToolRegistry(
             builtIn: BuiltInTools.make(skills: prompt.skills, history: thread, memories: prompt.memories ?? MemoryLibrary()),

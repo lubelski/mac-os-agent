@@ -43,6 +43,11 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The sections in the sidebar. MCP Servers shows only with its experiment on.
+    static func visible(mcpServersOn: Bool) -> [SettingsSection] {
+        allCases.filter { $0 != .mcpServers || mcpServersOn }
+    }
+
     var symbolName: String {
         switch self {
         case .general: "gearshape"
@@ -74,14 +79,34 @@ final class SettingsNavigation {
         }
     }
 
+    /// Whether the MCP Servers section is in the sidebar: the MCP servers experiment is on.
+    private(set) var mcpServersOn: Bool
+
     /// Called after the section changes, so the window can title itself with it.
     @ObservationIgnored var didChange: ((SettingsSection) -> Void)?
 
     @ObservationIgnored private let defaults: UserDefaults
+    /// Set for a preview that asks for MCP, which shows the section whatever the preference says.
+    @ObservationIgnored private let mcpServersOverride: Bool?
 
-    init(defaults: UserDefaults) {
+    init(defaults: UserDefaults, mcpServersOverride: Bool? = nil) {
         self.defaults = defaults
-        section = defaults.string(forKey: Self.key).flatMap(SettingsSection.init(rawValue:)) ?? .general
+        self.mcpServersOverride = mcpServersOverride
+        let mcpServersOn = mcpServersOverride ?? Experiment.mcpServers.isOn(defaults)
+        self.mcpServersOn = mcpServersOn
+        let stored = defaults.string(forKey: Self.key).flatMap(SettingsSection.init(rawValue:))
+        // A remembered section that is hidden now falls back as an unknown one does.
+        section = stored.flatMap { SettingsSection.visible(mcpServersOn: mcpServersOn).contains($0) ? $0 : nil } ?? .general
+    }
+
+    var sections: [SettingsSection] { SettingsSection.visible(mcpServersOn: mcpServersOn) }
+
+    /// The MCP servers experiment was turned on or off. Turning it off while its section shows
+    /// lands on Experiments, where the switch is.
+    func mcpServersExperimentChanged(_ on: Bool) {
+        guard mcpServersOverride == nil, on != mcpServersOn else { return }
+        mcpServersOn = on
+        if !on, section == .mcpServers { section = .experiments }
     }
 }
 
@@ -110,6 +135,7 @@ struct SettingsRootView: View {
 
     let models: SettingsModels
     @Bindable var navigation: SettingsNavigation
+    @AppStorage(Experiment.mcpServers.key) private var mcpServersExperiment = false
 
     var body: some View {
         // A plain row rather than a split view, so the sidebar keeps its width: it cannot be
@@ -119,7 +145,7 @@ struct SettingsRootView: View {
                 get: { navigation.section },
                 set: { if let section = $0 { navigation.section = section } }
             )) {
-                ForEach(SettingsSection.allCases) { section in
+                ForEach(navigation.sections) { section in
                     // The sidebar draws the selected row's title in a heavier weight, which widens
                     // it. A weight set on the title's own Text overrides that, so the row keeps
                     // one weight across hover and selection. On the Label it has no effect.
@@ -139,6 +165,7 @@ struct SettingsRootView: View {
             detail
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         }
+        .onChange(of: mcpServersExperiment) { _, on in navigation.mcpServersExperimentChanged(on) }
     }
 
     @ViewBuilder private var detail: some View {
@@ -194,13 +221,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         summonTrigger: SummonTriggerController, defaults: UserDefaults = .standard, remembersFrame: Bool = true,
         privacyAccess: any PrivacyAccessGate = EventKitStore.shared,
         quickActions: QuickActionLibrary = QuickActionLibrary(),
-        mcp: MCPServerPool = .empty,
+        mcp: MCPServerPool = .empty, mcpServersOverride: Bool? = nil,
         updater: AppUpdater = .unavailable()
     ) {
         models = SettingsModels(
             session: session,
             shortcut: ShortcutRecorderModel(controller: summonTrigger),
-            navigation: SettingsNavigation(defaults: defaults),
+            navigation: SettingsNavigation(defaults: defaults, mcpServersOverride: mcpServersOverride),
             instructions: InstructionsSettingsModel(prompt: prompt),
             memory: MemorySettingsModel(prompt: prompt),
             skills: SkillsSettingsModel(library: prompt.skills),
@@ -354,7 +381,11 @@ enum SettingsPreview {
         // A stand-in hotkey that never registers, so a preview cannot take the installed app's.
         let hotKey = StandInHotKey()
         let summonTrigger = SettingsPreview.summonTrigger(hotKey: hotKey, defaults: defaults, state: section == .general ? item : nil)
-        let mcp = standInMCPServers()
+        // A preview of MCP Servers, or of an MCP tool, asks for MCP, so it shows as if the
+        // experiment were on without reading or writing its preference. Other previews follow
+        // the preview's own preferences, where it is off.
+        let showsMCP = section == .mcpServers || (section == .tools && item?.contains(MCPToolNaming.separator) == true)
+        let mcp = showsMCP ? standInMCPServers() : .empty
         let controller = SettingsWindowController(
             session: session, prompt: prompt, usageLog: UsageLog(),
             tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: history), additional: mcp.makeTools()),
@@ -368,7 +399,7 @@ enum SettingsPreview {
             // A stand-in. A preview decides nothing about the real store and never opens the Keychain.
             secretStorage: SecretStorage.Status(location: .file, reason: .anotherDataFolder, migration: nil),
             summonTrigger: summonTrigger, defaults: defaults, remembersFrame: false,
-            privacyAccess: StandInPrivacyAccess(), mcp: mcp)
+            privacyAccess: StandInPrivacyAccess(), mcp: mcp, mcpServersOverride: showsMCP ? true : nil)
         self.controller = controller
         if section == .general, let item {
             showShortcut(item, in: controller.models.shortcut)

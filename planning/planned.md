@@ -57,7 +57,7 @@ Ideas the owner has raised that nobody has designed or built yet.
 
 ## MCP servers
 
-Agreed with the owner on 2026-11-22, as three slices in this order. The first is built. The other two are not started.
+Agreed with the owner on 2026-11-22, as three slices in this order. The first is built. The other two are not started. All of it is behind the MCP servers switch in Settings, Experiments, including the next two slices.
 
 ### First slice: the bones
 
