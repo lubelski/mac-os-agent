@@ -1,6 +1,6 @@
 # mac-os-agent
 
-<img src="docs/icon.png" width="128" alt="The mac-os-agent app icon: a white prompt chevron and a spark on a teal background">
+<img src="docs/icon.png" width="128" alt="The mac-os-agent app icon: a white bar with a text cursor in it, and a spark above, on a teal background">
 
 An agent for this Mac that lives in the menu bar. You summon it with a hotkey, tell it what you want ("change the wallpaper to a sunset", "delete zoom"), and it acts on the system.
 

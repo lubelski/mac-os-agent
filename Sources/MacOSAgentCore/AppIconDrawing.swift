@@ -5,18 +5,20 @@ import Foundation
 /// the Icon Composer file. `scripts/render-icon.sh` turns them into `Resources/AppIcon.icon`,
 /// and the system adds the background, the rounded shape, and the glass.
 ///
-/// There are four designs to choose from. `shipped` is the one in the app.
+/// There are four designs, kept from when the icon was chosen. `shipped` is the one in the app.
 public enum AppIconDrawing {
     /// The side of the square canvas, in pixels. Icon Composer's canvas for a Mac icon.
     public static let canvas: CGFloat = 1024
 
     /// The design in `Resources/AppIcon.icon`.
-    public static let shipped = Design.promptSpark
+    public static let shipped = Design.summonBar
 
     public enum Design: Int, CaseIterable, Sendable {
         /// The panel's own `›` prompt mark, with a spark where the answer will be.
         case promptSpark = 1
-        /// The summoned panel as a bar with a text cursor in it, and a spark above.
+        /// The summoned panel as a bar with a text cursor in it, and a spark above. The shipped
+        /// design, on the teal of the first. Its spark is large and clear of the bar, and its
+        /// cursor wide, so both still show at 16 points.
         case summonBar = 2
         /// A pointer whose tip gives off a short burst, for acting on the system.
         case pointerBurst = 3
@@ -32,11 +34,10 @@ public enum AppIconDrawing {
             }
         }
 
-        /// The background gradient, top color first, as sRGB components.
+        /// The background gradient, top color first, as sRGB components. The first two share teal.
         public var gradient: (top: [CGFloat], bottom: [CGFloat]) {
             switch self {
-            case .promptSpark: ([0.12, 0.64, 0.68], [0.03, 0.30, 0.38])
-            case .summonBar: ([0.26, 0.52, 0.98], [0.07, 0.20, 0.62])
+            case .promptSpark, .summonBar: ([0.12, 0.64, 0.68], [0.03, 0.30, 0.38])
             case .pointerBurst: ([0.93, 0.33, 0.48], [0.55, 0.08, 0.27])
             case .keyChord: ([0.30, 0.72, 0.45], [0.07, 0.36, 0.24])
             }
@@ -49,7 +50,7 @@ public enum AppIconDrawing {
                 [Layer(name: "spark", draw: { AppIconDrawing.spark(in: $0, center: CGPoint(x: 694, y: 610), radius: 168) }),
                  Layer(name: "prompt", draw: AppIconDrawing.promptChevron)]
             case .summonBar:
-                [Layer(name: "spark", draw: { AppIconDrawing.spark(in: $0, center: CGPoint(x: 712, y: 668), radius: 140) }),
+                [Layer(name: "spark", draw: { AppIconDrawing.spark(in: $0, center: CGPoint(x: 704, y: 676), radius: 172) }),
                  Layer(name: "bar", draw: AppIconDrawing.summonBar)]
             case .pointerBurst:
                 [Layer(name: "burst", draw: AppIconDrawing.burst),
@@ -115,14 +116,14 @@ public enum AppIconDrawing {
     }
 
     @Sendable static func summonBar(_ context: CGContext) {
-        let bar = CGRect(x: 192, y: 240, width: 640, height: 268)
+        let bar = CGRect(x: 192, y: 184, width: 640, height: 260)
         context.setFillColor(white)
         context.addPath(CGPath(roundedRect: bar, cornerWidth: 72, cornerHeight: 72, transform: nil))
         context.fillPath()
         // The text cursor, cut out of the bar.
         context.setBlendMode(.clear)
-        let caret = CGRect(x: 280, y: 296, width: 52, height: 156)
-        context.addPath(CGPath(roundedRect: caret, cornerWidth: 14, cornerHeight: 14, transform: nil))
+        let caret = CGRect(x: 280, y: 236, width: 80, height: 156)
+        context.addPath(CGPath(roundedRect: caret, cornerWidth: 20, cornerHeight: 20, transform: nil))
         context.fillPath()
         context.setBlendMode(.normal)
     }

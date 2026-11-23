@@ -13,8 +13,8 @@
           "name" : "spark"
         },
         {
-          "image-name" : "prompt.png",
-          "name" : "prompt"
+          "image-name" : "bar.png",
+          "name" : "bar"
         }
       ],
       "shadow" : {
