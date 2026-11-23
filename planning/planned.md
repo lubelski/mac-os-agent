@@ -42,7 +42,7 @@ Ideas the owner has raised that nobody has designed or built yet.
 - More kinds of instant action. Instant actions for apps and quick actions are built. Other kinds, such as System Settings panes, recent files, web addresses, and skills, are not.
 - Interfaces the agent builds itself: a small markup language for forms and other inputs shown in the panel, with the go-ahead card as the first case, and later visualizations such as maps.
 - Suggestions in the empty space of a fresh episode. What they contain is not decided. The slot for them exists: `FreshStartContent` in `Sources/mac-os-agent/HistoryView.swift` is shown at the bottom of a fresh page and is empty for now.
-- MCP servers, managed from a Settings section above Debugging, with each server's tools as a group in Tools.
+- MCP servers. See [MCP servers](#mcp-servers) below for the slices.
 - Summoning by double-tapping Option. Shelved in favor of a key chord for now. The stored trigger has room for it as another kind.
 - More native system tools, each left out of the first set for the reason given:
   - Volume, mute, and brightness. Volume needs CoreAudio device code and brightness has no public API for built-in displays.
@@ -54,3 +54,49 @@ Ideas the owner has raised that nobody has designed or built yet.
   - Contacts, Mail, Messages, Music, Photos, and Notes. Each needs a permission of its own or Automation, and Notes and Mail have no public framework.
   - Battery, disk, and network status. Readable without permission, but the shell already answers these quickly with `pmset`, `df`, and `networksetup`.
   - Location and weather. A new permission class.
+
+## MCP servers
+
+Agreed with the owner on 2026-11-22, as three slices in this order. The first is being built. The other two are not started.
+
+### First slice: the bones
+
+A change to the servers takes effect at the next launch.
+
+- Local servers only: ones the app starts as a process and talks to over stdio. Remote servers are a later slice.
+- The client is the official MCP Swift SDK (`modelcontextprotocol/swift-sdk`), behind a seam of our own in `MacOSAgentCore`, so the rest of the app never sees the SDK's types and the client can be swapped. It is the second dependency, after Sparkle. The reason is the later slice for remote servers: the SDK already has the HTTP transport and OAuth. If it turns out not to build cleanly as a dependency, the fallback is a small stdio client of our own behind the same seam.
+- The servers are listed in `mcp-servers.json` in Application Support, in the `mcpServers` shape other apps use (`command`, `args`, `env`), so an entry can be pasted from one. The owner edits it in their own editor, as with skills. It can hold tokens in `env`, so the app keeps the file readable only by the owner.
+- What the app itself decides about a server is kept apart, in `mcp-settings.json`, as `skill-settings.json` is for skills: whether a server is on, and each tool's go-ahead.
+- A server's tools join the tool list after the built-ins, sorted by name, each named `<server>__<tool>`, and are a group of their own in Tools.
+- The tool list is still put together once, at launch, and launch never waits for a server.
+  - The app keeps each server's last tool list in `mcp-tools-cache.json` and builds the list from that.
+  - Servers are started in the background. A call to a tool whose server is not connected yet waits for it, up to a timeout.
+  - A new server, or one whose tools have changed, is connected and its list cached. Its tools join at the next launch, and Settings says so.
+- Go-ahead is set per tool, in the tool's detail in Settings: ask, or do not ask. The default asks, except for a tool its server marks read-only. The card shows the server, the tool, and the arguments.
+- A Settings section, MCP Servers, after Tools. It lists each server with whether it is on, its state (connected, starting, or failed and why), its command, and its tools, with Open File and Show in Finder. Adding and editing a server happens in the file.
+- A result's text is what the model reads. Images and other content are named and left out. A long result is cut at a limit, and a call that takes too long is stopped.
+- The incognito window has no MCP tools.
+
+### Second slice: hot reload
+
+A change to the servers takes effect at the next episode, with no relaunch.
+
+- The tool list is taken when an episode's first request is built and kept for the rest of the episode, as the memory block is, so the prompt cache holds within an episode.
+- The servers file is watched, as the skills folder is. A server that is added, changed, turned on or off, or whose tools change, joins at the next episode. Settings says when a change is waiting for one.
+- To work out: a relaunch partway through an episode has to come back with the same list, or cost one cache miss as the memory block does.
+
+### Third slice: progressive disclosure
+
+A server costs the prompt a line, not its whole tool list, as a skill does.
+
+- The prompt lists each server's name and description. Two fixed tools find a server's tools and call one, as `load_skill` reads a skill.
+- The tool list sent to the model then never changes for MCP, so a server can come and go in the middle of an episode, and many servers do not crowd the prompt.
+- To work out: whether this replaces sending a server's tools directly or is a choice per server, and whether the model finds and calls tools as well this way. Measure it with real servers before choosing.
+
+### Later, in no order
+
+- Remote servers over HTTP, with OAuth sign-in and the tokens kept where the app's own sign-in is.
+- Adding and editing a server in Settings instead of the file.
+- The agent adding a server itself.
+- MCP tools as steps of a quick action. A step is checked against the built-in tools today.
+- Resources and prompts from a server. Only tools are used.
