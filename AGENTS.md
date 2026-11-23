@@ -10,6 +10,7 @@ Read `README.md` first for what the product is, then `planning/`: `decided.md` r
 - Target the current macOS only. Use the newest APIs and Liquid Glass. Do not add fallbacks for older versions.
 - Name things in full. The app, bundle, and folders are `mac-os-agent`, not an abbreviation.
 - Keep font weight constant across hover and selection states.
+- The text field holds one icon at its left and the text. No other controls go in it.
 
 ## Working here
 

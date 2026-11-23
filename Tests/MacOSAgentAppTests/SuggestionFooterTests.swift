@@ -183,7 +183,7 @@ struct InputFooterContentTests {
         // The gray text is never in the text: what is sent, copied, or recalled is "chr".
         #expect(harness.editor.string == "chr")
         #expect(session.draft == "chr")
-        // A message, not a match: the mark is `›` and there is no gray text.
+        // A message, not a match: the mark is the sparkle and there is no gray text.
         session.draft = "light mode please"
         await harness.settle()
         #expect(session.returnTarget == nil)
@@ -247,7 +247,7 @@ struct InputFooterContentTests {
         #expect(session.highlightedRowIndex == 1)
         #expect(session.returnTarget == matches[1], "the field shows the highlighted row")
         #expect(session.inlineCompletion == InlineCompletion.forName(matches[1].title, typed: "chr"))
-        // Down stops at the Ask row, which shows `›` and no gray text.
+        // Down stops at the Ask row, which shows the sparkle and no gray text.
         for _ in 0..<10 { press(harness, down) }
         #expect(session.highlightedRow == .ask("chr"))
         #expect(session.returnTarget == nil)
@@ -636,7 +636,7 @@ struct InputFooterContentTests {
         #expect(session.suggestionRows.count == session.commandSuggestions.count)
         #expect(session.suggestionRows.first == .command(.builtIn(.new)))
         #expect(session.inlineCompletion == InlineCompletion(rest: "new"))
-        #expect(session.returnTarget == nil, "the mark stays `›`")
+        #expect(session.returnTarget == nil, "the mark stays the sparkle")
         // Up and Down choose as before, and the gray text follows.
         press(harness, down)
         #expect(session.hintSelection == 1)
