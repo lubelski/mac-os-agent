@@ -37,6 +37,16 @@ Work is ticketed in Linear, in the `mac-os-agent` project on the Mac Apps team: 
 - Name the sub-issue in the pull request, so the two are linked.
 - Linear tracks the work. `planning/` still records what is decided and what is open.
 
+There is one Linear user, the owner, so the assignee cannot say who is doing the work. A label does instead.
+
+- Each sub-issue carries one label from the Worker group, naming the lane that is doing it. Put yours on when you take the sub-issue.
+- A lane's label is the machine, the role, and a number: `Mac-Mini-IC-1`. IC is a session that does the work itself.
+  - `Mac-Mini-IC-1` is agent sessions on the Mac mini.
+  - `Macbook-Air-IC-1` is the owner working directly from his laptop.
+- `scutil --get ComputerName` says which machine you are on.
+- A second lane on the same machine takes the next number. Add its label to the Worker group.
+- There is no convention yet for the owner himself or for an orchestrator. When one is needed, propose it to the owner and record it here.
+
 ## Previews and captures
 
 - `scripts/bundle.sh` builds `build/mac-os-agent.app` without installing it.
