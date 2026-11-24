@@ -24,6 +24,7 @@ What is not built yet: proposals waiting for agreement, open questions, and work
     - Whether a spoken app or quick action name may run without Return.
     - Whether the ChatGPT sign-in covers OpenAI's transcription, or it needs an API key.
     - How long a hold is. 0.3 seconds is the starting value.
+- A panel with bars and an input pill: a redesign of the panel's frame and of where matches show. Not built. It has a file of its own, [panel-with-input-pill.md](panel-with-input-pill.md), with the mockups, what is settled, and what is open.
 - One typed parameter per quick action, such as the 40 in "volume 40": the rest of the typed text, checked against a declared type, filled into one argument. The file has room for it: a top-level `parameters` list, and an argument value of the form `{"$parameter": "level"}`, in a file marked `"format": 2`, which this version lists with a problem instead of running the placeholder as written. A stored call with a parameter is the same piece the agent-built controls idea needs (a slider or field that fills one argument of a fixed call), so the two should share it.
 
 ## Open
@@ -35,6 +36,7 @@ What is not built yet: proposals waiting for agreement, open questions, and work
 - For the suggestions-in-the-field experiment, which is built behind its switch (see Experiments in [decided.md](decided.md)):
   - Whether the list under the field should open by itself when there are two or more matches, as Alfred does, instead of on Down Arrow.
   - Whether queued messages should move into the footer instead of the rows above the field.
+  - The panel with bars and an input pill, in [panel-with-input-pill.md](panel-with-input-pill.md), answers those two differently for its own design: its list opens by itself, and its queued messages show in the conversation.
   - If the experiment wins, the rows above the field go away: the instant action row and the slash command list.
 
 ## Not started
