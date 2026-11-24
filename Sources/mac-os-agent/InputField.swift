@@ -34,6 +34,9 @@ struct InputField: NSViewRepresentable {
     /// Tab while the field has text, before `onChoose`. Returns true when it used the key, to
     /// complete the command chosen in the list of slash commands.
     var onComplete: () -> Bool = { false }
+    /// Command and a digit from 1 to 9. Returns true when it used the key, to run that row of
+    /// the match card without moving to it. Otherwise the key goes on as a key equivalent.
+    var onCommandNumber: (Int) -> Bool = { _ in false }
     /// Up (-1) with the insertion point on the field's first line, or Down (1) on its last line,
     /// after the command list, the instant action row, and the inspector have passed on the
     /// key. Returns true when it put other text in the field, such as an earlier message.
@@ -99,6 +102,7 @@ struct InputField: NSViewRepresentable {
         context.coordinator.observe(textView)
         textView.onCommandReturn = { [weak coordinator = context.coordinator] in coordinator?.parent.onSubmitToAgent() }
         textView.onControlC = { [weak coordinator = context.coordinator] in coordinator?.parent.onInterrupt() ?? false }
+        textView.onCommandNumber = { [weak coordinator = context.coordinator] in coordinator?.parent.onCommandNumber($0) ?? false }
         textView.onDoubleDelete = { [weak coordinator = context.coordinator] in coordinator?.parent.onDoubleDelete() ?? false }
         textView.onComposingChange = { [weak coordinator = context.coordinator] in coordinator?.parent.onComposingChange($0) }
         return scrollView
@@ -361,6 +365,8 @@ final class InputTextView: NSTextView {
     var onCommandReturn: (() -> Void)?
     /// Control-C. Returns true when it used the key.
     var onControlC: (() -> Bool)?
+    /// Command and a digit from 1 to 9, with the number. Returns true when it used the key.
+    var onCommandNumber: ((Int) -> Bool)?
     /// The second of two quick presses of Delete in an empty field. Returns true when it used the key.
     var onDoubleDelete: (() -> Bool)?
     /// An input method started (true) or stopped (false) composing.
@@ -543,12 +549,25 @@ final class InputTextView: NSTextView {
             onCommandReturn()
             return true
         }
+        if window?.firstResponder === self, let number = Self.commandNumber(event), !hasMarkedText(),
+           onCommandNumber?(number) == true
+        {
+            return true
+        }
         return super.performKeyEquivalent(with: event)
     }
 
     private func isCommandReturn(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function, .capsLock])
         return event.type == .keyDown && (event.keyCode == 36 || event.keyCode == 76) && flags == .command && !hasMarkedText()
+    }
+
+    /// The number of a Command-digit press, 1 to 9, by the character the key types.
+    static func commandNumber(_ event: NSEvent) -> Int? {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function, .capsLock])
+        guard event.type == .keyDown, flags == .command, let characters = event.charactersIgnoringModifiers,
+              characters.count == 1, let number = Int(characters), (1...9).contains(number) else { return nil }
+        return number
     }
 
     /// Control-C with no other modifier, by the character the key types, as a terminal reads it.
@@ -582,6 +601,10 @@ final class InputTextView: NSTextView {
         // A Command-Return that no key equivalent took, as when the event comes straight to the view.
         if isCommandReturn(event), let onCommandReturn {
             onCommandReturn()
+            return
+        }
+        // A Command-digit that no key equivalent took, likewise.
+        if let number = Self.commandNumber(event), !hasMarkedText(), onCommandNumber?(number) == true {
             return
         }
         if Self.isControlC(event), !hasMarkedText(), onControlC?() == true {

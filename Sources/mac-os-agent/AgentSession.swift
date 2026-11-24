@@ -357,7 +357,14 @@ final class AgentSession {
     /// action suggestion or the command list, whichever is showing. A slash rules out a
     /// suggestion, so at most one of them is.
     func dismissSuggestionOrHint() -> Bool {
-        closeSuggestionList() || instantActions.dismiss() || dismissHint()
+        // The match card opens by itself, so closing it alone would bring it straight back.
+        // Escape dismisses the suggestion too, which keeps it away while the owner types on.
+        if panelWithBars, suggestionList.isOpen {
+            closeSuggestionList()
+            _ = instantActions.dismiss()
+            return true
+        }
+        return closeSuggestionList() || instantActions.dismiss() || dismissHint()
     }
 
     private func beginFreshEpisode() {

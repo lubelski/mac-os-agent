@@ -52,18 +52,25 @@ struct SummonView: View {
                 MessageQueueRows(session: session)
             }
             if session.panelWithBars {
-                // The band: the hairline, then the pill on the bars' fill, then the list when
-                // it grows below, then the status line. Nothing is added above the hairline.
+                // The band: the hairline, then the pill on the bars' fill, then the status line.
+                // Nothing is added above the hairline. A match opens the pill into the match
+                // card, upward over the conversation here, or downward in a window of its own.
                 VStack(spacing: 0) {
                     PanelDivider()
                     InputBand {
                         TaskLinksRow(links: session.taskLinks, clear: session.clearTaskLinks)
                     } field: {
-                        InputPill { field(metrics: .pill) }
+                        InputPill(card: session.matchCardSide) { field(metrics: .pill) }
+                            .overlay(alignment: .top) { matchCardAbove }
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.panelSpace)) } action: { pill in
+                                session.suggestionList.pillFrame = pill
+                                let above = pill.minY - PanelTopBar.height - 1
+                                if session.suggestionList.roomAbove != above { session.suggestionList.roomAbove = above }
+                                let update = session.suggestionList.layoutNeedsUpdate
+                                DispatchQueue.main.async { update?() }
+                            }
                     }
                 }
-                .overlay(alignment: .top) { overlaidList }
-                listBelow
                 footer
             } else if session.suggestionsInFooter {
                 // The suggestions are in the field and the footer, so nothing is added above it.
@@ -84,6 +91,7 @@ struct SummonView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .coordinateSpace(.named(Self.panelSpace))
         // A faint tint on the surface, with the label in the top bar, keeps the incognito window
         // apart from the main panel for its whole life.
         .themedPanel(incognito: session.isIncognito)
@@ -95,6 +103,8 @@ struct SummonView: View {
         }
         .onChange(of: session.isRunning) { _, running in
             if !running { focusRequest += 1 }
+            // A match in the field when a task ends opens the card again.
+            if session.panelWithBars { session.suggestionListFollowsDraft() }
         }
         .onExitCommand(perform: onDismiss)
         // The experiment matches from the first character and the row only when confident, so
@@ -105,6 +115,8 @@ struct SummonView: View {
         .onChange(of: barsSwitch, initial: true) {
             placement?.cornerRadius = PanelFrame.cornerRadius(panelWithBars: session.panelWithBars)
             session.syncInstantActionMode()
+            // The match card opens by itself for a match already in the field.
+            if session.panelWithBars { session.suggestionListFollowsDraft() }
         }
         // VoiceOver hears what Return will act on when it changes, since the gray text is drawn
         // only and the mark is beside the field.
@@ -159,6 +171,7 @@ struct SummonView: View {
                         : session.moveHintSelection(by: offset) || session.instantActions.move(by: offset)
                 },
                 onComplete: session.completeHint,
+                onCommandNumber: session.runMatchCardRow(number:),
                 onRecall: session.recallMessage(by:),
                 onInterrupt: session.interrupt,
                 onDoubleDelete: session.startNewEpisodeFromKeys,
@@ -221,6 +234,22 @@ struct SummonView: View {
             suggestionList
                 .background(PanelBarFill(opaque: true))
                 .offset(y: -session.suggestionListHeight)
+        }
+    }
+
+    // MARK: The match card
+
+    /// The panel's content, in which the pill's frame is measured for the match card's window.
+    static let panelSpace = "panel"
+
+    /// The rows of a match card that opens upward, over the end of the conversation, with their
+    /// bottom on the pill's top. A card that opens downward is drawn by `MatchCardWindow`.
+    @ViewBuilder private var matchCardAbove: some View {
+        if session.matchCardSide == .above {
+            let height = MatchCard.heightAbovePill(rows: session.matchCardVisibleRows)
+            MatchCardAbove(session: session, agentName: agentName)
+                .frame(height: height)
+                .offset(y: -height)
         }
     }
 

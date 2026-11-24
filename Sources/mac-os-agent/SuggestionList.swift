@@ -42,6 +42,18 @@ final class SuggestionListState {
     var isComposing = false
     /// How far the window has grown downward to hold the list. Set by the window only.
     var growth: CGFloat = 0
+    /// With the panel with bars on: how far the match card may reach below the panel's bottom
+    /// edge, on the panel's screen, less a margin. Zero in slide over, while hidden or sliding,
+    /// and when the panel is at the bottom of the screen. Set by the window only.
+    var roomBelow: CGFloat = 0
+    /// With the panel with bars on: the room above the pill, up to the title bar, that the card
+    /// may cover when it opens upward. Set by the view.
+    var roomAbove: CGFloat = .greatestFiniteMagnitude
+    /// With the panel with bars on: the pill's frame in the panel's content, top-left origin.
+    /// Set by the view, read by the window to put the card's lower part under it.
+    @ObservationIgnored var pillFrame: CGRect = .zero
+    /// For previews: the match card opens upward wherever the panel is.
+    @ObservationIgnored var previewOpensUpward = false
     /// For previews and tests: the experiment's switch, in place of the preferences.
     @ObservationIgnored var forcedOn: Bool?
     /// Called after a key opened, moved, or closed the list, so the window grows or shrinks in
@@ -162,7 +174,11 @@ extension AgentSession {
                 return false
             }
             let next = suggestionList.highlight + (offset < 0 ? -1 : 1)
-            if next < 0 {
+            if next < 0, panelWithBars {
+                // The card has no closed state to go back to while there is a match: Up stops
+                // at the first row, as Down stops at the last.
+                return true
+            } else if next < 0 {
                 _ = closeSuggestionList()
             } else {
                 suggestionList.setHighlight(min(next, count - 1))
@@ -189,6 +205,11 @@ extension AgentSession {
     /// when it is still listed, and goes back to the first otherwise. With nothing matching,
     /// the list closes.
     func suggestionListFollowsDraft() {
+        // With the panel with bars, the card is there as soon as there is a match: no key opens it.
+        if panelWithBars, !suggestionList.isOpen, let matches = listedMatches {
+            suggestionList.open(listing: matches.map(\.id))
+            return
+        }
         guard suggestionList.isOpen else { return }
         guard suggestionsInFooter, let matches = listedMatches else {
             suggestionList.close()

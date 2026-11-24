@@ -114,7 +114,15 @@ MainActor.assumeIsolated {
             panel.inspector.open(callID)
         }
         if arguments.contains("--backdrop") {
-            PanelPreview.showBackdrop(behind: panel, dark: dark)
+            if PanelWithBarsPreview.opensBelow(name) {
+                // The match card's window is placed once the panel has laid out the pill, so
+                // the backdrop waits for it, to cover both windows.
+                Timer.scheduledTimer(withTimeInterval: 0.6, repeats: false) { _ in
+                    MainActor.assumeIsolated { PanelPreview.showBackdrop(behind: panel, dark: dark) }
+                }
+            } else {
+                PanelPreview.showBackdrop(behind: panel, dark: dark)
+            }
         }
         if let mainPanel {
             // The capture covers both windows.

@@ -22,10 +22,24 @@ import MacOSAgentCore
 ///   typed text and a row per step for each run, and nothing for the opening.
 /// - `bars-links`: three task links above the pill. `bars-rest` is the same panel with none.
 /// - `bars-links-more`: five, so two go into the overflow menu at the row's end.
+/// - `bars-card-down`: "chr", with the match card open downward past the panel's bottom edge,
+///   in its own window. Captured with the backdrop, which covers both windows.
+/// - `bars-card-up`: the same card opening upward over the end of the conversation, as it does
+///   with no room below, with three task links that it covers.
+/// - `bars-card-slash`: the slash commands in the card, opening downward.
 @MainActor
 enum PanelWithBarsPreview {
-    static let names = ["bars-rest", "bars-typing", "bars-long", "bars-match", "bars-slash", "bars-running", "bars-working-hover",
-                        "bars-queued", "bars-lines", "bars-lines-off", "bars-links", "bars-links-more"]
+    static let names = [
+        "bars-rest", "bars-typing", "bars-long", "bars-match", "bars-slash", "bars-running", "bars-working-hover",
+        "bars-queued", "bars-lines", "bars-lines-off", "bars-links", "bars-links-more",
+        "bars-card-down", "bars-card-up", "bars-card-slash",
+    ]
+
+    /// The states whose card opens below the panel, in a window of its own, so a capture of the
+    /// panel's window alone would leave it out.
+    static func opensBelow(_ name: String) -> Bool {
+        name == "bars-card-down" || name == "bars-card-slash"
+    }
 
     static func session(named name: String) -> AgentSession? {
         guard names.contains(name) else { return nil }
@@ -58,9 +72,15 @@ enum PanelWithBarsPreview {
             session.taskLinks = Array(links.prefix(3))
         case "bars-links-more":
             session.taskLinks = links
-        case "bars-slash":
+        case "bars-slash", "bars-card-slash":
             session.skillCommands = SkillCommandsModel(menu: FooterPreview.skills)
             session.draft = "/re"
+        case "bars-card-down":
+            session.draft = "chr"
+        case "bars-card-up":
+            session.taskLinks = Array(links.prefix(3))
+            session.suggestionList.previewOpensUpward = true
+            session.draft = "chr"
         default:
             break
         }

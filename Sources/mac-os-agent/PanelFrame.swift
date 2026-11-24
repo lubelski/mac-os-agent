@@ -80,11 +80,18 @@ extension InputBand where AboveField == EmptyView {
 /// with its edge around it. 38 points tall for one line. A second line makes it a taller box
 /// with the same corners, which grows upward because the band is at the bottom of the panel,
 /// up to `InputField.maximumLines`, and then the text scrolls inside it. Nothing else goes in it.
+///
+/// While a match shows, the pill is one end of the match card, `card` says which: the card's top
+/// when it opens downward, and its bottom when it opens upward. It is then on the card's opaque
+/// fill, with square corners where the rest of the card joins it. See `MatchCard`.
 struct InputPill<Field: View>: View {
+    var card: MatchCardSide? = nil
     @ViewBuilder var field: Field
     @Environment(\.panelPalette) private var palette
 
     var body: some View {
+        // One chain whatever the state, so the field keeps its identity, and with it keyboard
+        // focus, the undo stack, and any text an input method is composing.
         HStack(alignment: .top, spacing: PanelFrame.markGap) {
             LogoMark()
                 .frame(width: PanelFrame.markWidth, height: InputFieldMetrics.pill.rowHeight)
@@ -92,7 +99,25 @@ struct InputPill<Field: View>: View {
         }
         .padding(.horizontal, PanelFrame.pillPadding)
         .frame(minHeight: PanelFrame.pillHeight)
-        .background(palette.fieldFill, in: PanelFrame.pill)
-        .overlay(PanelFrame.pill.strokeBorder(palette.fieldEdge, lineWidth: 1))
+        .background {
+            if let card {
+                MatchCardFill().clipShape(shape(card))
+            } else {
+                PanelFrame.pill.fill(palette.fieldFill)
+            }
+        }
+        .overlay {
+            if let card {
+                // Opening downward, the pill draws the hairline between it and the rows.
+                // Opening upward, the rows draw it, so the pill leaves its top open.
+                MatchCardEdge(shape: shape(card), openTop: card == .above)
+            } else {
+                PanelFrame.pill.strokeBorder(palette.fieldEdge, lineWidth: 1)
+            }
+        }
+    }
+
+    private func shape(_ card: MatchCardSide) -> UnevenRoundedRectangle {
+        MatchCard.shape(top: card == .below, bottom: card == .above)
     }
 }
