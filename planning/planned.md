@@ -24,45 +24,7 @@ What is not built yet: proposals waiting for agreement, open questions, and work
     - Whether a spoken app or quick action name may run without Return.
     - Whether the ChatGPT sign-in covers OpenAI's transcription, or it needs an API key.
     - How long a hold is. 0.3 seconds is the starting value.
-- A panel with bars and an input pill. Not built. It is a redesign of the panel's frame and of where matches show. The mockups are in Figma:
-  - The design, with each built-in theme: https://www.figma.com/design/8EIhw6IhPM67ZJq7NcfkdJ?node-id=99-1200
-  - How it got there, the pill, the mark, and the corner radii: https://www.figma.com/design/8EIhw6IhPM67ZJq7NcfkdJ?node-id=81-867
-  - Boards A to F, which it grew out of, redrawn as rows: https://www.figma.com/design/8EIhw6IhPM67ZJq7NcfkdJ?node-id=71-465
-  - What it is: the panel reads as bar, conversation, band. A quiet title bar at the top. The conversation, which scrolls and is cut by the edges of its area. A band at the bottom, on the same faint fill as the title bar, that holds a row of task links, the input pill, and a status line.
-  - Settled so far, on 2026-11-24:
-    - The title bar holds the model's name at the left, as a label and not a control, "MacOS Agent" centered, small and gray, and the `···` menu at the right. It is the handle for moving the panel.
-    - The text field is a pill inside the band, 38 points tall with 14 point text, close to the 13 points of a message. A second line turns it into a taller box that grows upward, to about 8 lines, and then the text scrolls inside it.
-    - The mark at the left of the field is the app's logo, a plain triangle pointing right, close to equilateral, with slightly rounded tips. It never changes. It does not become the icon of what Return will act on.
-    - A match opens the pill into a card that holds the field and the list. The list is there as soon as there is a match, with no key to open it. The rows are Alfred's: an icon, a name, a second line, and Command numbers.
-    - The card opens downward, past the panel's bottom edge, when there is room below. The panel does not resize. With no room, as in slide over, it opens upward over the end of the conversation, and covers the links.
-    - The selected row is a band from one edge of the card to the other, with no radius of its own. The card's corners clip it. The rows are indented so their icons sit under the mark.
-    - Corner radii follow from one another: an inner radius is the outer radius less the gap between them. The panel is 16, the inset 8, the pill and its card 8, and a message 6.
-    - The status line under the pill says what the keys do now: "↵ send" while typing a message, the list's keys while a match shows, and "⌘. stop" while a task runs. When the card opens downward it covers that line, so the card carries the keys on its own last row.
-    - The row above the pill holds task links, right aligned: tickets, pull requests, mock pages. The agent sets them with a tool. It is a port of the links mod in `agent-customizations`. Three fit, and more go into an overflow menu. They are quiet gray, and take the accent under the pointer.
-    - Opening an app or running a quick action leaves one small line in the conversation, centered and faint, with the icon of the thing at 10 points: "Opened Balsamiq", "Ran Balcony Lights On". A failed quick action is the same line in red, with why. Several in a row are not folded together.
-    - Opening an app is included lazily. Nothing is sent to the model when it happens. The entry is logged, and it joins the thread only when the next message that needs the model is sent.
-    - While a task runs, the last row of the conversation is three small copies of the mark, with the bright one stepping left to right, then "Working…". Stop is a link that shows when the pointer is over the row. Other links may join it later.
-    - Queued messages show in the conversation, not in the band.
-    - Messages take each theme's own fills, as today. There is one accent per theme, for the mark, the caret, the selection band, and a link under the pointer.
-    - The theme format gains a color for the field, its fill and its edge. Without one the pill is too faint on the dark themes.
-  - Open:
-    - Whether a line for an opened app or a quick action opens the inspector with its steps.
-    - What happens to a logged app opening when the episode ends before another message is sent.
-    - What the links' overflow menu looks like, and whether the row closes up or holds its height when there are no links.
-    - Whether the links give up their row once the box is tall.
-    - Which other links sit beside Stop: edit, cancel. And whether Stop on the keys alone is enough when no pointer is over the row.
-    - The status line's bottom right is meant to say how to queue or steer while a task runs. Queueing is an experiment and steering is not built, so its key is not chosen.
-    - The field color's value in each built-in theme. The mockups use placeholders.
-    - Whether the logo also replaces the app icon, or is only the mark in the field.
-    - The last row of the list still reads "Ask Iris". What it says now that the title is "MacOS Agent".
-  - What it changes in [decided.md](decided.md) when it is built:
-    - It takes the place of both the row above the field and the suggestions-in-the-field experiment, board E: the gray completion stays, the footer becomes the status line, and the list opens by itself instead of on Down Arrow.
-    - The model's name moves from the footer to the title bar.
-    - A quick action's run shows as one line, where today it shows the typed text and a row per step.
-    - Opening an app leaves a line and a logged entry, where today it leaves nothing.
-    - The working row gains the animation and "Working…", and Stop becomes a link on hover.
-    - The field's icon is the logo, where today it is the sparkle.
-  - It is a new feature the owner has not tried in the app, so it is built behind a switch in Settings, Experiments.
+- A panel with bars and an input pill: a redesign of the panel's frame and of where matches show. Not built. It has a file of its own, [panel-with-input-pill.md](panel-with-input-pill.md), with the mockups, what is settled, and what is open.
 - One typed parameter per quick action, such as the 40 in "volume 40": the rest of the typed text, checked against a declared type, filled into one argument. The file has room for it: a top-level `parameters` list, and an argument value of the form `{"$parameter": "level"}`, in a file marked `"format": 2`, which this version lists with a problem instead of running the placeholder as written. A stored call with a parameter is the same piece the agent-built controls idea needs (a slider or field that fills one argument of a fixed call), so the two should share it.
 
 ## Open
@@ -74,7 +36,7 @@ What is not built yet: proposals waiting for agreement, open questions, and work
 - For the suggestions-in-the-field experiment, which is built behind its switch (see Experiments in [decided.md](decided.md)):
   - Whether the list under the field should open by itself when there are two or more matches, as Alfred does, instead of on Down Arrow.
   - Whether queued messages should move into the footer instead of the rows above the field.
-  - The panel with bars and an input pill, under Proposed above, answers those two differently for its own design: its list opens by itself, and its queued messages show in the conversation.
+  - The panel with bars and an input pill, in [panel-with-input-pill.md](panel-with-input-pill.md), answers those two differently for its own design: its list opens by itself, and its queued messages show in the conversation.
   - If the experiment wins, the rows above the field go away: the instant action row and the slash command list.
 
 ## Not started
