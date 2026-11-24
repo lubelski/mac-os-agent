@@ -72,9 +72,8 @@ private struct TaskLinkButton: View {
                 .underline()
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .foregroundStyle(hovering ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TaskLinkButtonStyle(hovering: hovering))
         .onHover { hovering = $0 }
         .help(link.url)
         .contextMenu {
@@ -106,15 +105,26 @@ private struct TaskLinksOverflow: View {
         } label: {
             Text(verbatim: "+\(links.count)")
                 .underline()
-                .foregroundStyle(hovering ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
         }
         .menuStyle(.button)
-        .buttonStyle(.plain)
+        .buttonStyle(TaskLinkButtonStyle(hovering: hovering))
         .menuIndicator(.hidden)
         .fixedSize()
         .onHover { hovering = $0 }
         .help(links.map(\.label).joined(separator: ", "))
         .accessibilityLabel("\(links.count) more link\(links.count == 1 ? "" : "s")")
         .accessibilityHint(links.map(\.label).joined(separator: ", "))
+    }
+}
+
+/// A link's look: the status line's quiet style, and the accent under the pointer. A style of
+/// its own, since `.plain` resolves the quiet style against a color of its own.
+private struct TaskLinkButtonStyle: ButtonStyle {
+    let hovering: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(hovering ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+            .contentShape(Rectangle())
     }
 }

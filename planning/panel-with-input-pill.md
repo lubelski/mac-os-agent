@@ -86,8 +86,7 @@ A match opens the pill into a card that holds the field and an Alfred-style list
 
 - Whether a line for an opened app or a quick action opens the inspector with its steps.
 - What happens to a logged app opening when the episode ends before another message is sent.
-- What the links' overflow menu looks like.
-- Whether the links row closes up or holds its height when there are no links.
+- What the links' overflow menu looks like. It is built as a quiet "+2" at the row's end that opens a plain menu, for the owner to judge.
 - Whether the links give up their row once the box is tall.
 - Which other links sit beside Stop: edit, cancel.
 - Whether Stop on the keys alone is enough when no pointer is over the working row.
@@ -111,4 +110,4 @@ Each of these is described in [decided.md](decided.md) as it works today.
 
 It is a new feature the owner has not tried in the app, so it is built behind a switch in Settings, Experiments, "Panel with bars and an input pill". Its four experiment lines are in [decided.md](decided.md) under Experiments.
 
-The first slice, the frame, is built: the title bar, the band with the pill and the status line, the logo as the mark, the radii, and the field color in the theme format. The working row is built too: the marks and "Working…", Stop as a link under the pointer, "⌘. stop" and "↵ queue" on the status line, and queued messages in the conversation. The match card, the lines in the conversation, and the task links are not.
+The first slice, the frame, is built: the title bar, the band with the pill and the status line, the logo as the mark, the radii, and the field color in the theme format. The working row is built too: the marks and "Working…", Stop as a link under the pointer, "⌘. stop" and "↵ queue" on the status line, and queued messages in the conversation. So are the task links, as described in [decided.md](decided.md) under the experiment. With no links the row closes up. The match card and the lines in the conversation are not.
