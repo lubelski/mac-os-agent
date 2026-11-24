@@ -603,6 +603,10 @@ final class InputTextView: NSTextView {
             onCommandReturn()
             return
         }
+        // A Command-digit that no key equivalent took, likewise.
+        if let number = Self.commandNumber(event), !hasMarkedText(), onCommandNumber?(number) == true {
+            return
+        }
         if Self.isControlC(event), !hasMarkedText(), onControlC?() == true {
             return
         }

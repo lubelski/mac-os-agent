@@ -430,6 +430,7 @@ final class SummonPanel: NSPanel {
         session.closeSuggestionList()
         isPresented = false
         setFooterGrowth(0)
+        updateMatchCard()
         if var slide {
             slide.retarget(.hidden)
             self.slide = slide
