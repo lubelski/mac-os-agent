@@ -19,6 +19,7 @@ The agent is called Iris unless you name it otherwise in Settings, General. The 
 - Delete twice quickly in an empty field starts a new episode, as `/new` does.
 - Typing a slash lists the panel's commands and the skills you can invoke. `/skill-name` and some text asks the agent to use that skill for the text.
 - Settings opens from the menu bar menu, or with Command-comma while the panel is in front.
+- Web search is off unless you choose OpenAI's hosted search or Brave Search in Settings, General. Brave needs an API key, saved there. A change takes effect at the next launch.
 
 MCP servers are an experiment: turn them on in Settings > Experiments. They go in `mcp-servers.json` in the same folder, in the `mcpServers` shape other apps use. Settings > MCP Servers shows them, and a new server's tools join at the next launch.
 

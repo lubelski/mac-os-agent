@@ -9,7 +9,8 @@
 # BIN picks another build, and SECTIONS another list of sections. An entry with a colon, such
 # as skills:half-written, selects that skill or tool in its section, or scrolls Debugging
 # to that part, as debugging:sign-in does. general:recording, general:conflict, and
-# general:rejected show the summon shortcut recorder in those states. mcp-servers:<name>
+# general:rejected show the summon shortcut recorder in those states. general:brave shows
+# Brave Search chosen with no key yet, and general:brave-saved with a key saved. mcp-servers:<name>
 # selects a server, and tools:weather__add_alert shows an MCP tool's go-ahead. The MCP
 # servers are stand-ins that start no process: notes fails, files never finishes starting,
 # clock is new, and the rest connect.
@@ -18,7 +19,7 @@ cd "$(dirname "$0")/.."
 
 BIN="${BIN:-build/mac-os-agent.app/Contents/MacOS/mac-os-agent}"
 OUT="${1:-docs/screenshots}"
-SECTIONS="${SECTIONS:-general general:recording general:conflict instructions skills skills:half-written actions actions:empty-downloads tools tools:weather__add_alert mcp-servers mcp-servers:weather mcp-servers:clock mcp-servers:notes history history:receipts debugging debugging:sign-in}"
+SECTIONS="${SECTIONS:-general general:recording general:conflict general:brave instructions skills skills:half-written actions actions:empty-downloads tools tools:weather__add_alert mcp-servers mcp-servers:weather mcp-servers:clock mcp-servers:notes history history:receipts debugging debugging:sign-in}"
 mkdir -p "$OUT"
 
 WORK="$(mktemp -d)"

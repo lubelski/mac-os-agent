@@ -29,6 +29,7 @@ What is not built yet: proposals waiting for agreement, open questions, and work
 ## Open
 
 - Which ChatGPT plans and models the sign-in token covers, and what OpenAI's terms say about third-party apps using it. Neither has been checked.
+- Whether the ChatGPT sign-in token covers OpenAI's hosted web search. It is built but has not been tried with a real sign-in. Also unchecked: whether a kept `web_search_call` is accepted when the request no longer offers the tool, such as after a relaunch with web search turned off partway through an episode.
 - Whether a new episode should start with a short summary of the recent ones, and whether the agent should name episodes by topic. For now it starts with nothing from before and searches when it needs to.
 - Whether an experiment that wins may keep the path it replaced as a setting, as Behaviors keeps a switch per habit, or whether the old path is always deleted. The rule in [decided.md](decided.md) under Experiments says deleted, and names this as undecided.
 - What each of the three experiments is asking, what would make it win, and what settles it. Their "Not set" lines are in [decided.md](decided.md) under Experiments.
@@ -41,6 +42,7 @@ What is not built yet: proposals waiting for agreement, open questions, and work
 
 Ideas the owner has raised that nobody has designed or built yet.
 
+- A tool that reads a page, to follow a Brave Search result. `search_web` returns only titles, addresses, and snippets.
 - More kinds of instant action. Instant actions for apps and quick actions are built. Other kinds, such as System Settings panes, recent files, web addresses, and skills, are not.
 - Interfaces the agent builds itself: a small markup language for forms and other inputs shown in the panel, with the go-ahead card as the first case, and later visualizations such as maps.
 - Suggestions in the empty space of a fresh episode. What they contain is not decided. The slot for them exists: `FreshStartContent` in `Sources/mac-os-agent/HistoryView.swift` is shown at the bottom of a fresh page and is empty for now.
