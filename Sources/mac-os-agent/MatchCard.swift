@@ -173,20 +173,13 @@ extension AgentSession {
 
 // MARK: - Drawing
 
-/// The card's fill: opaque, so it reads the same over the conversation, over the band, and past
-/// the panel's edge. It is the theme's solid fill with the bars' fill and the field's fill on
-/// it, which is how the pill looks at rest on a solid theme.
+/// The card's fill: opaque and plain, so it reads the same over the conversation, over the band,
+/// past the panel's edge, and inside the glass in slide over. See `PanelPalette.matchCardFill`.
 struct MatchCardFill: View {
     @Environment(\.panelPalette) private var palette
 
     var body: some View {
-        ZStack {
-            Rectangle().fill(Color(nsColor: .windowBackgroundColor))
-            Rectangle().fill(palette.fallbackFill)
-            Rectangle().fill(palette.bar)
-            Rectangle().fill(palette.fieldFill)
-        }
-        .accessibilityHidden(true)
+        Rectangle().fill(palette.matchCardFill).accessibilityHidden(true)
     }
 }
 

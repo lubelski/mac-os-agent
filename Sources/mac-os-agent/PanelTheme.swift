@@ -161,6 +161,17 @@ struct PanelPalette {
     private func scaled(_ color: ThemeColor, toOpacity opacity: Double) -> ThemeColor {
         color.scaled(toOpacity: opacity)
     }
+
+    /// The match card's fill as one opaque, plain color: the field's fill over the bars' fill
+    /// over the surface's own fill, over the window background. It is how the pill looks at rest
+    /// on a solid surface. Plain, because the system label tints are drawn vibrant inside the
+    /// panel's glass, and in slide over that reads as a light gray.
+    var matchCardFill: Color {
+        let window = isDark ? RGBA(red: 0.118, green: 0.118, blue: 0.118) : RGBA(red: 0.925, green: 0.925, blue: 0.925)
+        let field = increasedContrast ? scaled(appearance.fieldBox.fill, by: 1.3) : appearance.fieldBox.fill
+        let mixed = [appearance.surface.fill, appearance.barFill, field].reduce(window) { $1.resolved(dark: isDark).over($0) }
+        return Color(.sRGB, red: mixed.red, green: mixed.green, blue: mixed.blue, opacity: 1)
+    }
 }
 
 extension EnvironmentValues {
