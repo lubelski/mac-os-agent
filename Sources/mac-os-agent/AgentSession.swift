@@ -126,6 +126,12 @@ final class AgentSession {
     @ObservationIgnored var previewHoversQueuedMessage = false
     /// True after a fresh start in the panel, until the next message starts the episode.
     @ObservationIgnored private var startsNewEpisode = false
+    /// The entries a preview session was made from, so its history can be drawn again when the
+    /// panel with bars switch is forced on after it was made.
+    @ObservationIgnored private var previewEntries: [ThreadEntry]?
+    /// Logging an app the owner opened, with the panel with bars experiment on. A message or a
+    /// quick action waits for it, so the opening is in the thread before the entry that follows.
+    @ObservationIgnored private var openingLog: Task<Void, Never>?
     /// Where the switches in Settings, Behaviors and Experiments are read. Previews and tests
     /// set a stand-in suite, so they never read the owner's.
     @ObservationIgnored var preferences: UserDefaults = .standard
@@ -187,6 +193,7 @@ final class AgentSession {
             for entry in previewEntries { transcript.apply(entry) }
         } else {
             transcript = Transcript(entries: previewEntries)
+            self.previewEntries = previewEntries
         }
         if freshStart { transcript.beginEpisode(at: Date()) }
         for callID in runningCallIDs { transcript.setToolStatus(callID, .running) }
@@ -216,7 +223,8 @@ final class AgentSession {
     /// Loads the whole thread as history and checks for a stored sign-in.
     func start() async {
         if let loop, kind == .kept {
-            transcript = Transcript(entries: await loop.thread.entries, summaries: ToolCallSummaries(loop.tools))
+            transcript = Transcript(
+                entries: await loop.thread.entries, summaries: ToolCallSummaries(loop.tools), showsLines: panelWithBars)
         }
         if let authenticator, await authenticator.isSignedIn() {
             signInState = .signedIn
@@ -225,10 +233,35 @@ final class AgentSession {
     }
 
     func panelDidAppear() {
+        followPanelWithBarsSwitch()
         focusRequest += 1
         instantActions.refresh()
         skillCommands?.reload()
         refreshEpisode()
+    }
+
+    /// Draws the main panel's history again when the panel with bars switch changed since it was
+    /// drawn, since the switch decides whether a quick action's run and an opened app read as
+    /// one line. A fresh page stays fresh. Nothing in the thread changes.
+    func followPanelWithBarsSwitch() {
+        let wanted = panelWithBars
+        guard kind == .kept, transcript.showsLines != wanted, !isRunning else { return }
+        if let previewEntries {
+            redraw(previewEntries, summaries: .builtIn, showsLines: wanted)
+            return
+        }
+        guard let loop else { return }
+        Task {
+            let entries = await loop.thread.entries
+            guard !isRunning, transcript.showsLines != panelWithBars else { return }
+            redraw(entries, summaries: ToolCallSummaries(loop.tools), showsLines: panelWithBars)
+        }
+    }
+
+    private func redraw(_ entries: [ThreadEntry], summaries: ToolCallSummaries, showsLines: Bool) {
+        let fresh = transcript.hasPendingEpisode
+        transcript = Transcript(entries: entries, summaries: summaries, showsLines: showsLines)
+        if fresh { transcript.beginEpisode(at: clock()) }
     }
 
     /// Starts a fresh page when the main panel's current episode has timed out. Idleness counts
@@ -415,9 +448,10 @@ final class AgentSession {
         submitToAgent()
     }
 
-    /// An instant action, such as opening an app. It is never sent to the model and never
-    /// written to the thread, so the episode's request, and its prompt cache, stay as they were.
-    /// The main panel hides the normal way. The incognito window stays, since hiding it is
+    /// An instant action, such as opening an app. Nothing is sent to the model, so the episode's
+    /// request, and its prompt cache, stay as they were. With the panel with bars experiment on,
+    /// the main panel logs the opening in the thread, where it shows as a line and joins the next
+    /// request of its episode. With it off nothing is written. The main panel hides the normal way. The incognito window stays, since hiding it is
     /// closing it. If the action fails, the window comes back with the text and a line saying
     /// why, which is shown only and never kept.
     func perform(_ candidate: InstantActionCandidate) {
@@ -433,6 +467,9 @@ final class AgentSession {
         Task {
             do {
                 try await instantActions.perform(candidate)
+                if case .application(let application) = candidate.target {
+                    await logOpening(application, in: conversation)
+                }
             } catch {
                 let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 problems.record("Instant action", "Could not open \(candidate.title): \(message)")
@@ -442,6 +479,34 @@ final class AgentSession {
                 showPanel?()
             }
         }
+    }
+
+    /// Logs an app the owner opened, with the panel with bars experiment on, in the main panel
+    /// only: the incognito window writes nothing. Nothing is sent to the model. An opening that
+    /// lands while a task runs is not logged, since it could fall between a call and its result.
+    private func logOpening(_ application: InstalledApplication, in conversation: Int) async {
+        guard kind == .kept, panelWithBars, let loop, !isRunning, conversation == self.conversation else { return }
+        let startsNew = startsNewEpisode
+        startsNewEpisode = false
+        let now = clock()
+        let log = Task {
+            do {
+                try await loop.logAppOpening(
+                    ThreadItem.AppOpening(application), startsNewEpisode: startsNew, now: now,
+                    onEvent: { event in await self.handle(event, in: conversation) })
+            } catch {
+                let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                problems.record("Instant action", "Could not log opening \(application.name): \(message)")
+            }
+        }
+        openingLog = log
+        await log.value
+        if openingLog == log { openingLog = nil }
+    }
+
+    /// Waits for an opening that is being logged, so it is in the thread before what follows.
+    private func waitForOpeningLog() async {
+        await openingLog?.value
     }
 
     /// A quick action, from the instant row. It runs with no model request, through the same
@@ -475,6 +540,7 @@ final class AgentSession {
         }
         quickActionsAtTaskStart = instantActions.quickActionLibrary?.entries()
         task = Task {
+            await waitForOpeningLog()
             do {
                 let entry = try await loop.runQuickAction(
                     action, typed: text, startsNewEpisode: startsNew, now: clock(),
@@ -603,6 +669,7 @@ final class AgentSession {
         // conversation cancels it, and anything it reports after that is dropped.
         task = Task {
             var ending = TaskEnding.finished
+            await waitForOpeningLog()
             do {
                 try await loop.run(
                     text,
@@ -759,7 +826,12 @@ final class AgentSession {
     /// kept thread. The incognito window's is only its own conversation.
     var recallHistory: [String] {
         MessageRecall.history(newestFirst: transcript.rows.reversed().lazy.compactMap { row in
-            if case .user(let text, _, _) = row.kind { text } else { nil }
+            switch row.kind {
+            case .user(let text, _, _): text
+            // A quick action's line keeps what was typed for it, which is recalled as before.
+            case .line(let line): line.typed
+            default: nil
+            }
         })
     }
 
