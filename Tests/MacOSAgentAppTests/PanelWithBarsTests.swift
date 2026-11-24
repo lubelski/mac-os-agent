@@ -145,6 +145,110 @@ import Testing
     }
 }
 
+/// The panel with bars, the working row slice: the marks, the status line while a task runs,
+/// and where queued messages are drawn. See `PanelWorkingRow`.
+@MainActor
+@Suite struct PanelWorkingRowTests {
+    private func suite() throws -> UserDefaults {
+        try #require(UserDefaults(suiteName: "mac-os-agent-working-row-\(UUID().uuidString)"))
+    }
+
+    /// The bright mark steps left to right and wraps around, three steps a second.
+    @Test func theBrightMarkStepsLeftToRightAndWraps() {
+        #expect((0..<7).map(WorkingMarks.brightIndex(step:)) == [0, 1, 2, 0, 1, 2, 0])
+        #expect(WorkingMarks.brightIndex(step: -1) == 2)
+        #expect(WorkingMarks.strengths(step: 0, reduceMotion: false) == [1, WorkingMarks.dimStrength, WorkingMarks.dimStrength])
+        #expect(WorkingMarks.strengths(step: 4, reduceMotion: false) == [WorkingMarks.dimStrength, 1, WorkingMarks.dimStrength])
+        #expect(WorkingMarks.strengths(step: 5, reduceMotion: false) == [WorkingMarks.dimStrength, WorkingMarks.dimStrength, 1])
+        #expect(WorkingMarks.stepsPerSecond == 3)
+        let start = Date(timeIntervalSinceReferenceDate: 1000)
+        #expect(WorkingMarks.step(at: start.addingTimeInterval(1)) == WorkingMarks.step(at: start) + 3)
+        #expect(WorkingMarks.step(at: start.addingTimeInterval(0.3)) == WorkingMarks.step(at: start))
+    }
+
+    /// With Reduce Motion on the three marks stand still, whatever the step.
+    @Test func reduceMotionHoldsTheMarksStill() {
+        let still = (0..<6).map { WorkingMarks.strengths(step: $0, reduceMotion: true) }
+        #expect(Set(still).count == 1)
+        #expect(still[0] == [1, 1, 1])
+        #expect(PanelWorkingRow.title == "Working…")
+        #expect(PanelWorkingRow.spokenTitle == "Working")
+        #expect(PanelWorkingRow.stopTitle == "Stop")
+    }
+
+    /// While a task runs the status line says how to stop at the left, and how to queue at the
+    /// right when the queue experiment is on. There is no hint for steering.
+    @Test func theStatusLineWhileATaskRuns() {
+        func make(queued: Int, queues: Bool, statusLine: Bool = true) -> InputFooterContent {
+            .make(.running(queuedCount: queued), agentName: "Iris", modelName: "GPT-6 Luna", recallsMessages: true,
+                  queuesWhileRunning: queues, statusLine: statusLine)
+        }
+        #expect(make(queued: 0, queues: false).leading.map(\.text) == ["⌘. stop"])
+        #expect(make(queued: 0, queues: false).trailing == nil)
+        #expect(make(queued: 0, queues: true).leading.map(\.text) == ["⌘. stop"])
+        #expect(make(queued: 0, queues: true).trailing?.text == "↵ queue")
+        #expect(make(queued: 2, queues: true).leading.map(\.text) == ["⌘. stop", "↑ edit queued"])
+        #expect(make(queued: 2, queues: true).trailing?.text == "↵ queue")
+        #expect(make(queued: 2, queues: true).spoken == "Command-Period, stop. Up Arrow, edit queued. Return, queue")
+        for queued in [0, 2] {
+            for content in [make(queued: queued, queues: true), make(queued: queued, queues: false)] {
+                #expect(!(content.leading + [content.trailing].compactMap { $0 }).contains { $0.text.contains("steer") })
+            }
+        }
+        // The suggestions experiment's footer, with the switch off, is as it was.
+        let footer = make(queued: 2, queues: true, statusLine: false)
+        #expect(footer.leading.map(\.text) == ["⌘. stop", "↵ queue", "↑ edit queued"])
+        #expect(footer.trailing?.text == "GPT-6 Luna")
+    }
+
+    /// Queued messages are drawn in the conversation with the panel with bars on, and above the
+    /// field with it off, as before. With the queue experiment off nothing is queued, so nothing
+    /// is drawn with either.
+    @Test(arguments: [false, true], [false, true])
+    func whereQueuedMessagesAreDrawn(panelWithBars: Bool, queues: Bool) throws {
+        let session = AgentSession(previewEntries: PanelWithBarsPreview.thread(), isRunning: true)
+        session.preferences = try suite()
+        Experiment.panelWithBarsAndInputPill.set(panelWithBars, session.preferences)
+        Experiment.queueMessagesWhileRunning.set(queues, session.preferences)
+        #expect(session.queuedMessagePlacement == .none)
+        session.draft = "and the menu bar too"
+        session.submitToAgent()
+        switch (panelWithBars, queues) {
+        case (_, false):
+            #expect(session.queue.isEmpty)
+            #expect(session.queuedMessagePlacement == .none)
+        case (true, true):
+            #expect(session.queuedMessagePlacement == .inConversation)
+        case (false, true):
+            #expect(session.queuedMessagePlacement == .aboveField)
+        }
+    }
+
+    /// Edit and Remove on a queued message in the conversation do what they do above the field.
+    @Test func editAndRemoveStillWork() throws {
+        let session = try #require(PanelWithBarsPreview.session(named: "bars-queued"))
+        #expect(session.queuedMessagePlacement == .inConversation)
+        #expect(session.queue.items.map(\.text) == ["and the menu bar too", "then set an alarm for 7"])
+        session.editQueued(session.queue.items[0].id)
+        #expect(session.draft == "and the menu bar too")
+        #expect(session.queue.items.map(\.text) == ["then set an alarm for 7"])
+        session.draft = ""
+        session.removeQueued(session.queue.items[0].id)
+        #expect(session.queue.isEmpty)
+        #expect(session.queuedMessagePlacement == .none)
+    }
+
+    /// The previews draw what they say: running, Stop under the pointer, and queued messages.
+    @Test func thePreviewsRun() throws {
+        for name in ["bars-running", "bars-working-hover", "bars-queued"] {
+            let session = try #require(PanelWithBarsPreview.session(named: name))
+            #expect(session.isRunning)
+            #expect(session.panelWithBars)
+        }
+        #expect(try #require(PanelWithBarsPreview.session(named: "bars-working-hover")).previewHoversWorkingRow)
+    }
+}
+
 /// Renders the panel with bars offscreen, for a pull request when screen capture is not
 /// available: each state in a light theme, and at rest and with a long message in each dark
 /// theme. Run with MAC_OS_AGENT_RENDER_BARS set to a folder. Glass and blur are not drawn
@@ -173,8 +277,16 @@ struct PanelWithBarsRenders {
             try render("bars-rest", theme: theme, dark: dark)
             try render("bars-long", theme: theme, dark: dark)
         }
-        // Before: the same conversation with the switch off.
+        for name in ["bars-running", "bars-working-hover", "bars-queued"] {
+            try render(name, theme: "graphite", dark: true)
+        }
+        // Before: the same conversation with the switch off, at rest and while a task runs.
         for (theme, dark) in [("glass", false), ("graphite", true)] {
+            let running = AgentSession(previewEntries: PanelWithBarsPreview.thread(), isRunning: true)
+            let runningBitmap = try PanelBarDrawing.draw(
+                PanelBarDrawing.panel(running, model: try PanelBarDrawing.model(theme)), dark: dark)
+            try #require(runningBitmap.representation(using: .png, properties: [:]))
+                .write(to: folder.appending(path: "before-running-\(theme)-\(dark ? "dark" : "light").png"))
             let session = AgentSession(previewEntries: PanelWithBarsPreview.thread())
             let bitmap = try PanelBarDrawing.draw(
                 PanelBarDrawing.panel(session, model: try PanelBarDrawing.model(theme)), dark: dark)

@@ -118,6 +118,12 @@ final class AgentSession {
     /// For previews and tests: the panel with bars experiment's switch, in place of the
     /// preferences. See `panelWithBars`.
     @ObservationIgnored var forcedPanelWithBars: Bool?
+    /// For previews and tests: the queue experiment's switch, in place of the preferences.
+    @ObservationIgnored var forcedQueuesWhileRunning: Bool?
+    /// For a preview of the panel with bars: draws the working row as if the pointer were over it.
+    @ObservationIgnored var previewHoversWorkingRow = false
+    /// For a preview of the panel with bars: draws queued messages as if the pointer were over them.
+    @ObservationIgnored var previewHoversQueuedMessage = false
     /// True after a fresh start in the panel, until the next message starts the episode.
     @ObservationIgnored private var startsNewEpisode = false
     /// Where the switches in Settings, Behaviors and Experiments are read. Previews and tests
@@ -547,7 +553,7 @@ final class AgentSession {
 
     /// Whether Return while a task runs queues the message. Read each time, so the switch in
     /// Settings applies at once.
-    var queuesWhileRunning: Bool { Experiment.queueMessagesWhileRunning.isOn(preferences) }
+    var queuesWhileRunning: Bool { forcedQueuesWhileRunning ?? Experiment.queueMessagesWhileRunning.isOn(preferences) }
 
     /// Sends one message to the agent as its own turn: the field's text, or a queued message.
     /// Returns false when nothing was sent and the text should stay where it was.
