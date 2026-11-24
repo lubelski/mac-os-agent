@@ -16,7 +16,9 @@
 #                                                           pill experiment: at rest, typing, a long
 #                                                           message, a match, the slash list, running,
 #                                                           Stop under the pointer, queued messages,
-#                                                           three task links, and five with the overflow
+#                                                           the lines in the conversation, the same
+#                                                           lines with the experiment off, three task
+#                                                           links, and five with the overflow
 #
 # An inspector state is always captured over the busy page, since it is two windows: the panel
 # and the inspector attached to it. `incognito-beside` is captured as the rectangle around both
@@ -51,7 +53,7 @@ while [[ "${1:-}" == --* ]]; do
       elif [[ "$2" == "instant" ]]; then
         STATES=(instant-one instant-several)
       elif [[ "$2" == "bars" ]]; then
-        STATES=(bars-rest bars-typing bars-long bars-match bars-slash bars-running bars-working-hover bars-queued bars-links bars-links-more)
+        STATES=(bars-rest bars-typing bars-long bars-match bars-slash bars-running bars-working-hover bars-queued bars-lines bars-lines-off bars-links bars-links-more)
       else
         read -r -a STATES <<<"$2"
       fi

@@ -25,6 +25,8 @@ struct RowView: View {
             StatusLine(text: text, isError: false)
         case .error(let text):
             StatusLine(text: text, isError: true)
+        case .line(let line):
+            ConversationLine(line: line)
         }
     }
 }
@@ -240,6 +242,49 @@ struct ToolLine: View {
             Text(verbatim: ToolSignal.cleanSummary(summary)).strikethrough().foregroundStyle(.tertiary)
         } else {
             ToolSignal.text(for: summary)
+        }
+    }
+}
+
+/// Something the owner did without a message, with the panel with bars experiment on: "Ran",
+/// a quick action's icon, and its name; "Opened", an app's own icon, and its name; or a quick
+/// action's icon, its name, and why it failed, in red. Centered and faint, like a time stamp,
+/// with the icon at 10 points. It is not a message, so it has no box, and it opens nothing.
+struct ConversationLine: View {
+    let line: TranscriptLine
+
+    static let iconSize: CGFloat = 10
+    static let fontSize: CGFloat = 11
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 4) {
+            if let leading = line.leadingText {
+                Text(verbatim: leading)
+            }
+            icon
+            Text(verbatim: line.trailingText)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+        }
+        .font(.system(size: Self.fontSize))
+        .foregroundStyle(line.isFailure ? AnyShapeStyle(Color.red) : AnyShapeStyle(.tertiary))
+        .frame(maxWidth: .infinity)
+        .help(TranscriptTimeLabel.fullText(for: line.date))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(line.spokenText)
+    }
+
+    @ViewBuilder private var icon: some View {
+        switch line.icon {
+        case .quickAction:
+            Image(systemName: "bolt.fill")
+                .font(.system(size: Self.iconSize - 1))
+                .frame(width: Self.iconSize, height: Self.iconSize)
+        case .application(let path):
+            Image(nsImage: SuggestionIcon.icon(for: URL(filePath: path)))
+                .resizable()
+                .interpolation(.high)
+                .frame(width: Self.iconSize, height: Self.iconSize)
         }
     }
 }
