@@ -48,7 +48,7 @@ public struct ToolCallSummaries: Sendable {
 
     /// Built-in tools whose rows read by their summary even in a run whose list leaves them
     /// out, such as `search_web` after web search was turned off.
-    static let conditional: [any AgentTool] = [SearchWebTool(key: nil)]
+    static let conditional: [any AgentTool] = [SearchWebTool(key: nil), SetLinksTool()]
 
     /// Built-in tools that were renamed, by their old name. A call in the thread made under an
     /// old name still reads as the tool's summary. The model is sent it as it was made.
@@ -100,9 +100,10 @@ public enum BuiltInTools {
         ChangeMemoryTool.name,
     ]
 
-    /// The names in order for a run, with `search_web` last when Brave Search was chosen at launch.
-    public static func names(webSearch: Bool) -> [String] {
-        webSearch ? names + [SearchWebTool.name] : names
+    /// The names in order for a run, with `search_web` after the memory tools when Brave Search
+    /// was chosen at launch, and `set_links` last when the panel with bars experiment was on.
+    public static func names(webSearch: Bool, taskLinks: Bool = false) -> [String] {
+        (webSearch ? names + [SearchWebTool.name] : names) + (taskLinks ? [SetLinksTool.name] : [])
     }
 
     /// - Parameters:
@@ -117,6 +118,8 @@ public enum BuiltInTools {
     ///   - webSearch: `search_web`, when Settings, General had Brave Search chosen at launch.
     ///     It goes at the very end, after the memory tools, so every tool before it keeps its
     ///     place. It is not a step a quick action can take.
+    ///   - taskLinks: `set_links`, when the panel with bars experiment was on at launch. It goes
+    ///     last, after `search_web`, so every other tool keeps its place with the switch off or on.
     public static func make(
         applicationWorkspace: any ApplicationWorkspace = SystemApplicationWorkspace(),
         skills: SkillLibrary = SkillLibrary(),
@@ -128,7 +131,8 @@ public enum BuiltInTools {
         themePreferences: ThemePreferences = ThemePreferences(),
         actions: QuickActionLibrary = QuickActionLibrary(),
         memories: MemoryLibrary = MemoryLibrary(),
-        webSearch: SearchWebTool? = nil
+        webSearch: SearchWebTool? = nil,
+        taskLinks: SetLinksTool? = nil
     ) -> [any AgentTool] {
         let reminderIDs = ShortIdentifierTable()
         let eventIDs = ShortIdentifierTable()
@@ -163,7 +167,8 @@ public enum BuiltInTools {
             ChangeMemoryTool(library: memories),
         ]
         if let webSearch { tools.append(webSearch) }
-        assert(tools.map(\.definition.name) == names(webSearch: webSearch != nil))
+        if let taskLinks { tools.append(taskLinks) }
+        assert(tools.map(\.definition.name) == names(webSearch: webSearch != nil, taskLinks: taskLinks != nil))
         return tools
     }
 
