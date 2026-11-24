@@ -1,6 +1,6 @@
 # A panel with bars and an input pill
 
-A redesign of the panel's frame and of where matches show. Not built. Proposed, and worked out with the owner in Figma on 2026-11-24.
+A redesign of the panel's frame and of where matches show. The frame is built, behind a switch in Settings, Experiments. The rest is not built. Proposed, and worked out with the owner in Figma on 2026-11-24.
 
 The panel reads as bar, conversation, band:
 
@@ -92,7 +92,7 @@ A match opens the pill into a card that holds the field and an Alfred-style list
 - Which other links sit beside Stop: edit, cancel.
 - Whether Stop on the keys alone is enough when no pointer is over the working row.
 - The status line's bottom right is meant to say how to queue or steer while a task runs. Queueing is an experiment and steering is not built, so its key is not chosen.
-- The field color's value in each built-in theme. The mockups use placeholders.
+- The field color's value in each built-in theme. The mockups use placeholders, and the first slice gives each built-in theme a value of its own for the owner to judge.
 - Whether the logo also replaces the app icon, or is only the mark in the field.
 - The last row of the list still reads "Ask Iris". What it says now that the title is "MacOS Agent".
 
@@ -107,4 +107,6 @@ Each of these is described in [decided.md](decided.md) as it works today.
 - The working row gains the animation and "Working…", and Stop becomes a link on hover.
 - The field's icon is the logo, where today it is the sparkle.
 
-It is a new feature the owner has not tried in the app, so it is built behind a switch in Settings, Experiments. Its four experiment lines are not written yet.
+It is a new feature the owner has not tried in the app, so it is built behind a switch in Settings, Experiments, "Panel with bars and an input pill". Its four experiment lines are in [decided.md](decided.md) under Experiments.
+
+The first slice, the frame, is built: the title bar, the band with the pill and the status line, the logo as the mark, the radii, and the field color in the theme format. The match card, the lines in the conversation, the working row, and the task links are not.
