@@ -54,7 +54,7 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
         let frame = MatchCard.frameBelow(pill: pill, content: content, rows: 3)
         #expect(frame.minX == 308)
         #expect(frame.width == 624)
-        #expect(frame.maxY == 200 + 26, "the pill's bottom on screen")
+        #expect(frame.maxY == content.minY + 26, "the pill's bottom on screen")
         #expect(frame.height == MatchCard.heightBelowPill(rows: 3))
     }
 
@@ -205,6 +205,7 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
         await harness.settle()
         #expect(harness.session.matchCardRows.isEmpty, "dismissed for this draft and what follows it")
         harness.session.draft = ""
+        await harness.settle()
         harness.type("saf")
         await harness.settle()
         #expect(harness.session.suggestionList.isOpen, "a new draft opens it again")
