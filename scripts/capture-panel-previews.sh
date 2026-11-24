@@ -23,8 +23,7 @@
 #                                                           list
 #
 # An inspector state is always captured over the busy page, since it is two windows: the panel
-# and the inspector attached to it. So are `bars-card-down` and `bars-card-slash`, whose card opens
-# below the panel in a window of its own. `incognito-beside` is captured as the rectangle around both
+# and the inspector attached to it. `incognito-beside` is captured as the rectangle around both
 # windows, the main panel and the incognito window beside it.
 #
 #   scripts/capture-panel-previews.sh --theme tidewater [out-dir]  in a theme, without saving it
@@ -88,14 +87,14 @@ swiftc -O -o "$HELPER" "$HELPER.swift"
 for appearance in "${APPEARANCES[@]}"; do
   for state in "${STATES[@]}"; do
     LOG="$(mktemp)"
-    if [[ $BACKDROP == 1 || $state == inspector-* || $state == bars-card-down || $state == bars-card-slash ]]; then
+    if [[ $BACKDROP == 1 || $state == inspector-* ]]; then
       "$BIN" --preview-panel "$state" --appearance "$appearance" --backdrop ${DOCK[@]+"${DOCK[@]}"} ${THEME[@]+"${THEME[@]}"} >"$LOG" &
     else
       "$BIN" --preview-panel "$state" --appearance "$appearance" ${DOCK[@]+"${DOCK[@]}"} ${THEME[@]+"${THEME[@]}"} >"$LOG" &
     fi
     PID=$!
     sleep 2
-    if [[ $BACKDROP == 1 || $state == inspector-* || $state == incognito-beside || $state == bars-card-down || $state == bars-card-slash ]]; then
+    if [[ $BACKDROP == 1 || $state == inspector-* || $state == incognito-beside ]]; then
       RECT="$(awk '/^capture-rect / { rect = $2 } END { print rect }' "$LOG")"
       FILE="$OUT/panel-$state$SUFFIX-$appearance-backdrop.png"
       if [[ -n "$RECT" ]]; then
