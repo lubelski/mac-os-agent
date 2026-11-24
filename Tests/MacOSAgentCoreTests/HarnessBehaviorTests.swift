@@ -112,6 +112,27 @@ import Testing
         #expect(HarnessBehavior.controlCStopsOrClears.isOn(defaults))
         #expect(Experiment.queueMessagesWhileRunning.isOn(defaults))
     }
+
+    /// Every experiment is off on a fresh install, including the panel with bars, and each
+    /// has its own key and a title for Settings.
+    @Test func everyExperimentIsOffByDefaultWithItsOwnKeyAndTitle() throws {
+        let (defaults, name) = try suite()
+        defer { UserDefaults.standard.removePersistentDomain(forName: name) }
+        for experiment in Experiment.allCases {
+            #expect(!experiment.defaultValue, "\(experiment)")
+            #expect(!experiment.isOn(defaults), "\(experiment)")
+            #expect(!experiment.title.isEmpty)
+        }
+        #expect(Set(Experiment.allCases.map(\.key)).count == Experiment.allCases.count)
+        #expect(Experiment.panelWithBarsAndInputPill.title == "Panel with bars and an input pill")
+        #expect(Experiment.panelWithBarsAndInputPill.key == "ExperimentPanelWithBarsAndInputPill")
+        Experiment.panelWithBarsAndInputPill.set(true, defaults)
+        #expect(Experiment.panelWithBarsAndInputPill.isOn(defaults))
+        // Turning it on does not turn on the suggestions experiment's own switch.
+        #expect(!Experiment.suggestionsInFieldAndFooter.isOn(defaults))
+        Experiment.panelWithBarsAndInputPill.set(false, defaults)
+        #expect(!Experiment.panelWithBarsAndInputPill.isOn(defaults))
+    }
 }
 
 @Suite struct DoubleDeleteTests {
