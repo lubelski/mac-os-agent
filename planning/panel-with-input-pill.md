@@ -1,6 +1,6 @@
 # A panel with bars and an input pill
 
-A redesign of the panel's frame and of where matches show. The frame, the working row, the lines in the conversation, and the task links are built, behind a switch in Settings, Experiments. The rest is not built. Proposed, and worked out with the owner in Figma on 2026-11-24.
+A redesign of the panel's frame and of where matches show. The frame, the working row, the lines in the conversation, the task links, and the match card are built, behind a switch in Settings, Experiments. Proposed, and worked out with the owner in Figma on 2026-11-24.
 
 The panel reads as bar, conversation, band:
 
@@ -96,6 +96,7 @@ A match opens the pill into a card that holds the field and an Alfred-style list
 - The field color's value in each built-in theme. The mockups use placeholders, and the first slice gives each built-in theme a value of its own for the owner to judge.
 - Whether the logo also replaces the app icon, or is only the mark in the field.
 - The last row of the list still reads "Ask Iris". What it says now that the title is "MacOS Agent".
+- Whether the card shows a row under the pointer as the pointer moves over it. As built a click acts on a row and hovering changes nothing.
 
 ## What it changes when built
 
@@ -110,4 +111,4 @@ Each of these is described in [decided.md](decided.md) as it works today.
 
 It is a new feature the owner has not tried in the app, so it is built behind a switch in Settings, Experiments, "Panel with bars and an input pill". Its four experiment lines are in [decided.md](decided.md) under Experiments.
 
-The first slice, the frame, is built: the title bar, the band with the pill and the status line, the logo as the mark, the radii, and the field color in the theme format. The working row is built too: the marks and "Working…", Stop as a link under the pointer, "⌘. stop" and "↵ queue" on the status line, and queued messages in the conversation. So are the lines in the conversation, with opened apps logged and included lazily, and the task links, as described in [decided.md](decided.md) under the experiment. With no links the row closes up. The match card is not.
+The first slice, the frame, is built: the title bar, the band with the pill and the status line, the logo as the mark, the radii, and the field color in the theme format. The working row is built too: the marks and "Working…", Stop as a link under the pointer, "⌘. stop" and "↵ queue" on the status line, and queued messages in the conversation. So are the lines in the conversation, with opened apps logged and included lazily, the task links, and the match card, as described in [decided.md](decided.md) under the experiment. With no links the row closes up. The match card's Up Arrow stops at the first row instead of closing the card, and Escape dismisses it for the draft, so the owner can still get rid of it.
