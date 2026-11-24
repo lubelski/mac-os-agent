@@ -103,10 +103,10 @@ private let signIn = [
 
 @Suite struct SecretMigrationTests {
     @Test func theDecisionFollowsTheKeychainFirst() {
-        #expect(SecretStorage.decide(keychainHasSecrets: false, fileHasSecrets: false) == .nothingToMove)
-        #expect(SecretStorage.decide(keychainHasSecrets: false, fileHasSecrets: true) == .move)
-        #expect(SecretStorage.decide(keychainHasSecrets: true, fileHasSecrets: false) == .alreadyInKeychain)
-        #expect(SecretStorage.decide(keychainHasSecrets: true, fileHasSecrets: true) == .alreadyInKeychain)
+        #expect(SecretStorage.decide(keychainHasSignIn: false, fileHasSecrets: false) == .nothingToMove)
+        #expect(SecretStorage.decide(keychainHasSignIn: false, fileHasSecrets: true) == .move)
+        #expect(SecretStorage.decide(keychainHasSignIn: true, fileHasSecrets: false) == .alreadyInKeychain)
+        #expect(SecretStorage.decide(keychainHasSignIn: true, fileHasSecrets: true) == .alreadyInKeychain)
     }
 
     @Test func withNothingInTheFileNothingMoves() throws {

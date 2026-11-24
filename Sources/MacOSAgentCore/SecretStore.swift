@@ -40,8 +40,8 @@ public struct KeychainSecrets: SecretStore {
 
     public func delete(_ key: String) { try? items.removeValue(for: key) }
 
-    /// Whether the Keychain holds any of the app's secrets.
-    public func hasSecrets() throws -> Bool { try !items.accounts().isEmpty }
+    /// The key of every secret the app keeps here. Reads no value.
+    public func keys() throws -> [String] { try items.accounts() }
 }
 
 public struct KeychainError: Error, LocalizedError, Equatable {

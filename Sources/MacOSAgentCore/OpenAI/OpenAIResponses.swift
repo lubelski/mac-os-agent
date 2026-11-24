@@ -24,17 +24,19 @@ public enum OpenAIResponses {
             "reasoning": ["effort": .string(reasoningEffort), "summary": "auto"],
             "include": ["reasoning.encrypted_content"],
         ]
-        if !request.tools.isEmpty {
-            object["tools"] = .array(request.tools.map { tool in
-                [
-                    "type": "function",
-                    "name": .string(tool.name),
-                    "description": .string(tool.description),
-                    "parameters": tool.parameters,
-                    "strict": .bool(tool.strict),
-                ]
-            })
+        var tools: [JSONValue] = request.tools.map { tool in
+            [
+                "type": "function",
+                "name": .string(tool.name),
+                "description": .string(tool.description),
+                "parameters": tool.parameters,
+                "strict": .bool(tool.strict),
+            ]
         }
+        // The hosted web search goes after the function tools, so the list before it is the
+        // same as without it.
+        if request.webSearch { tools.append(["type": .string(HostedWebSearch.toolName)]) }
+        if !tools.isEmpty { object["tools"] = .array(tools) }
         return .object(object)
     }
 
@@ -61,6 +63,9 @@ public enum OpenAIResponses {
                 }
                 items.append(.object(item))
             case .providerItem(let providerItem):
+                // Reasoning and hosted web search calls are replayed under the same rule: only
+                // to the model that produced them. With `store` false the next request in the
+                // episode has to carry them, as Codex does.
                 guard providerItem.provider == providerName, providerItem.model == model else { continue }
                 items.append(providerItem.payload)
             case .toolCall(let call):
@@ -150,6 +155,9 @@ public enum OpenAIResponses {
                 {
                     return [.toolCallStarted(callID: callID, name: name)]
                 }
+                if let item = event["item"], let call = HostedWebSearch.call(fromOpenAIItem: item) {
+                    return [.hostedToolStarted(call)]
+                }
             case "response.output_text.delta", "response.refusal.delta":
                 if let delta = event["delta"]?.stringValue { return [.textDelta(delta)] }
             case "response.output_item.done":
@@ -192,7 +200,9 @@ public enum OpenAIResponses {
 
         private func finishedItem(_ item: JSONValue) -> ThreadItem? {
             switch item["type"]?.stringValue {
-            case "reasoning":
+            case "reasoning", HostedWebSearch.itemType:
+                // Kept whole, so it can be sent back as it came. A web search call also shows
+                // as a row in the panel. See `ProviderItem.hostedToolCall`.
                 return .providerItem(.init(provider: providerName, model: model, payload: item))
             case "message":
                 let text = (item["content"]?.arrayValue ?? []).compactMap { part -> String? in

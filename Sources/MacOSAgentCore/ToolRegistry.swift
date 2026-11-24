@@ -37,12 +37,18 @@ public struct ToolCallSummaries: Sendable {
     private let tools: [String: any AgentTool]
 
     public init(_ tools: [any AgentTool]) {
-        self.tools = Dictionary(tools.map { ($0.definition.name, $0) }, uniquingKeysWith: { first, _ in first })
+        self.tools = Dictionary(
+            (tools + Self.conditional).map { ($0.definition.name, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// The app's built-in tools. Only their summaries are used, which read nothing but the
-    /// arguments, so nothing here touches the thread, Reminders, Calendar, or the system.
-    public static let builtIn = ToolRegistry(builtIn: BuiltInTools.make()).summaries
+    /// arguments, so nothing here touches the thread, Reminders, Calendar, the system, or the
+    /// network. `search_web` is among them, so its rows read the same whatever the setting.
+    public static let builtIn = ToolRegistry(builtIn: BuiltInTools.make(webSearch: SearchWebTool(key: nil))).summaries
+
+    /// Built-in tools whose rows read by their summary even in a run whose list leaves them
+    /// out, such as `search_web` after web search was turned off.
+    static let conditional: [any AgentTool] = [SearchWebTool(key: nil)]
 
     /// Built-in tools that were renamed, by their old name. A call in the thread made under an
     /// old name still reads as the tool's summary. The model is sent it as it was made.
@@ -94,6 +100,11 @@ public enum BuiltInTools {
         ChangeMemoryTool.name,
     ]
 
+    /// The names in order for a run, with `search_web` last when Brave Search was chosen at launch.
+    public static func names(webSearch: Bool) -> [String] {
+        webSearch ? names + [SearchWebTool.name] : names
+    }
+
     /// - Parameters:
     ///   - history: The kept thread, which the history tools search and read.
     ///   - reminders: Reminders, which the reminder tools read and change.
@@ -103,6 +114,9 @@ public enum BuiltInTools {
     ///   - themePreferences: Where the active theme is kept.
     ///   - actions: The quick actions, which the quick action tools read and write.
     ///   - memories: The memory folder, which the memory tools read and write.
+    ///   - webSearch: `search_web`, when Settings, General had Brave Search chosen at launch.
+    ///     It goes at the very end, after the memory tools, so every tool before it keeps its
+    ///     place. It is not a step a quick action can take.
     public static func make(
         applicationWorkspace: any ApplicationWorkspace = SystemApplicationWorkspace(),
         skills: SkillLibrary = SkillLibrary(),
@@ -113,7 +127,8 @@ public enum BuiltInTools {
         themes: ThemeLibrary = ThemeLibrary(),
         themePreferences: ThemePreferences = ThemePreferences(),
         actions: QuickActionLibrary = QuickActionLibrary(),
-        memories: MemoryLibrary = MemoryLibrary()
+        memories: MemoryLibrary = MemoryLibrary(),
+        webSearch: SearchWebTool? = nil
     ) -> [any AgentTool] {
         let reminderIDs = ShortIdentifierTable()
         let eventIDs = ShortIdentifierTable()
@@ -147,7 +162,8 @@ public enum BuiltInTools {
             ReadMemoryTool(library: memories),
             ChangeMemoryTool(library: memories),
         ]
-        assert(tools.map(\.definition.name) == names)
+        if let webSearch { tools.append(webSearch) }
+        assert(tools.map(\.definition.name) == names(webSearch: webSearch != nil))
         return tools
     }
 
