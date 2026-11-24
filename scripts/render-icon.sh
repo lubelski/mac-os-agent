@@ -21,7 +21,9 @@ xcrun swiftc -O -o "$WORK/render-icon" scripts/icon/main.swift Sources/MacOSAgen
 # The README's picture, drawn by Icon Composer's own renderer with the system's glass.
 ICTOOL="$DEVELOPER_DIR/../Applications/Icon Composer.app/Contents/Executables/ictool"
 if [[ -x "$ICTOOL" ]]; then
-  "$ICTOOL" Resources/AppIcon.icon --export-image --output-file docs/icon.png \
+  # Absolute paths, like actool's in bundle.sh, in case ictool also resolves them
+  # somewhere other than this folder.
+  "$ICTOOL" "$PWD/Resources/AppIcon.icon" --export-image --output-file "$PWD/docs/icon.png" \
     --platform macOS --rendition Default --width 256 --height 256 --scale 2 >/dev/null
   echo "Drew docs/icon.png"
 else

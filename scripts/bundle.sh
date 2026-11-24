@@ -46,12 +46,22 @@ fi
 # with the system's glass, and AppIcon.icns, a flat copy for places that read only that.
 # Info.plist names both below. This runs before signing, so the signature covers the icon.
 # scripts/render-icon.sh redraws the icon's artwork.
+#
+# The paths are absolute because actool hands the work to a daemon, ibtoold, that outlives
+# the command. The daemon resolves a relative path against the folder it was started in,
+# which is another project's when that project's build started it. A relative path then
+# fails, or compiles that project's icon into this app. On failure, show what actool said.
 mkdir -p "$APP/Contents/Resources"
 ICON_PLIST_DIR="$(mktemp -d)"
-xcrun actool Resources/AppIcon.icon --compile "$APP/Contents/Resources" \
+ICON_LOG="$ICON_PLIST_DIR/actool.log"
+if ! xcrun actool "$PWD/Resources/AppIcon.icon" --compile "$PWD/$APP/Contents/Resources" \
   --platform macosx --minimum-deployment-target "$MIN_OS" --app-icon AppIcon \
   --output-partial-info-plist "$ICON_PLIST_DIR/icon.plist" --errors --warnings \
-  --output-format human-readable-text >/dev/null
+  --output-format human-readable-text >"$ICON_LOG" 2>&1; then
+  cat "$ICON_LOG" >&2
+  echo "error: actool failed to compile Resources/AppIcon.icon" >&2
+  exit 1
+fi
 rm -rf "$ICON_PLIST_DIR"
 for f in Assets.car AppIcon.icns; do
   if [[ ! -f "$APP/Contents/Resources/$f" ]]; then
