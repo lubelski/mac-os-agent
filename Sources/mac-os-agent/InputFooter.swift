@@ -127,6 +127,8 @@ extension AgentSession {
 /// the right. Its weight never changes.
 struct InputFooter: View {
     let content: InputFooterContent
+    /// False for the keys row of the match card, which is on the card's own fill.
+    var drawsFill = true
 
     static let height: CGFloat = 26
     static let font = Font.system(size: 11)
@@ -146,7 +148,7 @@ struct InputFooter: View {
         .padding(.horizontal, 16)
         .frame(height: Self.height)
         .frame(maxWidth: .infinity)
-        .background(PanelBarFill())
+        .background { if drawsFill { PanelBarFill() } }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(content.spoken)
     }

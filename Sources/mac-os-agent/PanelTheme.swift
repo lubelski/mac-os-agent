@@ -315,10 +315,18 @@ extension View {
     func themedPanel(incognito: Bool = false) -> some View {
         modifier(ThemedPanelRoot(incognito: incognito))
     }
+
+    /// The root of a window that draws with the active theme but has no surface of its own,
+    /// such as the part of the match card below the panel: the palette, the text levels and
+    /// accent, and the window held to a theme's only appearance.
+    func themedWithoutSurface() -> some View {
+        modifier(ThemedPanelRoot(incognito: false, drawsSurface: false))
+    }
 }
 
 private struct ThemedPanelRoot: ViewModifier {
     let incognito: Bool
+    var drawsSurface = true
     /// A model of its own for an offscreen render, which must not read the owner's themes
     /// folder. The app sets none, and the panel draws from the shared model.
     @Environment(ThemeModel.self) private var injectedModel: ThemeModel?
@@ -335,13 +343,20 @@ private struct ThemedPanelRoot: ViewModifier {
         let palette = PanelPalette(
             theme: theme, dark: colorScheme == .dark, increasedContrast: contrast == .increased,
             allowsGlass: model.usesGlass && !reduceTransparency)
-        content
-            .panelText(palette)
-            .environment(\.panelPalette, palette)
-            .panelSurface(
-                palette, incognito: incognito, squareEdges: placement?.squareEdges ?? [],
-                cornerRadius: placement?.cornerRadius ?? PanelShape.cornerRadius)
-            .background(WindowAppearance(fixed: theme.fixedAppearance))
+        if drawsSurface {
+            content
+                .panelText(palette)
+                .environment(\.panelPalette, palette)
+                .panelSurface(
+                    palette, incognito: incognito, squareEdges: placement?.squareEdges ?? [],
+                    cornerRadius: placement?.cornerRadius ?? PanelShape.cornerRadius)
+                .background(WindowAppearance(fixed: theme.fixedAppearance))
+        } else {
+            content
+                .panelText(palette)
+                .environment(\.panelPalette, palette)
+                .background(WindowAppearance(fixed: theme.fixedAppearance))
+        }
     }
 }
 
