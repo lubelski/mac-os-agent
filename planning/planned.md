@@ -30,6 +30,8 @@ What is not built yet: proposals waiting for agreement, open questions, and work
 
 - Which ChatGPT plans and models the sign-in token covers, and what OpenAI's terms say about third-party apps using it. Neither has been checked.
 - Whether a new episode should start with a short summary of the recent ones, and whether the agent should name episodes by topic. For now it starts with nothing from before and searches when it needs to.
+- Whether an experiment that wins may keep the path it replaced as a setting, as Behaviors keeps a switch per habit, or whether the old path is always deleted. The rule in [decided.md](decided.md) under Experiments says deleted, and names this as undecided.
+- What each of the three experiments is asking, what would make it win, and what settles it. Their "Not set" lines are in [decided.md](decided.md) under Experiments.
 - For the suggestions-in-the-field experiment, which is built behind its switch (see Experiments in [decided.md](decided.md)):
   - Whether the list under the field should open by itself when there are two or more matches, as Alfred does, instead of on Down Arrow.
   - Whether queued messages should move into the footer instead of the rows above the field.
