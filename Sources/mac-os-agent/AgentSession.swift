@@ -124,6 +124,12 @@ final class AgentSession {
     @ObservationIgnored var previewHoversWorkingRow = false
     /// For a preview of the panel with bars: draws queued messages as if the pointer were over them.
     @ObservationIgnored var previewHoversQueuedMessage = false
+    /// The task links the row above the pill shows, with the panel with bars experiment on: the
+    /// ones `set_links` kept for the current episode. See `TaskLinksRow`.
+    var taskLinks: [TaskLink] = []
+    /// Where `set_links` keeps them. Nil in the incognito window, and when the experiment was
+    /// off at launch, so the tool is not in the run's list.
+    @ObservationIgnored var taskLinkStore: TaskLinkStore?
     /// True after a fresh start in the panel, until the next message starts the episode.
     @ObservationIgnored private var startsNewEpisode = false
     /// The entries a preview session was made from, so its history can be drawn again when the
@@ -225,6 +231,7 @@ final class AgentSession {
         if let loop, kind == .kept {
             transcript = Transcript(
                 entries: await loop.thread.entries, summaries: ToolCallSummaries(loop.tools), showsLines: panelWithBars)
+            reloadTaskLinks()
         }
         if let authenticator, await authenticator.isSignedIn() {
             signInState = .signedIn
@@ -356,6 +363,31 @@ final class AgentSession {
     private func beginFreshEpisode() {
         startsNewEpisode = true
         transcript.beginEpisode(at: clock())
+        reloadTaskLinks()
+    }
+
+    // MARK: - Task links
+
+    /// Reads the links `set_links` kept for the current episode. A fresh page has none until
+    /// the model sets some in the new episode.
+    func reloadTaskLinks() {
+        guard let store = taskLinkStore, !isIncognito, !transcript.hasPendingEpisode else {
+            if !taskLinks.isEmpty { taskLinks = [] }
+            return
+        }
+        let thread = loop?.thread
+        Task {
+            let episode = await thread?.currentEpisode?.id
+            let links = store.links(inEpisode: episode)
+            if links != taskLinks { taskLinks = links }
+        }
+    }
+
+    /// Clear Links in the row's menu. The model is not told, as with the links mod's
+    /// `/links clear`.
+    func clearTaskLinks() {
+        try? taskLinkStore?.clear()
+        taskLinks = []
     }
 
     // MARK: - Discarding an incognito conversation
@@ -911,6 +943,8 @@ final class AgentSession {
             // A command may have written a skill or an action. The lists follow at once.
             skillCommands?.reload()
             if !isIncognito { instantActions.reloadActions() }
+            // A call to `set_links` changes the row.
+            reloadTaskLinks()
         case .quickActionStarted(let start):
             transcript.beginActionRun(start)
         }

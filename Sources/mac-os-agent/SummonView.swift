@@ -57,6 +57,8 @@ struct SummonView: View {
                 VStack(spacing: 0) {
                     PanelDivider()
                     InputBand {
+                        TaskLinksRow(links: session.taskLinks, clear: session.clearTaskLinks)
+                    } field: {
                         InputPill { field(metrics: .pill) }
                     }
                 }

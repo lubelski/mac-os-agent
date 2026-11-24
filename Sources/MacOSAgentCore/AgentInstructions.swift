@@ -55,8 +55,18 @@ public enum AgentInstructions {
         }
     }
 
+    /// The rule for the task links row, in the fixed part only when `set_links` is in the run's
+    /// tool list, which the panel with bars experiment decides at launch. So it changes only
+    /// with the switch and a relaunch, and the prompt cache holds.
+    public static let taskLinksRule = """
+        - The row of links above the text field is for the task at hand: its tickets, pull requests, \
+        mock pages, and similar pages. Keep it current with \(SetLinksTool.name), sending the complete \
+        list each time, and clear links that stop being relevant.
+        """
+
     /// The part the app always sends after the editable part, in the main panel.
-    public static func fixed(skills: [SkillSummary], skillsFolder: URL) -> String {
+    /// - Parameter taskLinks: True when the run has `set_links`, which adds `taskLinksRule`.
+    public static func fixed(skills: [SkillSummary], skillsFolder: URL, taskLinks: Bool = false) -> String {
         let folder = skillsFolder.plainPath
         let list = skills.isEmpty
             ? "There are no skills yet."
@@ -122,7 +132,7 @@ public enum AgentInstructions {
             - Never store passwords, card numbers, or other secrets, even when asked, and say why: \
             memory is a plain file sent with every request.
             - When the person says to forget something, remove it. Say briefly in your reply what you \
-            remembered, changed, or forgot.
+            remembered, changed, or forgot.\(taskLinks ? "\n" + taskLinksRule : "")
 
             \(list)
             """
@@ -154,9 +164,9 @@ public enum AgentInstructions {
     /// memory block when there is one. The block is last so that everything before it stays a
     /// cached prefix when only memory changes.
     public static func assemble(
-        editable: String, skills: [SkillSummary], skillsFolder: URL, memoryBlock: String? = nil
+        editable: String, skills: [SkillSummary], skillsFolder: URL, memoryBlock: String? = nil, taskLinks: Bool = false
     ) -> String {
-        let text = join(editable: editable, fixed: fixed(skills: skills, skillsFolder: skillsFolder))
+        let text = join(editable: editable, fixed: fixed(skills: skills, skillsFolder: skillsFolder, taskLinks: taskLinks))
         guard let memoryBlock else { return text }
         return text + "\n\n" + memoryBlock
     }
@@ -241,15 +251,19 @@ public struct AgentPrompt: Sendable {
     /// The block as the current episode's first request read it. Shared by copies of this
     /// prompt, so Settings sees the block the panel sent.
     public let memorySnapshot: MemorySnapshot
+    /// True when the run's tool list has `set_links`, so the fixed part says what the links row
+    /// is for. Set once at launch with the tool list, never changed while the app runs.
+    public var taskLinks: Bool
 
     public init(
         instructions: InstructionsStore = InstructionsStore(), skills: SkillLibrary = SkillLibrary(),
-        memories: MemoryLibrary? = nil, memorySnapshot: MemorySnapshot = MemorySnapshot()
+        memories: MemoryLibrary? = nil, memorySnapshot: MemorySnapshot = MemorySnapshot(), taskLinks: Bool = false
     ) {
         self.instructions = instructions
         self.skills = skills
         self.memories = memories
         self.memorySnapshot = memorySnapshot
+        self.taskLinks = taskLinks
     }
 
     /// The instructions without the memory block, as they stand now.
@@ -295,7 +309,8 @@ public struct AgentPrompt: Sendable {
             editable: instructions.load(),
             skills: skills.skills().filter(\.isAvailable).map { .init(name: $0.name, description: $0.description) },
             skillsFolder: skills.folder,
-            memoryBlock: memoryBlock)
+            memoryBlock: memoryBlock,
+            taskLinks: taskLinks)
     }
 
     /// The instructions for an incognito window as they stand now. The window reads them once
