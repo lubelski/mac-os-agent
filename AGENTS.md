@@ -27,6 +27,16 @@ Read `README.md` first for what the product is, then `VISION.md` for what a chan
 - Do not change `VISION.md` without the owner. When a change seems to go against it, say so in the pull request and hold it.
 - When a decision changes, move it between `planning/decided.md` and the Proposed and Open lists in `planning/planned.md` in the same pull request. Keep `README.md` short: what the app is and how to run it.
 
+## Tickets
+
+Work is ticketed in Linear, in the `mac-os-agent` project on the Mac Apps team: https://linear.app/interstellar-cafe/project/mac-os-agent-e0407eab5b3f
+
+- An issue is intent: what is wanted and why, in the product's terms. It does not say how.
+- A sub-issue is implementation: one piece of the work that carries out its parent's intent, usually one pull request.
+- Before starting, find the issue the work belongs to, or create it. Then do the work under a sub-issue of it.
+- Name the sub-issue in the pull request, so the two are linked.
+- Linear tracks the work. `planning/` still records what is decided and what is open.
+
 ## Previews and captures
 
 - `scripts/bundle.sh` builds `build/mac-os-agent.app` without installing it.
