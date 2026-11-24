@@ -115,6 +115,9 @@ final class AgentSession {
     @ObservationIgnored var previewFreshStartContent: [String]?
     /// For a preview of the hover controls: shows them all, since a capture has no pointer.
     @ObservationIgnored var previewRevealsControls = false
+    /// For previews and tests: the panel with bars experiment's switch, in place of the
+    /// preferences. See `panelWithBars`.
+    @ObservationIgnored var forcedPanelWithBars: Bool?
     /// True after a fresh start in the panel, until the next message starts the episode.
     @ObservationIgnored private var startsNewEpisode = false
     /// Where the switches in Settings, Behaviors and Experiments are read. Previews and tests

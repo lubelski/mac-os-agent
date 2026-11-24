@@ -55,6 +55,11 @@ struct PanelPalette {
     var agentEdge: AnyShapeStyle { edge(appearance.agentReply) }
     var goAheadFill: AnyShapeStyle { fill(appearance.goAhead) }
     var goAheadEdge: AnyShapeStyle { edge(appearance.goAhead) }
+    /// The text field drawn as a pill, with the panel with bars experiment on: the theme's
+    /// `field`, or one derived from its primary text. Increase Contrast strengthens it as it
+    /// does the boxes.
+    var fieldFill: AnyShapeStyle { fill(appearance.fieldBox) }
+    var fieldEdge: AnyShapeStyle { edge(appearance.fieldBox) }
     var incognitoBadge: AnyShapeStyle { style(appearance.incognito.badge) }
     /// The bracket around code and command output.
     var code: AnyShapeStyle { style(appearance.code) }
@@ -168,8 +173,15 @@ extension View {
     /// or the solid fill, with the incognito tint while an incognito episode is on.
     /// - Parameter squareEdges: the sides flush against the screen's edge, whose corners are
     ///   square. See `PanelShape.surface(squareEdges:)`.
-    func panelSurface(_ palette: PanelPalette, incognito: Bool, squareEdges: Set<PanelEdge> = []) -> some View {
-        modifier(PanelSurface(palette: palette, incognito: incognito, shape: PanelShape.surface(squareEdges: squareEdges)))
+    /// - Parameter cornerRadius: the panel's outer radius, which the panel with bars
+    ///   experiment makes larger. See `PanelFrame.cornerRadius(panelWithBars:)`.
+    func panelSurface(
+        _ palette: PanelPalette, incognito: Bool, squareEdges: Set<PanelEdge> = [],
+        cornerRadius: CGFloat = PanelShape.cornerRadius
+    ) -> some View {
+        modifier(PanelSurface(
+            palette: palette, incognito: incognito,
+            shape: PanelShape.surface(squareEdges: squareEdges, radius: cornerRadius)))
     }
 
     /// Sets the hierarchical text levels and the accent to the theme's own, unless the theme
@@ -326,7 +338,9 @@ private struct ThemedPanelRoot: ViewModifier {
         content
             .panelText(palette)
             .environment(\.panelPalette, palette)
-            .panelSurface(palette, incognito: incognito, squareEdges: placement?.squareEdges ?? [])
+            .panelSurface(
+                palette, incognito: incognito, squareEdges: placement?.squareEdges ?? [],
+                cornerRadius: placement?.cornerRadius ?? PanelShape.cornerRadius)
             .background(WindowAppearance(fixed: theme.fixedAppearance))
     }
 }

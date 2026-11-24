@@ -12,6 +12,9 @@
 #                                                           the panel, one state per kind of output
 #   scripts/capture-panel-previews.sh --states incognito [out-dir]  the incognito window, and the
 #                                                           two windows side by side
+#   scripts/capture-panel-previews.sh --states bars [out-dir]  the panel with bars and an input
+#                                                           pill experiment: at rest, typing, a long
+#                                                           message, a match, the slash list, running
 #
 # An inspector state is always captured over the busy page, since it is two windows: the panel
 # and the inspector attached to it. `incognito-beside` is captured as the rectangle around both
@@ -45,6 +48,8 @@ while [[ "${1:-}" == --* ]]; do
         STATES=(incognito incognito-empty incognito-closing incognito-command-hint incognito-beside)
       elif [[ "$2" == "instant" ]]; then
         STATES=(instant-one instant-several)
+      elif [[ "$2" == "bars" ]]; then
+        STATES=(bars-rest bars-typing bars-long bars-match bars-slash bars-running)
       else
         read -r -a STATES <<<"$2"
       fi

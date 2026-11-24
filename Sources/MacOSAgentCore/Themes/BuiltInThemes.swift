@@ -21,7 +21,8 @@ public enum BuiltInThemes {
                 "divider": "system-label 14%",
                 "code": "system-tertiary-label",
                 "goAhead": { "fill": "system-label 8%", "edge": "system-label 16%" },
-                "incognito": { "tint": "#5856D624", "badge": "system-label 7%" }
+                "incognito": { "tint": "#5856D624", "badge": "system-label 7%" },
+                "field": { "fill": "#FFFFFFB8", "edge": "system-label 10%" }
               },
               "dark": {
                 "surface": { "kind": "glass", "fill": "#202022" },
@@ -32,7 +33,8 @@ public enum BuiltInThemes {
                 "divider": "system-label 14%",
                 "code": "system-tertiary-label",
                 "goAhead": { "fill": "system-label 8%", "edge": "system-label 16%" },
-                "incognito": { "tint": "#5E5CE624", "badge": "system-label 7%" }
+                "incognito": { "tint": "#5E5CE624", "badge": "system-label 7%" },
+                "field": { "fill": "system-label 7%", "edge": "system-label 16%" }
               }
             }
             """),
@@ -49,7 +51,8 @@ public enum BuiltInThemes {
                 "divider": "#FFFFFF26",
                 "code": "#7FA8A8",
                 "goAhead": { "fill": "#FFFFFF10", "edge": "#FFFFFF2E" },
-                "incognito": { "tint": "#6B5BD626", "badge": "#FFFFFF12" }
+                "incognito": { "tint": "#6B5BD626", "badge": "#FFFFFF12" },
+                "field": { "fill": "#FFFFFF14", "edge": "#FFFFFF33" }
               }
             }
             """),
@@ -66,7 +69,8 @@ public enum BuiltInThemes {
                 "divider": "#33373C",
                 "code": "#757B82",
                 "goAhead": { "fill": "#24272B", "edge": "#3A3F45" },
-                "incognito": { "tint": "#7A66E02E", "badge": "#FFFFFF12" }
+                "incognito": { "tint": "#7A66E02E", "badge": "#FFFFFF12" },
+                "field": { "fill": "#2A2D32", "edge": "#454B53" }
               }
             }
             """),
@@ -83,7 +87,8 @@ public enum BuiltInThemes {
                 "divider": "#DDD3BF",
                 "code": "#A09886",
                 "goAhead": { "fill": "#EEE7D8", "edge": "#D3C8B0" },
-                "incognito": { "tint": "#5B4FA81A", "badge": "#24201A0F" }
+                "incognito": { "tint": "#5B4FA81A", "badge": "#24201A0F" },
+                "field": { "fill": "#FFFCF5", "edge": "#D3C8B0" }
               }
             }
             """),
@@ -100,7 +105,8 @@ public enum BuiltInThemes {
                 "divider": "#6E6E6E",
                 "code": "#595959",
                 "goAhead": { "fill": "#F2F2F2", "edge": "#0037C8" },
-                "incognito": { "tint": "#4B2FD61F", "badge": "#0000001A" }
+                "incognito": { "tint": "#4B2FD61F", "badge": "#0000001A" },
+                "field": { "fill": "#FFFFFF", "edge": "#000000" }
               },
               "dark": {
                 "surface": { "kind": "solid", "fill": "#000000" },
@@ -111,7 +117,8 @@ public enum BuiltInThemes {
                 "divider": "#8A8A8A",
                 "code": "#A8A8A8",
                 "goAhead": { "fill": "#111111", "edge": "#FFD60A" },
-                "incognito": { "tint": "#8E7CFF33", "badge": "#FFFFFF24" }
+                "incognito": { "tint": "#8E7CFF33", "badge": "#FFFFFF24" },
+                "field": { "fill": "#141414", "edge": "#FFFFFF" }
               }
             }
             """),
@@ -128,7 +135,8 @@ public enum BuiltInThemes {
                 "divider": "#FFE6D026",
                 "code": "#B08E72",
                 "goAhead": { "fill": "#FFFFFF10", "edge": "#F0A05A4D" },
-                "incognito": { "tint": "#7A5BD626", "badge": "#FFFFFF12" }
+                "incognito": { "tint": "#7A5BD626", "badge": "#FFFFFF12" },
+                "field": { "fill": "#FFFFFF14", "edge": "#F0A05A59" }
               }
             }
             """),

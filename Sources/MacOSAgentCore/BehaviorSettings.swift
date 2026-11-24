@@ -53,19 +53,39 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
     /// Tools from MCP servers listed in `mcp-servers.json`, and the MCP Servers section in
     /// Settings. A change takes effect in the tool list at the next launch. See `MCPServerPool`.
     case mcpServers
+    /// The panel's frame redrawn as bar, conversation, band: a title bar with the model's name,
+    /// "MacOS Agent", and the menu, and a band at the bottom holding the text field as a pill
+    /// with the app's logo as its mark, and a status line under it. It uses the suggestions
+    /// experiment's gray completion and status line whether or not that switch is on. See
+    /// `PanelFrame`.
+    case panelWithBarsAndInputPill
 
     public var id: String { rawValue }
+
+    /// The switch's title in Settings, Experiments.
+    public var title: String {
+        switch self {
+        case .queueMessagesWhileRunning: "Queue messages while a task runs"
+        case .suggestionsInFieldAndFooter: "Suggestions in the field and a footer"
+        case .mcpServers: "MCP servers"
+        case .panelWithBarsAndInputPill: "Panel with bars and an input pill"
+        }
+    }
+
+    /// Every experiment is off until the owner turns it on.
+    public var defaultValue: Bool { false }
 
     public var key: String {
         switch self {
         case .queueMessagesWhileRunning: "ExperimentQueueMessagesWhileRunning"
         case .suggestionsInFieldAndFooter: "ExperimentSuggestionsInFieldAndFooter"
         case .mcpServers: "ExperimentMCPServers"
+        case .panelWithBarsAndInputPill: "ExperimentPanelWithBarsAndInputPill"
         }
     }
 
     public func isOn(_ defaults: UserDefaults = .standard) -> Bool {
-        defaults.bool(forKey: key)
+        defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
     }
 
     public func set(_ on: Bool, _ defaults: UserDefaults = .standard) {

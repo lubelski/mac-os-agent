@@ -41,10 +41,14 @@ struct InputFooterContent: Equatable {
         case commands(count: Int, completes: Bool)
     }
 
+    /// - Parameter statusLine: true for the status line under the pill, with the panel with
+    ///   bars experiment on. The model's name is in the title bar there, so it is left out,
+    ///   and Return while typing a message reads "↵ send".
     static func make(
-        _ state: State, agentName: String, modelName: String, recallsMessages: Bool, queuesWhileRunning: Bool
+        _ state: State, agentName: String, modelName: String, recallsMessages: Bool, queuesWhileRunning: Bool,
+        statusLine: Bool = false
     ) -> InputFooterContent {
-        let model = FooterHint(keys: "", words: modelName, spokenKeys: "")
+        let model: FooterHint? = statusLine ? nil : FooterHint(keys: "", words: modelName, spokenKeys: "")
         let ask = FooterHint(keys: Mark.commandReturn, words: "ask \(agentName)", spokenKeys: "Command-Return")
         switch state {
         case .idle:
@@ -54,7 +58,7 @@ struct InputFooterContent: Equatable {
             return InputFooterContent(leading: hints, trailing: model)
         case .typing:
             return InputFooterContent(leading: [
-                FooterHint(keys: Mark.returnKey, words: "ask \(agentName)", spokenKeys: "Return"),
+                FooterHint(keys: Mark.returnKey, words: statusLine ? "send" : "ask \(agentName)", spokenKeys: "Return"),
                 FooterHint(keys: "⇧↵", words: "new line", spokenKeys: "Shift-Return"),
             ], trailing: model)
         case .running(let queued):
@@ -232,6 +236,8 @@ struct SuggestionListView: View {
     let highlight: Int
     let agentName: String
     let incognito: Bool
+    /// The panel with bars: the Ask row shows the logo, as the field does.
+    var usesLogo = false
     var activate: (Int) -> Void = { _ in }
 
     static let rowHeight: CGFloat = 24
@@ -251,7 +257,9 @@ struct SuggestionListView: View {
             PanelDivider()
             VStack(spacing: 0) {
                 ForEach(window, id: \.self) { index in
-                    SuggestionRowView(row: rows[index], highlighted: index == highlight, agentName: agentName, incognito: incognito)
+                    SuggestionRowView(
+                        row: rows[index], highlighted: index == highlight, agentName: agentName, incognito: incognito,
+                        usesLogo: usesLogo)
                         .contentShape(.rect)
                         .onTapGesture { activate(index) }
                 }
@@ -269,6 +277,7 @@ private struct SuggestionRowView: View {
     let highlighted: Bool
     let agentName: String
     let incognito: Bool
+    var usesLogo = false
     @Environment(\.panelPalette) private var palette
 
     var body: some View {
@@ -300,7 +309,7 @@ private struct SuggestionRowView: View {
             SuggestionIcon(target: candidate.target, size: 16)
         case .ask:
             // The field shows its own mark when the Ask row is highlighted, so the row does too.
-            PromptMark(size: 11)
+            if usesLogo { LogoMark(size: 10) } else { PromptMark(size: 11) }
         case .command:
             Color.clear
         }
