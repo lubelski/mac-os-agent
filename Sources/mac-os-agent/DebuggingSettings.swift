@@ -16,6 +16,9 @@ final class DebuggingSettingsModel {
     @ObservationIgnored let signInStatus: @Sendable () async -> SignInStatus?
     /// Where this run keeps the sign-in. Decided once at launch.
     @ObservationIgnored let secretStorage: SecretStorage.Status?
+    /// The web search this run launched with, and the Brave key's store. Only whether a key
+    /// is set is shown, never the key.
+    @ObservationIgnored let webSearch: WebSearchContext
     @ObservationIgnored let defaults: UserDefaults
     @ObservationIgnored private var loading: Task<Void, Never>?
     /// A part to scroll to when the section appears, such as "sign-in". Used by previews.
@@ -24,7 +27,7 @@ final class DebuggingSettingsModel {
     init(
         prompt: AgentPrompt, usageLog: UsageLog, tools: ToolRegistry, problems: ProblemLog,
         signInStatus: @escaping @Sendable () async -> SignInStatus?, secretStorage: SecretStorage.Status?,
-        defaults: UserDefaults
+        webSearch: WebSearchContext, defaults: UserDefaults
     ) {
         self.prompt = prompt
         self.usageLog = usageLog
@@ -32,6 +35,7 @@ final class DebuggingSettingsModel {
         self.problems = problems
         self.signInStatus = signInStatus
         self.secretStorage = secretStorage
+        self.webSearch = webSearch
         self.defaults = defaults
     }
 
@@ -52,7 +56,8 @@ final class DebuggingSettingsModel {
                 threadFile: AgentPaths.threadFile,
                 usageLog: usageLog,
                 problems: problems.problems,
-                secretStorage: secretStorage)
+                secretStorage: secretStorage,
+                webSearch: webSearch.status(defaults))
         }
     }
 
@@ -140,6 +145,9 @@ struct DebuggingSettingsView: View {
                 }
                 LabeledContent("Unchanged since", value: Self.time(report.prompt.unchangedSince, none: "Not recorded yet"))
                 LabeledContent("Tools", value: "\(report.tools)")
+                if let webSearch = report.webSearch {
+                    LabeledContent("Web search", value: webSearch.text)
+                }
                 LabeledContent("Skills", value: "\(report.skills.total), \(report.skills.on) on, \(report.skills.withProblems) with problems")
                 LabeledContent("Memory", value: "Core \(report.memories.coreCharacters.formatted()) characters, \(report.memories.topicFiles) topic files, block \(report.memories.blockCharacters.formatted()) characters")
                 HStack {

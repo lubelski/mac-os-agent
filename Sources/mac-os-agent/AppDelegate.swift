@@ -57,9 +57,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 Task { await mcp.setActive(on) }
             }
         }
+        // Read once, since it changes the tool list or the request, which stay fixed for the run.
+        let webSearch = WebSearchContext(launched: WebSearchSetting.current(), key: BraveSearchKey(secrets: secretStorage.store))
         // Built once, so the tool list stays the same for the whole run, and shared with Settings.
         let tools = ToolRegistry(
-            builtIn: BuiltInTools.make(skills: prompt.skills, history: thread, memories: prompt.memories ?? MemoryLibrary()),
+            builtIn: BuiltInTools.make(
+                skills: prompt.skills, history: thread, memories: prompt.memories ?? MemoryLibrary(),
+                webSearch: webSearch.launched == .brave ? SearchWebTool(key: webSearch.key) : nil),
             additional: mcp.makeTools())
         if let thread {
             let provider = OpenAIResponsesProvider(
@@ -74,7 +78,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 tools: tools.tools,
                 instructionsForEpisode: { episodeID in prompt.current(episodeID: episodeID) },
                 usageLog: usageLog,
-                episodeTimeout: timeout)
+                episodeTimeout: timeout,
+                webSearch: webSearch.launched.usesHostedSearch)
         }
         // The incognito window has a provider of its own with its own cache key, so its
         // requests, with their own instructions and tools, are a separate cached prefix.
@@ -156,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             session: session, prompt: prompt, usageLog: usageLog, tools: tools, history: thread, problems: session.problems,
             signInStatus: { await authenticator.status() },
             secretStorage: secretStorage.status,
-            summonTrigger: summonTrigger, mcp: mcp, updater: updater)
+            summonTrigger: summonTrigger, mcp: mcp, webSearch: webSearch, updater: updater)
         log.notice("Hotkey \(self.summonTrigger.displayName ?? "none", privacy: .public) registered: \(self.summonTrigger.isRegistered, privacy: .public). Status item button: \(self.statusItem.button != nil, privacy: .public)")
 
         Task { await session.start() }

@@ -64,11 +64,13 @@ public final class AgentLoop: Sendable {
         instructions: @escaping @Sendable () async -> String = { AgentInstructions.defaultPrompt },
         maximumModelReplies: Int = 40,
         usageLog: UsageLog? = nil,
-        episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) }
+        episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) },
+        webSearch: Bool = false
     ) {
         self.init(
             provider: provider, thread: thread, tools: tools, instructionsForEpisode: { _ in await instructions() },
-            maximumModelReplies: maximumModelReplies, usageLog: usageLog, episodeTimeout: episodeTimeout)
+            maximumModelReplies: maximumModelReplies, usageLog: usageLog, episodeTimeout: episodeTimeout,
+            webSearch: webSearch)
     }
 
     /// - Parameter instructionsForEpisode: The instructions for a request in the episode with

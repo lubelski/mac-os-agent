@@ -8,6 +8,7 @@ import SwiftUI
 struct GeneralSettingsView: View {
     let session: AgentSession
     @Bindable var shortcut: ShortcutRecorderModel
+    let webSearch: WebSearchSettingsModel
     let updater: AppUpdater
     /// Read from Sparkle when the section appears. Sparkle keeps it in its own preferences.
     @State private var updatesAutomatically = false
@@ -57,6 +58,7 @@ struct GeneralSettingsView: View {
                 Text("A new model applies from the next reply. The model is also in the menu bar menu.")
                     .foregroundStyle(.secondary)
             }
+            WebSearchSettingsSection(model: webSearch)
             Section {
                 Picker("Start a new episode after", selection: $episodeTimeout) {
                     ForEach(EpisodeTimeoutSetting.choices, id: \.self) { minutes in
