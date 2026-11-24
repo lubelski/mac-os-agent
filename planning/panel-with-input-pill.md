@@ -69,8 +69,6 @@ A match opens the pill into a card that holds the field and an Alfred-style list
 - A failed quick action is the same line in red, with why.
 - Several in a row are not folded together.
 - Opening an app is included lazily. Nothing is sent to the model when it happens. The entry is logged, and it joins the thread only when the next message that needs the model is sent.
-- A line opens nothing. It has no inspector, and a run's steps are kept in the thread as before. Settled by the lines slice as the simplest choice. The owner may want it to open the inspector later.
-- An opening is logged as an entry from the owner is: when the episode has timed out or a fresh start was asked for, it starts the new episode, and a message within the timeout joins it. When the episode ends before another message is sent, the opening stays in the thread, as a line in its episode, and is never sent. Settled by the lines slice as the simplest choice.
 
 ### While a task runs
 
@@ -86,6 +84,8 @@ A match opens the pill into a card that holds the field and an Alfred-style list
 
 ## Open
 
+- Whether a line for an opened app or a quick action opens the inspector with its steps. As built it opens nothing, and a run's steps are kept in the thread as before.
+- What happens to a logged app opening when the episode ends before another message is sent. As built the opening is logged as an entry from the owner is: when the episode has timed out or a fresh start was asked for, it starts the new episode, and a message within the timeout joins it. When the episode ends first, the opening stays in the thread, a line in its episode, and is never sent.
 - What the links' overflow menu looks like.
 - Whether the links row closes up or holds its height when there are no links.
 - Whether the links give up their row once the box is tall.
