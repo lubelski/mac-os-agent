@@ -83,7 +83,18 @@ struct HistoryView: View {
                 }
                 // Last in the thread, after the newest row of the running turn, so Stop sits
                 // with the block that is working and the view follows it as it follows new rows.
-                if session.isRunning {
+                if session.panelWithBars {
+                    // The panel with bars: the marks and "Working…", with Stop as a link under
+                    // the pointer, then the queued messages, which wait for the turn after it.
+                    if session.isRunning {
+                        PanelWorkingRow(stop: session.stop, forcesHover: session.previewHoversWorkingRow)
+                            .padding(.top, Self.spacing(.regular))
+                    }
+                    if session.queuedMessagePlacement == .inConversation {
+                        QueuedMessagesInConversation(session: session)
+                            .padding(.top, Self.spacing(.regular))
+                    }
+                } else if session.isRunning {
                     WorkingRow(stop: session.stop)
                         .padding(.top, Self.spacing(.regular))
                 }
@@ -162,6 +173,7 @@ struct HistoryView: View {
         switch gap {
         case .none: 0
         case .tight: 2
+        case .betweenLines: 6
         case .regular: 10
         case .exchange: 24
         case .episode: 64

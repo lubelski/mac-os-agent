@@ -19,7 +19,7 @@ enum HistorySearchText {
             return message.text.isEmpty ? nil : (.agent, message.text)
         case .toolCall(let call):
             return (.command, command(of: call))
-        case .toolResult, .providerItem, .episodeStart:
+        case .toolResult, .providerItem, .episodeStart, .appOpened:
             return nil
         }
     }

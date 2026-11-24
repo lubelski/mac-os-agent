@@ -15,11 +15,15 @@
 #   scripts/capture-panel-previews.sh --states bars [out-dir]  the panel with bars and an input
 #                                                           pill experiment: at rest, typing, a long
 #                                                           message, a match, the slash list, running,
-#                                                           and the match card down, up, and with
-#                                                           the slash list
+#                                                           Stop under the pointer, queued messages,
+#                                                           the lines in the conversation, and the
+#                                                           same lines with the experiment off, and
+#                                                           the match card down, up, and with the
+#                                                           slash list
 #
 # An inspector state is always captured over the busy page, since it is two windows: the panel
-# and the inspector attached to it. `incognito-beside` is captured as the rectangle around both
+# and the inspector attached to it. So are `bars-card-down` and `bars-card-slash`, whose card opens
+# below the panel in a window of its own. `incognito-beside` is captured as the rectangle around both
 # windows, the main panel and the incognito window beside it.
 #
 #   scripts/capture-panel-previews.sh --theme tidewater [out-dir]  in a theme, without saving it
@@ -51,7 +55,7 @@ while [[ "${1:-}" == --* ]]; do
       elif [[ "$2" == "instant" ]]; then
         STATES=(instant-one instant-several)
       elif [[ "$2" == "bars" ]]; then
-        STATES=(bars-rest bars-typing bars-long bars-match bars-slash bars-running bars-card-down bars-card-up bars-card-slash)
+        STATES=(bars-rest bars-typing bars-long bars-match bars-slash bars-running bars-working-hover bars-queued bars-lines bars-lines-off bars-card-down bars-card-up bars-card-slash)
       else
         read -r -a STATES <<<"$2"
       fi
@@ -83,14 +87,14 @@ swiftc -O -o "$HELPER" "$HELPER.swift"
 for appearance in "${APPEARANCES[@]}"; do
   for state in "${STATES[@]}"; do
     LOG="$(mktemp)"
-    if [[ $BACKDROP == 1 || $state == inspector-* ]]; then
+    if [[ $BACKDROP == 1 || $state == inspector-* || $state == bars-card-down || $state == bars-card-slash ]]; then
       "$BIN" --preview-panel "$state" --appearance "$appearance" --backdrop ${DOCK[@]+"${DOCK[@]}"} ${THEME[@]+"${THEME[@]}"} >"$LOG" &
     else
       "$BIN" --preview-panel "$state" --appearance "$appearance" ${DOCK[@]+"${DOCK[@]}"} ${THEME[@]+"${THEME[@]}"} >"$LOG" &
     fi
     PID=$!
     sleep 2
-    if [[ $BACKDROP == 1 || $state == inspector-* || $state == incognito-beside ]]; then
+    if [[ $BACKDROP == 1 || $state == inspector-* || $state == incognito-beside || $state == bars-card-down || $state == bars-card-slash ]]; then
       RECT="$(awk '/^capture-rect / { rect = $2 } END { print rect }' "$LOG")"
       FILE="$OUT/panel-$state$SUFFIX-$appearance-backdrop.png"
       if [[ -n "$RECT" ]]; then

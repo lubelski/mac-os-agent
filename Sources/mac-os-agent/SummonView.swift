@@ -47,7 +47,10 @@ struct SummonView: View {
                     .padding(.horizontal, 12)
                     .padding(.bottom, 10)
             }
-            MessageQueueRows(session: session)
+            // With the panel with bars on, queued messages are in the conversation instead.
+            if session.queuedMessagePlacement == .aboveField {
+                MessageQueueRows(session: session)
+            }
             if session.panelWithBars {
                 // The band: the hairline, then the pill on the bars' fill, then the status line.
                 // Nothing is added above the hairline. A match opens the pill into the match

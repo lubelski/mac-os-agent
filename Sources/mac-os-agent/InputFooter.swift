@@ -61,6 +61,14 @@ struct InputFooterContent: Equatable {
                 FooterHint(keys: Mark.returnKey, words: statusLine ? "send" : "ask \(agentName)", spokenKeys: "Return"),
                 FooterHint(keys: "⇧↵", words: "new line", spokenKeys: "Shift-Return"),
             ], trailing: model)
+        case .running(let queued) where statusLine:
+            // The status line: how to stop at the left, how to queue at the right. Steering is
+            // not built, so there is no hint for it.
+            var hints = [FooterHint(keys: "⌘.", words: "stop", spokenKeys: "Command-Period")]
+            guard queuesWhileRunning else { return InputFooterContent(leading: hints, trailing: nil) }
+            if queued > 0 { hints.append(FooterHint(keys: Mark.up, words: "edit queued", spokenKeys: "Up Arrow")) }
+            return InputFooterContent(
+                leading: hints, trailing: FooterHint(keys: Mark.returnKey, words: "queue", spokenKeys: "Return"))
         case .running(let queued):
             var hints = [FooterHint(keys: "⌘.", words: "stop", spokenKeys: "Command-Period")]
             if queuesWhileRunning {
