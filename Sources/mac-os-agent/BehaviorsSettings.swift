@@ -46,6 +46,7 @@ struct ExperimentsSettingsView: View {
     @AppStorage(Experiment.queueMessagesWhileRunning.key) private var queuesMessages = false
     @AppStorage(Experiment.suggestionsInFieldAndFooter.key) private var suggestionsInField = false
     @AppStorage(Experiment.mcpServers.key) private var mcpServers = false
+    @AppStorage(Experiment.panelWithBarsAndInputPill.key) private var panelWithBars = false
 
     var body: some View {
         Form {
@@ -57,6 +58,10 @@ struct ExperimentsSettingsView: View {
                 Toggle(isOn: $suggestionsInField) {
                     Text("Suggestions in the field and a footer")
                     Text("An app or quick action that Return would open is shown in the field itself, with its icon beside it and its name in gray after what you typed, and a line under the field says what the keys do. Down Arrow lists the other matches under the field. Nothing is added above the field, so the conversation stays where it is.")
+                }
+                Toggle(isOn: $panelWithBars) {
+                    Text(Experiment.panelWithBarsAndInputPill.title)
+                    Text("The panel reads as bar, conversation, band. The title bar shows the model's name at the left and MacOS Agent in the middle. The text field is a pill at the bottom with the logo beside it, and a line under it says what the keys do. Matches show in the field as the suggestions experiment shows them, whether or not that switch is on.")
                 }
                 Toggle(isOn: $mcpServers) {
                     Text("MCP servers")

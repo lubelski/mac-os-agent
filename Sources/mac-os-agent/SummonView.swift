@@ -6,6 +6,9 @@ import SwiftUI
 /// history, the go-ahead card when one is pending, the instant action row or the command hint,
 /// and the text field at the bottom.
 ///
+/// With the panel with bars experiment on, the top bar is a title bar and the text field is a
+/// pill in a band at the bottom, with the status line under it. See `PanelFrame`.
+///
 /// The main panel and the incognito window are both this view, over sessions of different
 /// kinds. The incognito window adds its label and Clear to the top bar, the theme's incognito
 /// tint for its whole life, and a question before closing or clearing while a task runs.
@@ -20,15 +23,19 @@ struct SummonView: View {
     /// Read here so the panel redraws when a switch changes in Settings. The session reads the
     /// switches from its own preferences.
     @AppStorage(Experiment.suggestionsInFieldAndFooter.key) private var suggestionsSwitch = false
+    @AppStorage(Experiment.panelWithBarsAndInputPill.key) private var barsSwitch = false
+    @Environment(PanelPlacement.self) private var placement: PanelPlacement?
     @AppStorage(HarnessBehavior.recallEarlierMessages.key) private var recallSwitch = HarnessBehavior.recallEarlierMessages.defaultValue
     @AppStorage(ModelSetting.key) private var modelID = OpenAIModel.defaultID
     @AgentName private var agentName
 
     var body: some View {
         VStack(spacing: 0) {
-            PanelTopBar(incognito: session.isIncognito
-                ? .init(canClear: canClear, clear: { session.requestDiscard(.clear) })
-                : nil)
+            PanelTopBar(
+                incognito: session.isIncognito
+                    ? .init(canClear: canClear, clear: { session.requestDiscard(.clear) })
+                    : nil,
+                style: session.panelWithBars ? .titled : .named)
             PanelDivider()
             HistoryView(session: session, now: now)
             if let discard = session.pendingDiscard {
@@ -41,7 +48,19 @@ struct SummonView: View {
                     .padding(.bottom, 10)
             }
             MessageQueueRows(session: session)
-            if session.suggestionsInFooter {
+            if session.panelWithBars {
+                // The band: the hairline, then the pill on the bars' fill, then the list when
+                // it grows below, then the status line. Nothing is added above the hairline.
+                VStack(spacing: 0) {
+                    PanelDivider()
+                    InputBand {
+                        InputPill { field(metrics: .pill) }
+                    }
+                }
+                .overlay(alignment: .top) { overlaidList }
+                listBelow
+                footer
+            } else if session.suggestionsInFooter {
                 // The suggestions are in the field and the footer, so nothing is added above it.
                 VStack(spacing: 0) {
                     PanelDivider()
@@ -76,6 +95,12 @@ struct SummonView: View {
         // The experiment matches from the first character and the row only when confident, so
         // a draft already in the field is judged again when the switch changes in Settings.
         .onChange(of: suggestionsSwitch) { session.syncInstantActionMode() }
+        // The panel with bars turns that matching on too, and has a larger outer radius, which
+        // the surface and the window's clip read from the placement.
+        .onChange(of: barsSwitch, initial: true) {
+            placement?.cornerRadius = PanelFrame.cornerRadius(panelWithBars: session.panelWithBars)
+            session.syncInstantActionMode()
+        }
         // VoiceOver hears what Return will act on when it changes, since the gray text is drawn
         // only and the mark is beside the field.
         .onChange(of: session.returnTarget?.id) {
@@ -101,6 +126,18 @@ struct SummonView: View {
             // The field holds one icon and the text. The icon is the sparkle, and with the
             // suggestions experiment on, the icon of what Return will act on takes its place.
             InputMark(target: session.returnTarget)
+            field(metrics: .standard)
+            // Nothing else goes in the field. Stop is at the end of the thread, on the working row.
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        // The band with the field is on the bars' fill, as the top bar is. With the experiment
+        // on, the list and the footer below continue it.
+        .background(PanelBarFill())
+    }
+
+    /// The text field itself, with its placeholder, in the field's font.
+    private func field(metrics: InputFieldMetrics) -> some View {
             InputField(
                 text: $session.draft,
                 placeholder: placeholder,
@@ -121,24 +158,18 @@ struct SummonView: View {
                 onInterrupt: session.interrupt,
                 onDoubleDelete: session.startNewEpisodeFromKeys,
                 onComposingChange: session.composingChanged,
-                inlineCompletion: session.inlineCompletion)
+                inlineCompletion: session.inlineCompletion,
+                metrics: metrics)
                 .overlay(alignment: .topLeading) {
                     if session.draft.isEmpty {
                         Text(placeholder)
-                            .font(.system(size: 15))
+                            .font(.system(size: metrics.font.pointSize))
                             .foregroundStyle(.tertiary)
-                            .padding(.top, InputField.verticalInset)
+                            .padding(.top, metrics.verticalInset)
                             .allowsHitTesting(false)
                             .accessibilityHidden(true)
                     }
                 }
-            // Nothing else goes in the field. Stop is at the end of the thread, on the working row.
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        // The band with the field is on the bars' fill, as the top bar is. With the experiment
-        // on, the list and the footer below continue it.
-        .background(PanelBarFill())
     }
 
     // MARK: The suggestions experiment
@@ -146,19 +177,20 @@ struct SummonView: View {
     private var footer: some View {
         // The switches are read through the session, from its preferences. Reading them here
         // too keeps the footer in step when one changes in Settings.
-        _ = (suggestionsSwitch, recallSwitch)
+        _ = (suggestionsSwitch, recallSwitch, barsSwitch)
         // No hairline above it: the footer continues the band with the field on the same fill,
         // so the two read as one bar at the bottom of the panel.
         return InputFooter(content: .make(
             session.footerState, agentName: agentName, modelName: InputFooterContent.modelName(id: modelID),
             recallsMessages: HarnessBehavior.recallEarlierMessages.isOn(session.preferences),
-            queuesWhileRunning: session.queuesWhileRunning))
+            queuesWhileRunning: session.queuesWhileRunning,
+            statusLine: session.panelWithBars))
     }
 
     private var suggestionList: some View {
         SuggestionListView(
             rows: session.suggestionRows, highlight: session.highlightedRowIndex, agentName: agentName,
-            incognito: session.isIncognito, activate: session.activateSuggestionRow)
+            incognito: session.isIncognito, usesLogo: session.panelWithBars, activate: session.activateSuggestionRow)
     }
 
     /// The list between the field and the footer, in the room the window grew by. The room

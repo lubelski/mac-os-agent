@@ -69,9 +69,10 @@ final class SuggestionListState {
 
 extension AgentSession {
     /// Whether the experiment is on for this window. Read each time, so the switch in Settings
-    /// applies at once.
+    /// applies at once. The panel with bars uses the gray completion, the status line, and the
+    /// list, so it turns them on whatever this experiment's own switch says.
     var suggestionsInFooter: Bool {
-        suggestionList.forcedOn ?? Experiment.suggestionsInFieldAndFooter.isOn(preferences)
+        panelWithBars || (suggestionList.forcedOn ?? Experiment.suggestionsInFieldAndFooter.isOn(preferences))
     }
 
     /// Matches the draft as eagerly as the switch says: from the first character with the

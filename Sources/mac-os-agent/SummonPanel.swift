@@ -284,6 +284,7 @@ final class SummonPanel: NSPanel {
         applyLayer(PanelLayering.layer(for: layeringState))
         session.suggestionList.layoutNeedsUpdate = { [weak self] in self?.updateFooterGrowth() }
         observeSuggestionList()
+        observeCornerRadius()
     }
 
     /// An owner who had docked the panel with PR #17 finds it in the matching slide over, and
@@ -753,6 +754,8 @@ final class SummonPanel: NSPanel {
     /// The sides whose corners are square now, because they are flush against the screen's
     /// edge. The glass reads them from `placement`.
     private(set) var squareEdges: Set<PanelEdge> = []
+    /// The radius the glass's layer is clipped to now. See `PanelPlacement.cornerRadius`.
+    private var clippedCornerRadius = PanelShape.cornerRadius
 
     /// Squares the clip on the glass's layer on the sides flush against the screen's edge, and
     /// rounds it again when the panel moves off. The window server traces the shadow from what
@@ -760,9 +763,11 @@ final class SummonPanel: NSPanel {
     /// in its new shape. That keeps the shadow on the rounded corners, not on a square fill.
     private func updateSquareEdges() {
         let edges = placement.squareEdges
-        guard edges != squareEdges else { return }
+        let radius = placement.cornerRadius
+        guard edges != squareEdges || radius != clippedCornerRadius else { return }
         squareEdges = edges
-        if let layer = host.layer { PanelShape.clipToSurface(layer, squareEdges: edges) }
+        clippedCornerRadius = radius
+        if let layer = host.layer { PanelShape.clipToSurface(layer, squareEdges: edges, radius: radius) }
         invalidateShadow()
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated { self?.invalidateShadow() }
@@ -892,6 +897,21 @@ final class SummonPanel: NSPanel {
     private func collapseFooter() {
         session.closeSuggestionList()
         setFooterGrowth(0)
+    }
+
+    /// Clips the glass again when its radius changes, as the panel with bars switch does.
+    private func observeCornerRadius() {
+        withObservationTracking {
+            _ = placement.cornerRadius
+        } onChange: { [weak self] in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.updateSquareEdges()
+                    self.observeCornerRadius()
+                }
+            }
+        }
     }
 
     /// Follows changes to the list that come from typing, a turn after they happen, since they

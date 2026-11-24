@@ -44,6 +44,11 @@ final class PanelPlacement {
         PanelGeometry.room(on: freeSide, of: panelFrame, in: visibleFrame)
     }
 
+    /// The panel's outer radius: `PanelShape.cornerRadius`, or larger with the panel with bars
+    /// experiment on. The content view sets it, and the surface and the clip on the window's
+    /// layer both follow it.
+    var cornerRadius: CGFloat = PanelShape.cornerRadius
+
     /// Called with where the glass is on every frame of a slide in or out, and once when the
     /// panel comes to rest shown or hidden. A window that slides with the panel as one unit,
     /// such as an inspector beside it, moves by `offset`, takes `alpha`, and cuts itself off
@@ -68,9 +73,21 @@ final class PanelPlacement {
 ///   so a panel that will not go behind other windows explains itself. A new control is one
 ///   more `TopBarButton` in that row, before the menu.
 ///
+/// With the panel with bars experiment on, the bar is a title bar, `Style.titled`: the title in
+/// the middle is "MacOS Agent" in small secondary text, and the model's name follows the
+/// leading controls as a plain label, not a control. The rest is the same.
+///
 /// A label takes `.allowsHitTesting(false)`, so dragging it still moves the panel and a double
 /// click on it still resets the frame. A control does not.
 struct PanelTopBar: View {
+    /// What the bar names.
+    enum Style {
+        /// The agent's name in the middle, as the panel has always been.
+        case named
+        /// The panel with bars: "MacOS Agent" in the middle and the model's name at the left.
+        case titled
+    }
+
     /// What the incognito window's bar adds.
     struct Incognito {
         /// False while there is nothing to clear.
@@ -88,8 +105,17 @@ struct PanelTopBar: View {
     static let titleGap: CGFloat = 8
     /// Set for the incognito window.
     var incognito: Incognito?
+    var style: Style = .named
     @Environment(PanelPlacement.self) private var placement: PanelPlacement?
     @AgentName private var agentName
+    @AppStorage(ModelSetting.key) private var modelID = OpenAIModel.defaultID
+
+    /// The title in the middle of the bar with `Style.titled`.
+    static let appTitle = "MacOS Agent"
+    /// The small text of the titled bar: the title and the model's name.
+    static let titledFont = Font.system(size: 11)
+    /// The most room the model's name takes, so the title keeps its place in the middle.
+    static let modelNameMaxWidth: CGFloat = 150
     @State private var leadingWidth: CGFloat = 0
     @State private var trailingWidth: CGFloat = 0
 
@@ -122,11 +148,12 @@ struct PanelTopBar: View {
         .background(PanelBarFill())
     }
 
-    /// The agent's name, and in the incognito window the incognito label after it.
+    /// The agent's name, or "MacOS Agent" in the titled bar, and in the incognito window the
+    /// incognito label after it.
     private var title: some View {
         HStack(spacing: 6) {
-            Text(agentName)
-                .font(Self.titleFont)
+            Text(style == .titled ? Self.appTitle : agentName)
+                .font(style == .titled ? Self.titledFont : Self.titleFont)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -155,8 +182,22 @@ struct PanelTopBar: View {
                         isEnabled: incognito.canClear,
                         action: incognito.clear)
                 }
+                if style == .titled { modelName }
             }
         }
+    }
+
+    /// The model's name in the titled bar: a label, not a control, so dragging it moves the
+    /// panel. It is set in the menu bar menu and in Settings, General.
+    private var modelName: some View {
+        Text(InputFooterContent.modelName(id: modelID))
+            .font(Self.titledFont)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(maxWidth: Self.modelNameMaxWidth, alignment: .leading)
+            .allowsHitTesting(false)
+            .accessibilityLabel("Model, \(InputFooterContent.modelName(id: modelID))")
     }
 
     @ViewBuilder

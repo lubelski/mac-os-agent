@@ -28,9 +28,10 @@ enum PanelShape {
     /// The surface with square corners on the sides flush against the screen's edge, from
     /// `PanelGeometry.flushEdges`: a slide over panel at the left has its left corners square
     /// and its right ones rounded. The panel is laid out left to right, so leading is left.
-    static func surface(squareEdges: Set<PanelEdge>) -> UnevenRoundedRectangle {
-        let left: CGFloat = squareEdges.contains(.left) ? 0 : cornerRadius
-        let right: CGFloat = squareEdges.contains(.right) ? 0 : cornerRadius
+    /// `radius` is the panel's outer radius, larger with the panel with bars experiment on.
+    static func surface(squareEdges: Set<PanelEdge>, radius: CGFloat = cornerRadius) -> UnevenRoundedRectangle {
+        let left: CGFloat = squareEdges.contains(.left) ? 0 : radius
+        let right: CGFloat = squareEdges.contains(.right) ? 0 : radius
         return UnevenRoundedRectangle(
             topLeadingRadius: left, bottomLeadingRadius: left, bottomTrailingRadius: right, topTrailingRadius: right,
             style: .continuous)
@@ -50,8 +51,8 @@ enum PanelShape {
     /// square outline of the window shows at the corners, or the glass is cut at a corner it
     /// should fill.
     @MainActor
-    static func clipToSurface(_ layer: CALayer, squareEdges: Set<PanelEdge> = []) {
-        layer.cornerRadius = cornerRadius
+    static func clipToSurface(_ layer: CALayer, squareEdges: Set<PanelEdge> = [], radius: CGFloat = cornerRadius) {
+        layer.cornerRadius = radius
         layer.cornerCurve = surface.style == .continuous ? .continuous : .circular
         layer.maskedCorners = roundedCorners(squareEdges: squareEdges)
         layer.masksToBounds = true
