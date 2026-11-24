@@ -13,7 +13,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var incognito: IncognitoWindowController!
     private var summonTrigger: SummonTriggerController!
     private var settings: SettingsWindowController!
-    private let prompt = AgentPrompt(memories: MemoryLibrary())
+    /// Read once at launch, with the panel with bars experiment's switch, which decides whether
+    /// the tool list has `set_links` and the instructions say what the links row is for.
+    private let prompt = AgentPrompt(memories: MemoryLibrary(), taskLinks: Experiment.panelWithBarsAndInputPill.isOn())
     private let usageLog = UsageLog()
     /// Created at launch, so it checks on its own schedule. In a build with no feed it does nothing.
     private var updater: AppUpdater!
@@ -63,7 +65,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let tools = ToolRegistry(
             builtIn: BuiltInTools.make(
                 skills: prompt.skills, history: thread, memories: prompt.memories ?? MemoryLibrary(),
-                webSearch: webSearch.launched == .brave ? SearchWebTool(key: webSearch.key) : nil),
+                webSearch: webSearch.launched == .brave ? SearchWebTool(key: webSearch.key) : nil,
+                taskLinks: prompt.taskLinks ? SetLinksTool(isOn: { Experiment.panelWithBarsAndInputPill.isOn() }) : nil),
             additional: mcp.makeTools())
         if let thread {
             let provider = OpenAIResponsesProvider(
@@ -98,6 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // The skills the owner can invoke with a slash, kept live as the folder changes.
         session.skillCommands = SkillCommandsModel(library: prompt.skills)
         session.memories = prompt.memories
+        // The links row reads what `set_links` kept, only when the tool is in this run's list.
+        if prompt.taskLinks { session.taskLinkStore = TaskLinkStore() }
         panel = SummonPanel(session: session)
         // A change made while the app was not running, or while it runs, is journaled as made
         // outside the app, so the history has no holes.

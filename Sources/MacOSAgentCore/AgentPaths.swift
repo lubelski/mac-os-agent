@@ -91,6 +91,12 @@ public enum AgentPaths {
         applicationSupport.appending(path: "instant-actions.json")
     }
 
+    /// The task links the model set with `set_links`, with the id of the episode they belong
+    /// to. Only with the panel with bars experiment on. Missing when there are none.
+    public static var taskLinksFile: URL {
+        applicationSupport.appending(path: "task-links.json")
+    }
+
     public static var installationIDFile: URL {
         applicationSupport.appending(path: "installation-id")
     }

@@ -16,10 +16,11 @@
 #                                                           pill experiment: at rest, typing, a long
 #                                                           message, a match, the slash list, running,
 #                                                           Stop under the pointer, queued messages,
-#                                                           the lines in the conversation, and the
-#                                                           same lines with the experiment off, and
-#                                                           the match card down, up, and with the
-#                                                           slash list
+#                                                           the lines in the conversation, the same
+#                                                           lines with the experiment off, three task
+#                                                           links, five with the overflow, and the
+#                                                           match card down, up, and with the slash
+#                                                           list
 #
 # An inspector state is always captured over the busy page, since it is two windows: the panel
 # and the inspector attached to it. So are `bars-card-down` and `bars-card-slash`, whose card opens
@@ -55,7 +56,7 @@ while [[ "${1:-}" == --* ]]; do
       elif [[ "$2" == "instant" ]]; then
         STATES=(instant-one instant-several)
       elif [[ "$2" == "bars" ]]; then
-        STATES=(bars-rest bars-typing bars-long bars-match bars-slash bars-running bars-working-hover bars-queued bars-lines bars-lines-off bars-card-down bars-card-up bars-card-slash)
+        STATES=(bars-rest bars-typing bars-long bars-match bars-slash bars-running bars-working-hover bars-queued bars-lines bars-lines-off bars-links bars-links-more bars-card-down bars-card-up bars-card-slash)
       else
         read -r -a STATES <<<"$2"
       fi

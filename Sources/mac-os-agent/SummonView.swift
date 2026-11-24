@@ -58,6 +58,8 @@ struct SummonView: View {
                 VStack(spacing: 0) {
                     PanelDivider()
                     InputBand {
+                        TaskLinksRow(links: session.taskLinks, clear: session.clearTaskLinks)
+                    } field: {
                         InputPill(card: session.matchCardSide) { field(metrics: .pill) }
                             .overlay(alignment: .top) { matchCardAbove }
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.panelSpace)) } action: { pill in
