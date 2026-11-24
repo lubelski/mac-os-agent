@@ -173,6 +173,7 @@ struct HistoryView: View {
         switch gap {
         case .none: 0
         case .tight: 2
+        case .betweenLines: 6
         case .regular: 10
         case .exchange: 24
         case .episode: 64

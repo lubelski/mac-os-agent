@@ -87,6 +87,12 @@ public enum OpenAIResponses {
                     "call_id": .string(result.callID),
                     "output": .string(result.output),
                 ])
+            case .appOpened(let opening):
+                // Logged when it happened and sent only now, with the next request of its
+                // episode. It comes after everything the earlier requests carried, so their
+                // prefix is unchanged.
+                let stamped = "[\(timestamp(entry.date, timeZone: timeZone))] \(opening.message)"
+                items.append(["role": "user", "content": [["type": "input_text", "text": .string(stamped)]]])
             case .episodeStart:
                 // The loop sends only the current episode and leaves its marker out. A marker
                 // carries nothing for the model in any case.

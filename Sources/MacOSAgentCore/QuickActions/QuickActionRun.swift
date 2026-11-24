@@ -68,6 +68,25 @@ extension ThreadItem {
             return stepCount == 1 ? "\(name) failed." : "\(name) stopped at step \(failedStep + 1) of \(stepCount).\(rest)"
         }
 
+        /// Why the run failed, in a few words for its line in the panel: the first line of the
+        /// failed step's output that says something, without `Error:` or an exit status. Nil
+        /// when every step finished.
+        public var failureReason: String? {
+            guard let failedStep else { return nil }
+            let output = failedStep < steps.count ? steps[failedStep].output : ""
+            let line = output.split(whereSeparator: \.isNewline)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .first { !$0.isEmpty && !$0.hasPrefix("[exit status") }
+            var reason = line ?? ""
+            if reason.hasPrefix("Error:") { reason = String(reason.dropFirst("Error:".count)).trimmingCharacters(in: .whitespaces) }
+            if reason.hasSuffix(".") { reason.removeLast() }
+            if reason.count > 120 { reason = String(reason.prefix(120)) + "…" }
+            if reason.isEmpty {
+                return stepCount == 1 ? "it did not finish" : "step \(failedStep + 1) of \(stepCount) did not finish"
+            }
+            return stepCount == 1 ? reason : "step \(failedStep + 1) of \(stepCount): \(reason)"
+        }
+
         /// The most of each step's output the model's note carries.
         public static let messageOutputLimit = 1_500
 
