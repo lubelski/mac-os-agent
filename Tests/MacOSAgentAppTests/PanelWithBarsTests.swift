@@ -276,6 +276,7 @@ struct PanelWithBarsRenders {
         for (theme, dark) in [("glass", true), ("tidewater", true), ("graphite", true), ("ember", true), ("high-contrast", true), ("high-contrast", false), ("paper", false)] {
             try render("bars-rest", theme: theme, dark: dark)
             try render("bars-long", theme: theme, dark: dark)
+            try render("bars-lines", theme: theme, dark: dark)
         }
         for name in ["bars-running", "bars-working-hover", "bars-queued"] {
             try render(name, theme: "graphite", dark: true)
