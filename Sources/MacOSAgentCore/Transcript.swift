@@ -220,8 +220,37 @@ public struct Transcript: Equatable, Sendable {
                 status = .finished
                 output = result.output
             }
-        case .providerItem:
-            break
+        case .providerItem(let item):
+            // Reasoning shows nothing. A hosted tool call, such as OpenAI's web search, is a
+            // tool row like any other, filled in from the finished item, so a row rebuilt from
+            // the saved thread reads the same as the live one.
+            if let call = item.hostedToolCall { applyHostedCall(call, item: item, entry: entry) }
+        }
+    }
+
+    /// The row of a call the model ran on the provider's side. While it runs, the loop's
+    /// started and running events made the row. The finished item fills it in, or adds it
+    /// when the thread is loaded from disk.
+    private mutating func applyHostedCall(_ call: HostedToolCall, item: ThreadItem.ProviderItem, entry: ThreadEntry) {
+        var facts = toolFacts[call.callID] ?? ToolCallFacts()
+        facts.call = ThreadItem.ToolCall(
+            callID: call.callID, name: call.name, arguments: call.arguments.encodedString(),
+            provider: item.provider, model: item.model, providerID: call.callID)
+        if facts.calledAt == nil { facts.calledAt = entry.date }
+        // Only a call seen running has a duration. One loaded from disk has no start time.
+        if facts.runningSince != nil { facts.finishedAt = entry.date }
+        facts.details = ToolRunDetails(source: call.host)
+        toolFacts[call.callID] = facts
+        let output: String? = call.status == .running ? nil : call.output
+        let status: TranscriptRow.ToolStatus = call.status == .running ? .running : .finished
+        if indexByID[call.callID] == nil {
+            append(TranscriptRow(id: call.callID, kind: .tool(command: call.summary, status: status, output: output)))
+        } else {
+            updateTool(call.callID) { command, rowStatus, rowOutput in
+                command = call.summary
+                rowStatus = status
+                rowOutput = output
+            }
         }
     }
 

@@ -37,7 +37,7 @@ Read `README.md` first for what the product is, then `VISION.md` for what a chan
 - `--check-mcp-servers --data-folder <path>` starts the real MCP servers listed in that folder as a launch does, reports to `mcp-check.txt` there, stops them as quitting does, and quits. Launch it with `open -n -g -a build/mac-os-agent.app --args …` to get an app's PATH and never take focus.
 - Each preview quits on its own after a few seconds and never takes keyboard focus. Check that none is left running when you finish.
 - `--data-folder <path>` points the app at another folder instead of `~/Library/Application Support/mac-os-agent/`. Use it for every manual check. The owner's real thread is private. A run with `--data-folder` keeps its sign-in in `secrets.json` in that folder, in any build, and never touches the Keychain, so it has its own and never sees the owner's.
-- The summon shortcut is a setting. Its default, rules, and storage are in `Sources/MacOSAgentCore/SummonTrigger.swift`. `--preview-settings general --preview-item recording` shows the recorder recording, and `conflict` and `rejected` show its messages. Previews and tests use a stand-in hotkey that never registers, so they cannot take the installed app's.
+- The summon shortcut is a setting. Its default, rules, and storage are in `Sources/MacOSAgentCore/SummonTrigger.swift`. `--preview-settings general --preview-item recording` shows the recorder recording, and `conflict` and `rejected` show its messages. `--preview-settings general --preview-item brave` shows Brave Search chosen for web search with no key, and `brave-saved` with a key saved in a temporary file. Previews and tests use a stand-in hotkey that never registers, so they cannot take the installed app's.
 
 ## Signing
 

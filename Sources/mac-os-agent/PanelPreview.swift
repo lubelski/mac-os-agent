@@ -206,6 +206,20 @@ enum PanelPreview {
                         output: "[exit status 0]")
             thread.reply("Done. Every desktop now shows the Sunset picture from the system wallpapers.")
             return AgentSession(previewEntries: thread.entries)
+        case "web-search":
+            // OpenAI's hosted search, as its rows read from the saved thread, then a Brave search.
+            var thread = StandInThread(now: Date())
+            thread.user("when does swift 6.2 come out", minutesAgo: 3)
+            thread.hostedSearch("ws_1", action: ["type": "search", "query": "swift 6.2 release date"])
+            thread.hostedSearch("ws_2", action: ["type": "open_page", "url": "https://www.swift.org/blog/"])
+            thread.reply("Swift 6.2 shipped on September 15, with Xcode 26. See the [announcement](https://www.swift.org/blog/swift-6.2-released/).")
+            thread.user("any news on 6.3 this week", minutesAgo: 1)
+            thread.call("call_brave", name: SearchWebTool.name,
+                        arguments: ["query": "Swift 6.3 release", "count": .null, "freshness": "pw"],
+                        output: "1. Swift 6.3 Release Process\n   https://forums.swift.org/t/swift-6-3-release-process\n   The release branch is cut, and the final release is planned for spring.\n   Age: 3 days ago",
+                        details: ToolRunDetails(source: ToolSource.webSearch.title))
+            thread.reply("Only the release process post so far. The branch is cut, and the release is planned for spring.")
+            return AgentSession(previewEntries: thread.entries)
         case "history":
             var thread = StandInThread(now: Date())
             thread.earlierExchanges()
@@ -391,6 +405,12 @@ enum PanelPreview {
             if let output {
                 entries.append(ThreadEntry(date: tick(), item: .toolResult(.init(callID: callID, output: output, details: details))))
             }
+        }
+
+        /// A web search the model ran on OpenAI's side, kept as its provider item.
+        mutating func hostedSearch(_ id: String, action: JSONValue) {
+            let payload: JSONValue = ["type": "web_search_call", "id": .string(id), "status": "completed", "action": action]
+            entries.append(ThreadEntry(date: tick(), item: .providerItem(.init(provider: "openai", model: "gpt-6-luna", payload: payload))))
         }
 
         /// A call the model has begun, whose arguments have not arrived.

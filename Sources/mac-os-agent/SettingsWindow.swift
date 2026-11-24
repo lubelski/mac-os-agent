@@ -124,6 +124,7 @@ struct SettingsModels {
     let mcpServers: MCPServersSettingsModel
     let history: HistorySettingsModel
     let debugging: DebuggingSettingsModel
+    let webSearch: WebSearchSettingsModel
     let updater: AppUpdater
 }
 
@@ -171,7 +172,8 @@ struct SettingsRootView: View {
     @ViewBuilder private var detail: some View {
         switch navigation.section {
         case .general:
-            GeneralSettingsView(session: models.session, shortcut: models.shortcut, updater: models.updater)
+            GeneralSettingsView(
+                session: models.session, shortcut: models.shortcut, webSearch: models.webSearch, updater: models.updater)
         case .appearance:
             AppearanceSettingsView(model: ThemeModel.shared)
         case .instructions:
@@ -222,6 +224,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         privacyAccess: any PrivacyAccessGate = EventKitStore.shared,
         quickActions: QuickActionLibrary = QuickActionLibrary(),
         mcp: MCPServerPool = .empty, mcpServersOverride: Bool? = nil,
+        webSearch: WebSearchContext = WebSearchContext(launched: .off, key: nil),
         updater: AppUpdater = .unavailable()
     ) {
         models = SettingsModels(
@@ -237,7 +240,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             history: HistorySettingsModel(history: history),
             debugging: DebuggingSettingsModel(
                 prompt: prompt, usageLog: usageLog, tools: tools, problems: problems,
-                signInStatus: signInStatus, secretStorage: secretStorage, defaults: defaults),
+                signInStatus: signInStatus, secretStorage: secretStorage, webSearch: webSearch, defaults: defaults),
+            webSearch: WebSearchSettingsModel(context: webSearch),
             updater: updater)
 
         let root = SettingsRootView(models: models, navigation: models.navigation)
@@ -381,6 +385,7 @@ enum SettingsPreview {
         // A stand-in hotkey that never registers, so a preview cannot take the installed app's.
         let hotKey = StandInHotKey()
         let summonTrigger = SettingsPreview.summonTrigger(hotKey: hotKey, defaults: defaults, state: section == .general ? item : nil)
+        let webSearch = SettingsPreview.webSearch(defaults: defaults, state: section == .general ? item : nil)
         // A preview of MCP Servers, or of an MCP tool, asks for MCP, so it shows as if the
         // experiment were on without reading or writing its preference. Other previews follow
         // the preview's own preferences, where it is off.
@@ -399,7 +404,8 @@ enum SettingsPreview {
             // A stand-in. A preview decides nothing about the real store and never opens the Keychain.
             secretStorage: SecretStorage.Status(location: .file, reason: .anotherDataFolder, migration: nil),
             summonTrigger: summonTrigger, defaults: defaults, remembersFrame: false,
-            privacyAccess: StandInPrivacyAccess(), mcp: mcp, mcpServersOverride: showsMCP ? true : nil)
+            privacyAccess: StandInPrivacyAccess(), mcp: mcp, mcpServersOverride: showsMCP ? true : nil,
+            webSearch: webSearch)
         self.controller = controller
         if section == .general, let item {
             showShortcut(item, in: controller.models.shortcut)
@@ -431,6 +437,19 @@ enum SettingsPreview {
             hotKey.taken = [KeyChord(keyCode: UInt16(kVK_ANSI_K), modifiers: [.control, .option])]
         }
         return controller
+    }
+
+    /// Web search in a preview, as if the run launched with it off. `--preview-item` picks a
+    /// state for General: `brave` (Brave Search chosen, no key yet) or `brave-saved` (a key
+    /// saved). The key lives in a temporary file, never the Keychain or the real data folder.
+    private static func webSearch(defaults: UserDefaults, state: String?) -> WebSearchContext {
+        WebSearchSetting.set(state?.hasPrefix("brave") == true ? .brave : .off, defaults)
+        let file = FileManager.default.temporaryDirectory
+            .appending(path: "mac-os-agent-preview-\(UUID().uuidString)", directoryHint: .isDirectory)
+            .appending(path: "secrets.json")
+        let key = BraveSearchKey(secrets: FileSecrets(fileURL: file))
+        if state == "brave-saved" { try? key.save("preview-key") }
+        return WebSearchContext(launched: .off, key: key)
     }
 
     private static func showShortcut(_ state: String, in recorder: ShortcutRecorderModel) {

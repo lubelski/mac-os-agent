@@ -32,7 +32,7 @@ BACKDROP=0
 DOCK=()
 THEME=()
 SUFFIX=""
-STATES=(empty history running confirmation finished draft multiline-draft fresh-start scrollback incognito incognito-empty incognito-closing incognito-command-hint command-hint tool-states first-message streaming fresh-start-slot markdown markdown-streaming markdown-code-streaming controls)
+STATES=(empty history running confirmation finished draft multiline-draft fresh-start scrollback incognito incognito-empty incognito-closing incognito-command-hint command-hint tool-states first-message streaming fresh-start-slot markdown markdown-streaming markdown-code-streaming controls web-search)
 APPEARANCES=(dark light)
 while [[ "${1:-}" == --* ]]; do
   case "$1" in

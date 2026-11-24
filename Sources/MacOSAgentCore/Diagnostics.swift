@@ -6,11 +6,14 @@ import Synchronization
 /// A short fingerprint of what forms the cached prefix of every request: the instructions and
 /// the tool list. When it changes between requests, the prompt cache starts over.
 public enum PromptFingerprint {
-    public static func make(instructions: String, tools: [ToolDefinition]) -> String {
+    /// - Parameter webSearch: Whether the request offers the provider's hosted web search. Off
+    ///   leaves the fingerprint as it was before web search existed.
+    public static func make(instructions: String, tools: [ToolDefinition], webSearch: Bool = false) -> String {
         var text = instructions + "\n"
         for tool in tools {
             text += tool.name + "\n" + tool.description + "\n" + tool.parameters.encodedString() + "\n"
         }
+        if webSearch { text += "hosted:\(HostedWebSearch.toolName)\n" }
         let digest = SHA256.hash(data: Data(text.utf8))
         return digest.prefix(6).map { String(format: "%02x", $0) }.joined()
     }
@@ -27,9 +30,9 @@ public struct PromptInfo: Sendable, Equatable {
     /// When the most recent requests' fingerprint was first seen in an unbroken run of requests.
     public var unchangedSince: Date?
 
-    public init(instructions: String, tools: [ToolDefinition], records: [UsageRecord]) {
+    public init(instructions: String, tools: [ToolDefinition], records: [UsageRecord], webSearch: Bool = false) {
         characters = instructions.count
-        fingerprint = PromptFingerprint.make(instructions: instructions, tools: tools)
+        fingerprint = PromptFingerprint.make(instructions: instructions, tools: tools, webSearch: webSearch)
         let withPrompt = records.filter { $0.prompt != nil }
         lastSentFingerprint = withPrompt.last?.prompt
         unchangedSince = nil
@@ -227,6 +230,8 @@ public struct DiagnosticsReport: Sendable, Equatable {
     public var signIn: SignInStatus?
     /// Where this run keeps the sign-in, the Keychain or the file, and why.
     public var secretStorage: SecretStorage.Status?
+    /// The web search this run launched with, and whether a Brave key is set. Never the key.
+    public var webSearch: WebSearchStatus?
     public var prompt: PromptInfo
     public var tools: Int
     public var skills: SkillCounts
@@ -242,7 +247,8 @@ public struct DiagnosticsReport: Sendable, Equatable {
         date: Date = Date(), build: BuildInfo, system: String = ProcessInfo.processInfo.operatingSystemVersionString,
         dataFolder: URL, model: String, signIn: SignInStatus?, instructions: String, tools: [ToolDefinition],
         skills: [Skill], memories: MemoryCounts = MemoryCounts(), threadFile: URL, usageLog: UsageLog,
-        problems: [DiagnosticProblem], secretStorage: SecretStorage.Status? = nil, calendar: Calendar = .current
+        problems: [DiagnosticProblem], secretStorage: SecretStorage.Status? = nil, webSearch: WebSearchStatus? = nil,
+        calendar: Calendar = .current
     ) {
         self.date = date
         self.build = build
@@ -252,7 +258,10 @@ public struct DiagnosticsReport: Sendable, Equatable {
         self.signIn = signIn
         self.secretStorage = secretStorage
         let records = usageLog.records()
-        prompt = PromptInfo(instructions: instructions, tools: tools, records: records)
+        self.webSearch = webSearch
+        prompt = PromptInfo(
+            instructions: instructions, tools: tools, records: records,
+            webSearch: webSearch?.launched.usesHostedSearch ?? false)
         self.tools = tools.count
         self.skills = SkillCounts(
             total: skills.count, on: skills.filter(\.isAvailable).count,
@@ -304,6 +313,7 @@ public struct DiagnosticsReport: Sendable, Equatable {
         lines.append("- Last request's fingerprint: \(prompt.lastSentFingerprint ?? "not recorded"), unchanged since \(time(prompt.unchangedSince))")
         lines.append("- Changed since the last request: \(prompt.changedSinceLastRequest ? "yes" : "no")")
         lines.append("- Tools: \(tools)")
+        if let webSearch { lines.append("- Web search: \(webSearch.text)") }
         lines.append("- Skills: \(skills.total), \(skills.on) on, \(skills.withProblems) with problems")
         lines.append("- Memory: core \(memories.coreCharacters) characters, \(memories.topicFiles) topic files, \(memories.archivedFiles) archived, block \(memories.blockCharacters) characters, \(memories.journalEntries) journal entries")
         lines.append("")
@@ -329,5 +339,36 @@ public struct DiagnosticsReport: Sendable, Equatable {
             lines.append("- \(time(problem.date)) \(problem.area): \(problem.message)")
         }
         return lines.joined(separator: "\n") + "\n"
+    }
+}
+
+/// Which web search a run has, for Debugging. It says whether a Brave Search key is set and
+/// never holds the key.
+public struct WebSearchStatus: Sendable, Equatable {
+    /// What the run launched with, which is what it uses.
+    public var launched: WebSearchSetting
+    /// What Settings has now, which the next launch uses.
+    public var stored: WebSearchSetting
+    public var braveKeySet: Bool
+
+    public init(launched: WebSearchSetting, stored: WebSearchSetting, braveKeySet: Bool) {
+        self.launched = launched
+        self.stored = stored
+        self.braveKeySet = braveKeySet
+    }
+
+    /// Such as `Brave, key set` or `off, OpenAI from the next launch`.
+    public var text: String {
+        var text: String
+        switch launched {
+        case .off: text = "off"
+        case .openAI: text = "OpenAI"
+        case .brave: text = "Brave, key \(braveKeySet ? "set" : "not set")"
+        }
+        if stored != launched {
+            let next = stored == .off ? "off" : stored == .openAI ? "OpenAI" : "Brave"
+            text += ", \(next) from the next launch"
+        }
+        return text
     }
 }

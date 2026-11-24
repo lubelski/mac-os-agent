@@ -53,6 +53,9 @@ public final class AgentLoop: Sendable {
     public let usageLog: UsageLog?
     /// How long an episode can sit idle before the owner's next message starts a new one.
     public let episodeTimeout: @Sendable () -> TimeInterval
+    /// Whether requests offer the provider's hosted web search. Fixed for the loop's life, as
+    /// the tool list is, so the prompt cache holds.
+    public let webSearch: Bool
 
     public convenience init(
         provider: any ModelProvider,
@@ -61,11 +64,13 @@ public final class AgentLoop: Sendable {
         instructions: @escaping @Sendable () async -> String = { AgentInstructions.defaultPrompt },
         maximumModelReplies: Int = 40,
         usageLog: UsageLog? = nil,
-        episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) }
+        episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) },
+        webSearch: Bool = false
     ) {
         self.init(
             provider: provider, thread: thread, tools: tools, instructionsForEpisode: { _ in await instructions() },
-            maximumModelReplies: maximumModelReplies, usageLog: usageLog, episodeTimeout: episodeTimeout)
+            maximumModelReplies: maximumModelReplies, usageLog: usageLog, episodeTimeout: episodeTimeout,
+            webSearch: webSearch)
     }
 
     /// - Parameter instructionsForEpisode: The instructions for a request in the episode with
@@ -77,7 +82,8 @@ public final class AgentLoop: Sendable {
         instructionsForEpisode: @escaping @Sendable (UUID?) async -> String,
         maximumModelReplies: Int = 40,
         usageLog: UsageLog? = nil,
-        episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) }
+        episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) },
+        webSearch: Bool = false
     ) {
         self.provider = provider
         self.thread = thread
@@ -86,6 +92,7 @@ public final class AgentLoop: Sendable {
         self.maximumModelReplies = maximumModelReplies
         self.usageLog = usageLog
         self.episodeTimeout = episodeTimeout
+        self.webSearch = webSearch
     }
 
     public convenience init(
@@ -122,7 +129,7 @@ public final class AgentLoop: Sendable {
         let definitions = tools.map(\.definition)
         let episodeID = await thread.currentEpisode?.id
         let instructions = await self.instructions(episodeID)
-        let fingerprint = PromptFingerprint.make(instructions: instructions, tools: definitions)
+        let fingerprint = PromptFingerprint.make(instructions: instructions, tools: definitions, webSearch: webSearch)
 
         do {
             try await replyAndRunTools(
@@ -156,7 +163,8 @@ public final class AgentLoop: Sendable {
             // Only the current episode goes to the model. Within it the request only grows at
             // the end, so the prompt cache holds from one request to the next.
             let request = ModelRequest(
-                instructions: instructions, entries: await thread.contents.currentEpisodeEntries, tools: definitions)
+                instructions: instructions, entries: await thread.contents.currentEpisodeEntries, tools: definitions,
+                webSearch: webSearch)
             var calls: [ThreadItem.ToolCall] = []
             let started = ContinuousClock.now
             for try await event in provider.streamReply(to: request) {
@@ -165,6 +173,11 @@ public final class AgentLoop: Sendable {
                     await onEvent(.textDelta(text))
                 case .toolCallStarted(let callID, let name):
                     await onEvent(.toolCallStarted(callID: callID, name: name))
+                case .hostedToolStarted(let call):
+                    // It shows as a running row. It never asks and nothing runs here: the
+                    // finished call arrives as a provider item, which fills the row in.
+                    await onEvent(.toolCallStarted(callID: call.callID, name: call.name))
+                    await onEvent(.toolRunning(callID: call.callID, summary: call.summary))
                 case .usage(let usage, let providerName, let model):
                     let elapsed = ContinuousClock.now - started
                     let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
