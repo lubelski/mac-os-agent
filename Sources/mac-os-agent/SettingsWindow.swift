@@ -393,7 +393,13 @@ enum SettingsPreview {
         let mcp = showsMCP ? standInMCPServers() : .empty
         let controller = SettingsWindowController(
             session: session, prompt: prompt, usageLog: UsageLog(),
-            tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: history), additional: mcp.makeTools()),
+            tools: ToolRegistry(
+                builtIn: BuiltInTools.make(
+                    skills: prompt.skills, history: history,
+                    // `--preview-item set_links` shows the tool as a run with the panel with bars
+                    // experiment on has it, without reading or writing its preference.
+                    taskLinks: section == .tools && item == SetLinksTool.name ? SetLinksTool(store: TaskLinkStore(fileURL: URL(filePath: "/dev/null"))) : nil),
+                additional: mcp.makeTools()),
             history: history,
             problems: problems,
             signInStatus: {

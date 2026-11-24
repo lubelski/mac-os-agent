@@ -16,10 +16,12 @@ import MacOSAgentCore
 /// - `bars-working-hover`: the same, drawn as if the pointer were over the working row, so Stop shows.
 /// - `bars-queued`: a task running with the queue experiment on and two messages queued, drawn
 ///   at the end of the conversation as pending messages, the first as if under the pointer.
+/// - `bars-links`: three task links above the pill. `bars-rest` is the same panel with none.
+/// - `bars-links-more`: five, so two go into the overflow menu at the row's end.
 @MainActor
 enum PanelWithBarsPreview {
     static let names = ["bars-rest", "bars-typing", "bars-long", "bars-match", "bars-slash", "bars-running", "bars-working-hover",
-                        "bars-queued"]
+                        "bars-queued", "bars-links", "bars-links-more"]
 
     static func session(named name: String) -> AgentSession? {
         guard names.contains(name) else { return nil }
@@ -42,6 +44,10 @@ enum PanelWithBarsPreview {
                 session.draft = text
                 session.submitToAgent()
             }
+        case "bars-links":
+            session.taskLinks = Array(links.prefix(3))
+        case "bars-links-more":
+            session.taskLinks = links
         case "bars-slash":
             session.skillCommands = SkillCommandsModel(menu: FooterPreview.skills)
             session.draft = "/re"
@@ -64,6 +70,15 @@ enum PanelWithBarsPreview {
             applications: FooterPreview.applications, learns: !session.isIncognito, history: FooterPreview.history)
         if !session.isIncognito { session.instantActions.setActions(FooterPreview.actions) }
     }
+
+    /// Made-up task links on example.com. A preview never opens them.
+    static let links = [
+        TaskLink(label: "PR #12", url: "https://example.com/pull/12"),
+        TaskLink(label: "Mock: input pill", url: "https://example.com/mock/input-pill"),
+        TaskLink(label: "TASK-123", url: "https://example.com/task/123"),
+        TaskLink(label: "Spec", url: "https://example.com/spec"),
+        TaskLink(label: "Storybook", url: "https://example.com/storybook"),
+    ]
 
     /// The short exchange from the mockup.
     static func thread() -> [ThreadEntry] {
