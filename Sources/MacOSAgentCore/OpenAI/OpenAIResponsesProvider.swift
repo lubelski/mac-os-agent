@@ -73,6 +73,9 @@ public struct OpenAIResponsesProvider: ModelProvider {
             urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
             urlRequest.setValue("mac-os-agent", forHTTPHeaderField: "User-Agent")
             urlRequest.setValue("Bearer \(try await authenticator.accessToken())", forHTTPHeaderField: "Authorization")
+            for (field, value) in Self.sessionHeaders(promptCacheKey: promptCacheKey) {
+                urlRequest.setValue(value, forHTTPHeaderField: field)
+            }
 
             let (responseBytes, response) = try await session.bytes(for: urlRequest)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -102,6 +105,14 @@ public struct OpenAIResponsesProvider: ModelProvider {
         }
         try Task.checkCancellation()
         try parser.finish()
+    }
+
+    /// Headers that tie every request in the thread to one session, so OpenAI routes them to the
+    /// machine that holds their prompt cache. pi sends the same two to api.openai.com, with the
+    /// same value as `prompt_cache_key`, and gets most of each prompt from the cache.
+    static func sessionHeaders(promptCacheKey: String) -> [(String, String)] {
+        let key = String(promptCacheKey.prefix(64))
+        return [("session-id", key), ("x-client-request-id", key)]
     }
 
     /// Adds a hint to errors that mean the ChatGPT plan's shared usage limit was reached.

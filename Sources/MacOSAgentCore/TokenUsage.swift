@@ -11,12 +11,20 @@ public struct TokenUsage: Sendable, Equatable, Codable {
     public var outputTokens: Int
     /// The output tokens spent on reasoning, when the provider reports them.
     public var reasoningTokens: Int?
+    /// Replayed reasoning items the provider withheld from the model, counted by the reason it
+    /// gave, such as `prefix_mismatch` when input before the item changed since it was written.
+    /// Nil when none were withheld. A prefix mismatch also means the prompt cache broke there.
+    public var reasoningRemovals: [String: Int]?
 
-    public init(inputTokens: Int, cachedInputTokens: Int, outputTokens: Int, reasoningTokens: Int? = nil) {
+    public init(
+        inputTokens: Int, cachedInputTokens: Int, outputTokens: Int, reasoningTokens: Int? = nil,
+        reasoningRemovals: [String: Int]? = nil
+    ) {
         self.inputTokens = inputTokens
         self.cachedInputTokens = cachedInputTokens
         self.outputTokens = outputTokens
         self.reasoningTokens = reasoningTokens
+        self.reasoningRemovals = reasoningRemovals
     }
 
     /// The share of input tokens that came from the cache, from 0 to 1.
@@ -40,6 +48,9 @@ public struct UsageRecord: Sendable, Equatable, Codable {
     /// A fingerprint of the instructions and tool list sent with the request. When it changes
     /// between requests, the prompt cache starts over. See `PromptFingerprint`.
     public var prompt: String?
+    /// Replayed reasoning items the provider withheld, by reason. See
+    /// `TokenUsage.reasoningRemovals`. Missing when there were none.
+    public var removed: [String: Int]?
 
     public init(
         date: Date, provider: String, model: String, usage: TokenUsage, seconds: Double? = nil, prompt: String? = nil
@@ -53,10 +64,13 @@ public struct UsageRecord: Sendable, Equatable, Codable {
         reasoning = usage.reasoningTokens
         self.seconds = seconds
         self.prompt = prompt
+        removed = usage.reasoningRemovals
     }
 
     public var usage: TokenUsage {
-        TokenUsage(inputTokens: input, cachedInputTokens: cached, outputTokens: output, reasoningTokens: reasoning)
+        TokenUsage(
+            inputTokens: input, cachedInputTokens: cached, outputTokens: output, reasoningTokens: reasoning,
+            reasoningRemovals: removed)
     }
 }
 

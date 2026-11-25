@@ -50,6 +50,29 @@ import Testing
         #expect(events == [.usage(TokenUsage(inputTokens: 10, cachedInputTokens: 0, outputTokens: 3), provider: "openai", model: "m")])
     }
 
+    @Test func withheldReasoningIsCountedByReason() {
+        let response: JSONValue = [
+            "usage": ["input_tokens": 100, "output_tokens": 5],
+            "input_transformations": [
+                ["type": "reasoning", "id": "rs_1", "action": "removed", "reason": "prefix_mismatch"],
+                ["type": "reasoning", "id": "rs_2", "action": "removed", "reason": "prefix_mismatch"],
+                ["type": "reasoning", "id": "rs_3", "action": "removed", "reason": "turn_boundary"],
+                ["type": "reasoning", "id": "rs_4", "action": "removed", "reason": "model_mismatch"],
+                ["type": "message", "id": "msg_1", "action": "removed", "reason": "prefix_mismatch"],
+            ],
+        ]
+        let usage = OpenAIResponses.usage(from: response)
+        #expect(usage?.reasoningRemovals == ["prefix_mismatch": 2, "model_mismatch": 1])
+        #expect(OpenAIResponses.usage(from: ["usage": ["input_tokens": 1, "output_tokens": 1], "input_transformations": []])?
+            .reasoningRemovals == nil)
+    }
+
+    @Test func requestsCarryTheSessionHeaders() {
+        let headers = OpenAIResponsesProvider.sessionHeaders(promptCacheKey: "mac-os-agent-1234")
+        #expect(headers.map(\.0) == ["session-id", "x-client-request-id"])
+        #expect(headers.allSatisfy { $0.1 == "mac-os-agent-1234" })
+    }
+
     @Test func cachedShare() {
         #expect(TokenUsage(inputTokens: 200, cachedInputTokens: 150, outputTokens: 1).cachedShare == 0.75)
         #expect(TokenUsage(inputTokens: 0, cachedInputTokens: 0, outputTokens: 1).cachedShare == 0)

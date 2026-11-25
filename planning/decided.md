@@ -119,6 +119,8 @@ What has been decided for mac-os-agent and built. [planned.md](planned.md) has w
   - Each model request adds one line to `usage.jsonl` in Application Support with the time, provider, model, and counts. It holds no message content and is kept apart from the thread.
   - Each line also records how long the request took and a fingerprint of the instructions and tool list sent with it, so a change that restarted the cache shows up.
   - Debugging in Settings shows the recent requests and today's total, with the cached share as a percentage.
+  - A line also records the replayed reasoning items the model reported withholding, counted by reason, from the response's `input_transformations`. `prefix_mismatch` means input before the item changed since the model wrote it, which is also where the prompt cache broke. `turn_boundary` is left out, since older models drop earlier turns' reasoning that way every time. The field is missing when nothing was withheld.
+  - Each request sends `session-id` and `x-client-request-id` headers holding the prompt cache key, as pi does on the same endpoint, so OpenAI routes the thread's requests to the same cache.
 - Instructions the owner can edit
   - The system prompt has two parts. The editable part is a file, `instructions.md` in Application Support, and the default applies until the owner saves an edit.
   - A fixed part always follows it. It covers what the app needs to work correctly: how the destructive flag and the go-ahead work, the time at the start of each message, that earlier episodes exist and how to search them, and how skills are found, loaded, and written. The incognito window has a fixed part of its own instead, described under Incognito.
