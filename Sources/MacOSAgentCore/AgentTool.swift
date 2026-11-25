@@ -32,6 +32,8 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case deleteQuickAction
         /// A tool from an MCP server.
         case mcpToolCall
+        /// A change to the app's own setup, from `change_settings`.
+        case settingsChange
     }
 
     /// One change in a list of them, such as deleting one reminder.
@@ -65,6 +67,9 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case item(name: String, detail: String?)
         /// A call to a tool on an MCP server, with its arguments as indented JSON.
         case toolCall(server: String, tool: String, arguments: String)
+        /// A change to the app's setup in plain words, such as "Add the MCP server figma", and
+        /// lines about it, such as the command it runs and when it takes effect.
+        case setting(change: String, notes: [String])
     }
 
     public var id: String { callID }
@@ -111,6 +116,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .deleteTheme: "Delete this theme?"
         case .deleteQuickAction: "Delete this quick action?"
         case .mcpToolCall: "Call this tool?"
+        case .settingsChange: "Change this setting?"
         }
     }
 
@@ -128,6 +134,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .quitApplication: "Quit"
         case .deleteTheme, .deleteQuickAction: "Delete"
         case .mcpToolCall: "Call"
+        case .settingsChange: "Change"
         }
     }
 
@@ -139,6 +146,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .quitApplication: "Don’t Quit"
         case .deleteTheme, .deleteQuickAction: "Don’t Delete"
         case .mcpToolCall: "Don’t Call"
+        case .settingsChange: "Don’t Change"
         }
     }
 
@@ -162,6 +170,8 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
             return itemName.map { "\(waiting) to delete the quick action \($0)" } ?? waiting
         case .mcpToolCall:
             return toolCallName.map { "\(waiting) to call \($0)" } ?? waiting
+        case .settingsChange:
+            return "\(waiting) to change a setting"
         }
     }
 
@@ -172,6 +182,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .changes(let changes): changes.map(\.text).joined(separator: "\n")
         case .item(let name, let detail): detail.map { "\(name) (\($0))" } ?? name
         case .toolCall(let server, let tool, let arguments): "\(tool) on \(server)\n\(arguments)"
+        case .setting(let change, let notes): ([change] + notes).joined(separator: "\n")
         }
     }
 }

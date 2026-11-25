@@ -113,13 +113,15 @@ public struct ToolSummary: Sendable, Equatable, Identifiable {
     /// Where an MCP tool comes from, for its go-ahead control. Nil for a built-in tool.
     public var mcp: MCPToolReference?
 
-    public init(_ tool: any AgentTool) {
+    /// - Parameter source: Where Settings lists it, when not the tool's own source, such as the
+    ///   group a tool behind `use_tool` is kept in.
+    public init(_ tool: any AgentTool, source: ToolSource? = nil) {
         let definition = tool.definition
         name = definition.name
         description = definition.description
         parameters = ToolParameter.list(from: definition.parameters)
         goAhead = tool.goAhead
-        source = tool.source
+        self.source = source ?? tool.source
         schemaText = definition.parameters.prettyEncodedString()
         if let tool = tool as? MCPTool {
             mcp = MCPToolReference(server: tool.server, tool: tool.info.name, readOnly: tool.info.readOnly)
@@ -168,10 +170,12 @@ extension ToolRegistry {
     }
 
     /// The tools grouped by source. Groups come in the order their first tool appears, so the
-    /// built-in tools are first, and each group keeps the registry's order.
+    /// built-in tools are first, and each group keeps the registry's order. The tools kept in
+    /// groups behind `use_tool` follow, one source per group, since the model can call them too.
     public var groups: [ToolGroup] {
         var groups: [ToolGroup] = []
-        for tool in tools.map(ToolSummary.init) {
+        let inGroups = onDemandGroups.flatMap { group in group.tools.map { ToolSummary($0, source: group.source) } }
+        for tool in tools.map({ ToolSummary($0) }) + inGroups {
             if let index = groups.firstIndex(where: { $0.source == tool.source }) {
                 groups[index].tools.append(tool)
             } else {

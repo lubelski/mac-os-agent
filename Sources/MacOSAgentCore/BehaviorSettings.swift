@@ -65,6 +65,11 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
     /// Models served by Ollama on this Mac join the model pickers, and choosing one sends the
     /// agent's requests to it instead of OpenAI. See `Ollama`.
     case localModelsThroughOllama
+    /// `find_tools` and `use_tool` at the end of the built-in tools, with the settings group
+    /// behind them: `read_settings` and `change_settings`, for the app's MCP servers and
+    /// experiments. Read at launch, since it changes the tool list and the instructions. See
+    /// `OnDemandToolGroup` and `SettingsToolGroup`.
+    case settingsTools
 
     public var id: String { rawValue }
 
@@ -77,6 +82,31 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
         case .panelWithBarsAndInputPill: "Panel with bars and an input pill"
         case .scripts: "Scripts that call tools"
         case .localModelsThroughOllama: "Local models through Ollama"
+        case .settingsTools: "Settings the agent can change"
+        }
+    }
+
+    /// When a change to the switch takes effect, in a sentence. An experiment that changes the
+    /// tool list or the instructions is read at launch, since both stay fixed for a run.
+    public var whenAChangeTakesEffect: String {
+        switch self {
+        case .queueMessagesWhileRunning, .suggestionsInFieldAndFooter, .localModelsThroughOllama:
+            "Now."
+        case .mcpServers:
+            "The servers start or stop now. Their tools join or leave the tool list at the next launch."
+        case .panelWithBarsAndInputPill:
+            "The panel's look changes now. set_links and its rule in the instructions come or go at the next launch."
+        case .scripts, .settingsTools:
+            "At the next launch, since it changes the tool list."
+        }
+    }
+
+    /// True when some of what the switch does is read only at launch, so this run keeps what
+    /// the switch was then.
+    public var isReadAtLaunch: Bool {
+        switch self {
+        case .queueMessagesWhileRunning, .suggestionsInFieldAndFooter, .localModelsThroughOllama: false
+        case .mcpServers, .panelWithBarsAndInputPill, .scripts, .settingsTools: true
         }
     }
 
@@ -91,6 +121,7 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
         case .panelWithBarsAndInputPill: "ExperimentPanelWithBarsAndInputPill"
         case .scripts: "ExperimentScripts"
         case .localModelsThroughOllama: "ExperimentLocalModelsThroughOllama"
+        case .settingsTools: "ExperimentSettingsTools"
         }
     }
 

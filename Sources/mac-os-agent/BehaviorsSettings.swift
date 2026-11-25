@@ -48,6 +48,7 @@ struct ExperimentsSettingsView: View {
     @AppStorage(Experiment.mcpServers.key) private var mcpServers = false
     @AppStorage(Experiment.panelWithBarsAndInputPill.key) private var panelWithBars = false
     @AppStorage(Experiment.scripts.key) private var scripts = false
+    @AppStorage(Experiment.settingsTools.key) private var settingsTools = false
 
     var body: some View {
         Form {
@@ -71,6 +72,10 @@ struct ExperimentsSettingsView: View {
                 Toggle(isOn: $scripts) {
                     Text(Experiment.scripts.title)
                     Text("The agent gets run_script, which runs a short JavaScript script that calls its other tools, so it can chain them without writing a program in the shell. Each call asks for a go-ahead exactly when calling the tool directly would. Takes effect at the next launch.")
+                }
+                Toggle(isOn: $settingsTools) {
+                    Text(Experiment.settingsTools.title)
+                    Text("The agent can read and change MOA's own setup: its MCP servers and its experiments. Every change asks for your go-ahead first, and a server's environment values are never shown to it or taken from it. Its tools sit in a group behind find_tools and use_tool, so they cost the prompt a line. Takes effect at the next launch.")
                 }
             } header: {
                 Text("Features being tried. They may change or go.")
