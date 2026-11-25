@@ -43,9 +43,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if Experiment.localModelsThroughOllama.isOn() {
             Task { [localModels] in await localModels.refresh() }
         }
-        // A release build moves the sign-in from secrets.json to the Keychain here, once.
+        // A release build moves the sign-in from secrets.json to the Keychain here, once. A
+        // development build still keeps other secrets, such as a Brave Search key, in the file.
         let secretStorage = SecretStorage.forThisRun()
-        let authenticator = ChatGPTAuthenticator(secrets: secretStorage.store, installationID: installationID)
+        // A development build reaches its models through inference-gateway and has no sign-in,
+        // so it never creates an authenticator or reads the sign-in.
+        let modelAccess = ModelAccess.forThisRun()
+        let authenticator: ChatGPTAuthenticator? = modelAccess == .signIn
+            ? ChatGPTAuthenticator(secrets: secretStorage.store, installationID: installationID)
+            : nil
+        let providerAccess: OpenAIResponsesProvider.Access = authenticator.map { .signIn($0) }
+            ?? .gateway(InferenceGateway.baseURL)
         var loop: AgentLoop?
         var startupError: Error?
         var thread: ThreadStore?
@@ -93,7 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ).addingRunScript(Experiment.scripts.isOn())
         if let thread {
             let provider = OpenAIResponsesProvider(
-                authenticator: authenticator,
+                access: providerAccess,
                 model: { ModelSetting.effective() },
                 promptCacheKey: "mac-os-agent-\(installationID.uuidString.lowercased())")
             let prompt = prompt
@@ -111,14 +119,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // The incognito window has a provider of its own with its own cache key, so its
         // requests, with their own instructions and tools, are a separate cached prefix.
         let incognitoProvider = OpenAIResponsesProvider(
-            authenticator: authenticator,
+            access: providerAccess,
             model: { ModelSetting.effective() },
             promptCacheKey: "mac-os-agent-incognito-\(installationID.uuidString.lowercased())")
         let makeIncognitoLoop = { [prompt = self.prompt, usageLog = self.usageLog] in
             IncognitoWindowController.makeLoop(provider: incognitoProvider, prompt: prompt, usageLog: usageLog)
         }
 
-        session = AgentSession(loop: loop, authenticator: authenticator, problems: problems)
+        session = AgentSession(
+            loop: loop, authenticator: authenticator, signedIn: modelAccess == .gateway, problems: problems)
+        session.modelAccess = modelAccess
         session.onStatusChange = { [weak self] in self?.statusDidChange() }
         session.toolSources = tools.sourceTitles
         session.instantActions = .live(summaries: tools.summaries)
@@ -178,7 +188,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             log.notice("\(problem, privacy: .public)")
             session.problems.record("Quick actions", problem)
         }
-        log.notice("Sign-in kept in \(secretStorage.status.place, privacy: .public). \(secretStorage.status.explanation, privacy: .public)")
+        if modelAccess == .gateway {
+            log.notice("Models through inference-gateway at \(InferenceGateway.address(), privacy: .public). No sign-in in this build.")
+        } else {
+            log.notice("Sign-in kept in \(secretStorage.status.place, privacy: .public). \(secretStorage.status.explanation, privacy: .public)")
+        }
         if case .failed = secretStorage.status.migration {
             session.problems.record("Sign-in", secretStorage.status.explanation)
         }
@@ -188,8 +202,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updater = AppUpdater { [weak self] in self?.relaunchActivity() ?? .init() }
         settings = SettingsWindowController(
             session: session, prompt: prompt, usageLog: usageLog, tools: tools, history: thread, problems: session.problems,
-            signInStatus: { await authenticator.status() },
-            secretStorage: secretStorage.status,
+            signInStatus: { await authenticator?.status() },
+            secretStorage: secretStorage.status, modelAccess: modelAccess,
             summonTrigger: summonTrigger, mcp: mcp, webSearch: webSearch, updater: updater)
         log.notice("Hotkey \(self.summonTrigger.displayName ?? "none", privacy: .public) registered: \(self.summonTrigger.isRegistered, privacy: .public). Status item button: \(self.statusItem.button != nil, privacy: .public)")
 
@@ -298,7 +312,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item(incognito.isOpen ? "Show Incognito Window" : "Open Incognito Window", #selector(openIncognito)))
         menu.addItem(.separator())
 
-        switch session.signInState {
+        switch session.modelAccess == .gateway ? nil : session.signInState {
+        case nil:
+            menu.addItem(disabledItem("Models through inference-gateway"))
         case .signedIn:
             menu.addItem(disabledItem("Signed in with ChatGPT"))
             menu.addItem(item("Sign Out", #selector(signOut)))
