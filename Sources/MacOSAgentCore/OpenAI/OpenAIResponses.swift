@@ -127,7 +127,8 @@ public enum OpenAIResponses {
             cachedInputTokens: Int(usage["input_tokens_details"]?["cached_tokens"]?.numberValue ?? 0),
             outputTokens: Int(usage["output_tokens"]?.numberValue ?? 0),
             reasoningTokens: usage["output_tokens_details"]?["reasoning_tokens"]?.numberValue.map { Int($0) },
-            reasoningRemovals: reasoningRemovals(from: response?["input_transformations"]))
+            reasoningRemovals: reasoningRemovals(from: response?["input_transformations"]),
+            cacheWriteTokens: usage["input_tokens_details"]?["cache_write_tokens"]?.numberValue.map { Int($0) })
     }
 
     /// Counts the replayed reasoning items the response says were withheld, by reason. From

@@ -52,6 +52,10 @@ There is one Linear user, the owner, so the assignee cannot say who is doing the
 - A second lane on the same machine takes the next number. Add its label to the Worker group.
 - There is no convention yet for the owner himself or for an orchestrator. When one is needed, propose it to the owner and record it here.
 
+## Tests
+
+- `PromptCacheWireTests` checks the prompt cache in the bytes the provider sends, against `StubResponsesServer`, a stand-in for the Responses API with a fake cache. A change to the request shows as a diff in `Tests/MacOSAgentCoreTests/Fixtures/openai-wire-episode.json`. When the change is meant, run `MAC_OS_AGENT_UPDATE_GOLDEN=1 swift test --filter PromptCacheWireTests` and commit the file, and say in the pull request why the requests changed and what it does to the cache.
+
 ## Previews and captures
 
 - `scripts/bundle.sh` builds `build/mac-os-agent.app` without installing it.

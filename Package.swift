@@ -18,7 +18,7 @@ let package = Package(
             name: "mac-os-agent",
             dependencies: ["MacOSAgentCore", .product(name: "Sparkle", package: "Sparkle")]
         ),
-        .testTarget(name: "MacOSAgentCoreTests", dependencies: ["MacOSAgentCore"]),
+        .testTarget(name: "MacOSAgentCoreTests", dependencies: ["MacOSAgentCore"], exclude: ["Fixtures"]),
         .testTarget(name: "MacOSAgentAppTests", dependencies: ["mac-os-agent", "MacOSAgentCore"]),
     ]
 )
