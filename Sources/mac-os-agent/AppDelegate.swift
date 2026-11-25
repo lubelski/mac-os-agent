@@ -16,7 +16,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Read once at launch, with the panel with bars experiment's switch, which decides whether
     /// the tool list has `set_links` and the instructions say what the links row is for.
     private let prompt = AgentPrompt(memories: MemoryLibrary(), taskLinks: Experiment.panelWithBarsAndInputPill.isOn())
-    private let usageLog = UsageLog()
+    /// Each line says which Mac and build wrote it, read at the first request, after launch has
+    /// set the data folder.
+    private let usageLog = UsageLog(device: { UsageDevice.thisMac })
     /// Created at launch, so it checks on its own schedule. In a build with no feed it does nothing.
     private var updater: AppUpdater!
     /// Journals a change made to the memory folder outside the app, such as in an editor.

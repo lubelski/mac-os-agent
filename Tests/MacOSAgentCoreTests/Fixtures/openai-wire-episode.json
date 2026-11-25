@@ -1,0 +1,1263 @@
+[
+  {
+    "body" : {
+      "include" : [
+        "reasoning.encrypted_content"
+      ],
+      "input" : [
+        {
+          "content" : "<instructions: 5870 characters, 97b4e3>",
+          "role" : "developer"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:06 GMT] what's on my calendar",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        }
+      ],
+      "model" : "gpt-6.2-astra",
+      "prompt_cache_key" : "mac-os-agent-wire-test",
+      "reasoning" : {
+        "effort" : "low",
+        "summary" : "auto"
+      },
+      "store" : false,
+      "stream" : true,
+      "tools" : [
+        {
+          "description" : "Records calls.",
+          "name" : "record",
+          "parameters" : {
+            "type" : "object"
+          },
+          "strict" : true,
+          "type" : "function"
+        }
+      ]
+    },
+    "headers" : {
+      "Accept" : "text/event-stream",
+      "Content-Type" : "application/json",
+      "User-Agent" : "mac-os-agent",
+      "session-id" : "mac-os-agent-wire-test",
+      "x-client-request-id" : "mac-os-agent-wire-test"
+    }
+  },
+  {
+    "body" : {
+      "include" : [
+        "reasoning.encrypted_content"
+      ],
+      "input" : [
+        {
+          "content" : "<instructions: 5870 characters, 97b4e3>",
+          "role" : "developer"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:06 GMT] what's on my calendar",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "encrypted_content" : "encrypted-1",
+          "id" : "rs_1",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "arguments" : "{\"q\":\"calendar\"}",
+          "call_id" : "call_2",
+          "id" : "fc_2",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_2",
+          "output" : "done",
+          "type" : "function_call_output"
+        }
+      ],
+      "model" : "gpt-6.2-astra",
+      "prompt_cache_key" : "mac-os-agent-wire-test",
+      "reasoning" : {
+        "effort" : "low",
+        "summary" : "auto"
+      },
+      "store" : false,
+      "stream" : true,
+      "tools" : [
+        {
+          "description" : "Records calls.",
+          "name" : "record",
+          "parameters" : {
+            "type" : "object"
+          },
+          "strict" : true,
+          "type" : "function"
+        }
+      ]
+    },
+    "headers" : {
+      "Accept" : "text/event-stream",
+      "Content-Type" : "application/json",
+      "User-Agent" : "mac-os-agent",
+      "session-id" : "mac-os-agent-wire-test",
+      "x-client-request-id" : "mac-os-agent-wire-test"
+    }
+  },
+  {
+    "body" : {
+      "include" : [
+        "reasoning.encrypted_content"
+      ],
+      "input" : [
+        {
+          "content" : "<instructions: 5870 characters, 97b4e3>",
+          "role" : "developer"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:06 GMT] what's on my calendar",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "encrypted_content" : "encrypted-1",
+          "id" : "rs_1",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "arguments" : "{\"q\":\"calendar\"}",
+          "call_id" : "call_2",
+          "id" : "fc_2",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_2",
+          "output" : "done",
+          "type" : "function_call_output"
+        },
+        {
+          "encrypted_content" : "encrypted-3",
+          "id" : "rs_3",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Two meetings today.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_4",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:07 GMT] and tomorrow?",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        }
+      ],
+      "model" : "gpt-6.2-astra",
+      "prompt_cache_key" : "mac-os-agent-wire-test",
+      "reasoning" : {
+        "effort" : "low",
+        "summary" : "auto"
+      },
+      "store" : false,
+      "stream" : true,
+      "tools" : [
+        {
+          "description" : "Records calls.",
+          "name" : "record",
+          "parameters" : {
+            "type" : "object"
+          },
+          "strict" : true,
+          "type" : "function"
+        }
+      ]
+    },
+    "headers" : {
+      "Accept" : "text/event-stream",
+      "Content-Type" : "application/json",
+      "User-Agent" : "mac-os-agent",
+      "session-id" : "mac-os-agent-wire-test",
+      "x-client-request-id" : "mac-os-agent-wire-test"
+    }
+  },
+  {
+    "body" : {
+      "include" : [
+        "reasoning.encrypted_content"
+      ],
+      "input" : [
+        {
+          "content" : "<instructions: 5870 characters, 97b4e3>",
+          "role" : "developer"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:06 GMT] what's on my calendar",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "encrypted_content" : "encrypted-1",
+          "id" : "rs_1",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "arguments" : "{\"q\":\"calendar\"}",
+          "call_id" : "call_2",
+          "id" : "fc_2",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_2",
+          "output" : "done",
+          "type" : "function_call_output"
+        },
+        {
+          "encrypted_content" : "encrypted-3",
+          "id" : "rs_3",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Two meetings today.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_4",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:07 GMT] and tomorrow?",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Nothing tomorrow.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_5",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:08 GMT] <skill name=\"tidy\">Move old files to a dated folder.</skill>",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        }
+      ],
+      "model" : "gpt-6.2-astra",
+      "prompt_cache_key" : "mac-os-agent-wire-test",
+      "reasoning" : {
+        "effort" : "low",
+        "summary" : "auto"
+      },
+      "store" : false,
+      "stream" : true,
+      "tools" : [
+        {
+          "description" : "Records calls.",
+          "name" : "record",
+          "parameters" : {
+            "type" : "object"
+          },
+          "strict" : true,
+          "type" : "function"
+        }
+      ]
+    },
+    "headers" : {
+      "Accept" : "text/event-stream",
+      "Content-Type" : "application/json",
+      "User-Agent" : "mac-os-agent",
+      "session-id" : "mac-os-agent-wire-test",
+      "x-client-request-id" : "mac-os-agent-wire-test"
+    }
+  },
+  {
+    "body" : {
+      "include" : [
+        "reasoning.encrypted_content"
+      ],
+      "input" : [
+        {
+          "content" : "<instructions: 5870 characters, 97b4e3>",
+          "role" : "developer"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:06 GMT] what's on my calendar",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "encrypted_content" : "encrypted-1",
+          "id" : "rs_1",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "arguments" : "{\"q\":\"calendar\"}",
+          "call_id" : "call_2",
+          "id" : "fc_2",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_2",
+          "output" : "done",
+          "type" : "function_call_output"
+        },
+        {
+          "encrypted_content" : "encrypted-3",
+          "id" : "rs_3",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Two meetings today.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_4",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:07 GMT] and tomorrow?",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Nothing tomorrow.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_5",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:08 GMT] <skill name=\"tidy\">Move old files to a dated folder.</skill>",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "encrypted_content" : "encrypted-6",
+          "id" : "rs_6",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "arguments" : "{\"q\":\"downloads\"}",
+          "call_id" : "call_7",
+          "id" : "fc_7",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_7",
+          "output" : "done",
+          "type" : "function_call_output"
+        }
+      ],
+      "model" : "gpt-6.2-astra",
+      "prompt_cache_key" : "mac-os-agent-wire-test",
+      "reasoning" : {
+        "effort" : "low",
+        "summary" : "auto"
+      },
+      "store" : false,
+      "stream" : true,
+      "tools" : [
+        {
+          "description" : "Records calls.",
+          "name" : "record",
+          "parameters" : {
+            "type" : "object"
+          },
+          "strict" : true,
+          "type" : "function"
+        }
+      ]
+    },
+    "headers" : {
+      "Accept" : "text/event-stream",
+      "Content-Type" : "application/json",
+      "User-Agent" : "mac-os-agent",
+      "session-id" : "mac-os-agent-wire-test",
+      "x-client-request-id" : "mac-os-agent-wire-test"
+    }
+  },
+  {
+    "body" : {
+      "include" : [
+        "reasoning.encrypted_content"
+      ],
+      "input" : [
+        {
+          "content" : "<instructions: 5870 characters, 97b4e3>",
+          "role" : "developer"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:06 GMT] what's on my calendar",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "encrypted_content" : "encrypted-1",
+          "id" : "rs_1",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "arguments" : "{\"q\":\"calendar\"}",
+          "call_id" : "call_2",
+          "id" : "fc_2",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_2",
+          "output" : "done",
+          "type" : "function_call_output"
+        },
+        {
+          "encrypted_content" : "encrypted-3",
+          "id" : "rs_3",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Two meetings today.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_4",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:07 GMT] and tomorrow?",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Nothing tomorrow.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_5",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:08 GMT] <skill name=\"tidy\">Move old files to a dated folder.</skill>",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "encrypted_content" : "encrypted-6",
+          "id" : "rs_6",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "arguments" : "{\"q\":\"downloads\"}",
+          "call_id" : "call_7",
+          "id" : "fc_7",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_7",
+          "output" : "done",
+          "type" : "function_call_output"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Tidied 4 files.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_8",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:09 GMT] thanks",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        }
+      ],
+      "model" : "gpt-6.2-astra",
+      "prompt_cache_key" : "mac-os-agent-wire-test",
+      "reasoning" : {
+        "effort" : "low",
+        "summary" : "auto"
+      },
+      "store" : false,
+      "stream" : true,
+      "tools" : [
+        {
+          "description" : "Records calls.",
+          "name" : "record",
+          "parameters" : {
+            "type" : "object"
+          },
+          "strict" : true,
+          "type" : "function"
+        }
+      ]
+    },
+    "headers" : {
+      "Accept" : "text/event-stream",
+      "Content-Type" : "application/json",
+      "User-Agent" : "mac-os-agent",
+      "session-id" : "mac-os-agent-wire-test",
+      "x-client-request-id" : "mac-os-agent-wire-test"
+    }
+  },
+  {
+    "body" : {
+      "include" : [
+        "reasoning.encrypted_content"
+      ],
+      "input" : [
+        {
+          "content" : "<instructions: 5870 characters, 97b4e3>",
+          "role" : "developer"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:06 GMT] what's on my calendar",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "arguments" : "{\"q\":\"calendar\"}",
+          "call_id" : "call_2",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_2",
+          "output" : "done",
+          "type" : "function_call_output"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Two meetings today.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_4",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:07 GMT] and tomorrow?",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Nothing tomorrow.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_5",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:08 GMT] <skill name=\"tidy\">Move old files to a dated folder.</skill>",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "arguments" : "{\"q\":\"downloads\"}",
+          "call_id" : "call_7",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_7",
+          "output" : "done",
+          "type" : "function_call_output"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Tidied 4 files.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_8",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:09 GMT] thanks",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "You're welcome.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_9",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:10 GMT] are you there",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        }
+      ],
+      "model" : "gpt-6.2-sol",
+      "prompt_cache_key" : "mac-os-agent-wire-test",
+      "reasoning" : {
+        "effort" : "low",
+        "summary" : "auto"
+      },
+      "store" : false,
+      "stream" : true,
+      "tools" : [
+        {
+          "description" : "Records calls.",
+          "name" : "record",
+          "parameters" : {
+            "type" : "object"
+          },
+          "strict" : true,
+          "type" : "function"
+        }
+      ]
+    },
+    "headers" : {
+      "Accept" : "text/event-stream",
+      "Content-Type" : "application/json",
+      "User-Agent" : "mac-os-agent",
+      "session-id" : "mac-os-agent-wire-test",
+      "x-client-request-id" : "mac-os-agent-wire-test"
+    }
+  },
+  {
+    "body" : {
+      "include" : [
+        "reasoning.encrypted_content"
+      ],
+      "input" : [
+        {
+          "content" : "<instructions: 5870 characters, 97b4e3>",
+          "role" : "developer"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:06 GMT] what's on my calendar",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "arguments" : "{\"q\":\"calendar\"}",
+          "call_id" : "call_2",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_2",
+          "output" : "done",
+          "type" : "function_call_output"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Two meetings today.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_4",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:07 GMT] and tomorrow?",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Nothing tomorrow.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_5",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:08 GMT] <skill name=\"tidy\">Move old files to a dated folder.</skill>",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "arguments" : "{\"q\":\"downloads\"}",
+          "call_id" : "call_7",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_7",
+          "output" : "done",
+          "type" : "function_call_output"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Tidied 4 files.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_8",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:09 GMT] thanks",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "You're welcome.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_9",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:10 GMT] are you there",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "encrypted_content" : "encrypted-10",
+          "id" : "rs_10",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Still here.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_11",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:11 GMT] ok",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        }
+      ],
+      "model" : "gpt-6.2-sol",
+      "prompt_cache_key" : "mac-os-agent-wire-test",
+      "reasoning" : {
+        "effort" : "low",
+        "summary" : "auto"
+      },
+      "store" : false,
+      "stream" : true,
+      "tools" : [
+        {
+          "description" : "Records calls.",
+          "name" : "record",
+          "parameters" : {
+            "type" : "object"
+          },
+          "strict" : true,
+          "type" : "function"
+        }
+      ]
+    },
+    "headers" : {
+      "Accept" : "text/event-stream",
+      "Content-Type" : "application/json",
+      "User-Agent" : "mac-os-agent",
+      "session-id" : "mac-os-agent-wire-test",
+      "x-client-request-id" : "mac-os-agent-wire-test"
+    }
+  },
+  {
+    "body" : {
+      "include" : [
+        "reasoning.encrypted_content"
+      ],
+      "input" : [
+        {
+          "content" : "<instructions: 5870 characters, 97b4e3>",
+          "role" : "developer"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:06 GMT] what's on my calendar",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "arguments" : "{\"q\":\"calendar\"}",
+          "call_id" : "call_2",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_2",
+          "output" : "done",
+          "type" : "function_call_output"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Two meetings today.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_4",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:07 GMT] and tomorrow?",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Nothing tomorrow.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_5",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:08 GMT] <skill name=\"tidy\">Move old files to a dated folder.</skill>",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "arguments" : "{\"q\":\"downloads\"}",
+          "call_id" : "call_7",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_7",
+          "output" : "done",
+          "type" : "function_call_output"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Tidied 4 files.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_8",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:09 GMT] thanks",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "You're welcome.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_9",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:10 GMT] are you there",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "encrypted_content" : "encrypted-10",
+          "id" : "rs_10",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Still here.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_11",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:11 GMT] ok",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "Done.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_12",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:12 GMT] bye",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        }
+      ],
+      "model" : "gpt-6.2-sol",
+      "prompt_cache_key" : "mac-os-agent-wire-test",
+      "reasoning" : {
+        "effort" : "low",
+        "summary" : "auto"
+      },
+      "store" : false,
+      "stream" : true,
+      "tools" : [
+        {
+          "description" : "Records calls.",
+          "name" : "record",
+          "parameters" : {
+            "type" : "object"
+          },
+          "strict" : true,
+          "type" : "function"
+        }
+      ]
+    },
+    "headers" : {
+      "Accept" : "text/event-stream",
+      "Content-Type" : "application/json",
+      "User-Agent" : "mac-os-agent",
+      "session-id" : "mac-os-agent-wire-test",
+      "x-client-request-id" : "mac-os-agent-wire-test"
+    }
+  }
+]

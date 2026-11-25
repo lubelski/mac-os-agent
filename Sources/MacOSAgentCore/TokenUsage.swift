@@ -15,16 +15,22 @@ public struct TokenUsage: Sendable, Equatable, Codable {
     /// gave, such as `prefix_mismatch` when input before the item changed since it was written.
     /// Nil when none were withheld. A prefix mismatch also means the prompt cache broke there.
     public var reasoningRemovals: [String: Int]?
+    /// The input tokens written to the prompt cache by this request, when the provider reports
+    /// them. They are inside `inputTokens` and not in `cachedInputTokens`. From GPT-5.6 on, a
+    /// request writes the prefix up to its latest user message or tool result, so a request
+    /// that reads little and writes little means the cache is not being kept at all.
+    public var cacheWriteTokens: Int?
 
     public init(
         inputTokens: Int, cachedInputTokens: Int, outputTokens: Int, reasoningTokens: Int? = nil,
-        reasoningRemovals: [String: Int]? = nil
+        reasoningRemovals: [String: Int]? = nil, cacheWriteTokens: Int? = nil
     ) {
         self.inputTokens = inputTokens
         self.cachedInputTokens = cachedInputTokens
         self.outputTokens = outputTokens
         self.reasoningTokens = reasoningTokens
         self.reasoningRemovals = reasoningRemovals
+        self.cacheWriteTokens = cacheWriteTokens
     }
 
     /// The share of input tokens that came from the cache, from 0 to 1.
@@ -51,6 +57,20 @@ public struct UsageRecord: Sendable, Equatable, Codable {
     /// Replayed reasoning items the provider withheld, by reason. See
     /// `TokenUsage.reasoningRemovals`. Missing when there were none.
     public var removed: [String: Int]?
+    /// Input tokens written to the prompt cache. See `TokenUsage.cacheWriteTokens`.
+    public var written: Int?
+    /// Short digests of what the request sent: the tool list, then each input item. See
+    /// `RequestDigest`. Missing from lines written before it was recorded.
+    public var items: [String]?
+    /// The index in `items` where this request stopped starting with the one before it in the
+    /// same conversation and model: 0 is the tool list, 1 the instructions, and so on. Missing
+    /// when the request before it is a prefix of this one, or when there is none to compare
+    /// with, such as the first request after a launch or a model change.
+    public var diverged: Int?
+    /// Which Mac and build wrote the line. See `UsageDevice`. Missing from older lines.
+    public var device: String?
+    public var machine: String?
+    public var build: String?
 
     public init(
         date: Date, provider: String, model: String, usage: TokenUsage, seconds: Double? = nil, prompt: String? = nil
@@ -65,12 +85,13 @@ public struct UsageRecord: Sendable, Equatable, Codable {
         self.seconds = seconds
         self.prompt = prompt
         removed = usage.reasoningRemovals
+        written = usage.cacheWriteTokens
     }
 
     public var usage: TokenUsage {
         TokenUsage(
             inputTokens: input, cachedInputTokens: cached, outputTokens: output, reasoningTokens: reasoning,
-            reasoningRemovals: removed)
+            reasoningRemovals: removed, cacheWriteTokens: written)
     }
 }
 
@@ -101,12 +122,23 @@ public final class UsageLog: Sendable {
     public let fileURL: URL
     private let lock = Mutex(())
 
-    public init(fileURL: URL = AgentPaths.usageLogFile) {
+    private let device: @Sendable () -> UsageDevice?
+
+    /// - Parameter device: Stamped on each line that has none. Read when a line is written,
+    ///   not when the log is made, so it can read the data folder after launch has set it.
+    public init(fileURL: URL = AgentPaths.usageLogFile, device: @escaping @Sendable () -> UsageDevice? = { nil }) {
         self.fileURL = fileURL
+        self.device = device
     }
 
     /// Adds one line. A failure to write is ignored, since the log must never stop a task.
     public func append(_ record: UsageRecord) {
+        var record = record
+        if record.device == nil, let device = device() {
+            record.device = device.device
+            record.machine = device.machine
+            record.build = device.build
+        }
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
