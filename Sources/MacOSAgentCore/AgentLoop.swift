@@ -60,6 +60,10 @@ public final class AgentLoop: Sendable {
     /// The model and request digests of the last request this loop sent, to say where the next
     /// one stopped starting with it. Kept in memory only, so a launch starts with none.
     private let lastSent = Mutex<(model: String, items: [String])?>(nil)
+    /// The instructions a new episode's first request would send, read without taking the
+    /// episode's memory snapshot, so warming never changes what the real request sends. Nil
+    /// leaves a timed-out episode unwarmed.
+    public let instructionsForNewEpisode: (@Sendable () async -> String)?
 
     public convenience init(
         provider: any ModelProvider,
@@ -87,8 +91,10 @@ public final class AgentLoop: Sendable {
         maximumModelReplies: Int = 40,
         usageLog: UsageLog? = nil,
         episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) },
-        webSearch: Bool = false
+        webSearch: Bool = false,
+        instructionsForNewEpisode: (@Sendable () async -> String)? = nil
     ) {
+        self.instructionsForNewEpisode = instructionsForNewEpisode
         self.provider = provider
         self.thread = thread
         self.tools = tools
@@ -106,6 +112,27 @@ public final class AgentLoop: Sendable {
         self.init(
             provider: provider, thread: thread, tools: tools, instructions: { instructions },
             maximumModelReplies: maximumModelReplies)
+    }
+
+    /// Asks the provider to get ready for the owner's next message, with the request that
+    /// message would start with: the current episode, or the instructions alone when the next
+    /// message starts a new one. Nothing is written to the thread. The provider decides whether
+    /// it does anything; only a local model does.
+    public func warm(now: Date = Date()) async {
+        let episode = await thread.currentEpisode
+        let startsNew = episode.map { $0.hasActivity && $0.hasTimedOut(now: now, timeout: episodeTimeout()) } ?? true
+        let instructions: String
+        let entries: [ThreadEntry]
+        if startsNew {
+            guard let instructionsForNewEpisode else { return }
+            instructions = await instructionsForNewEpisode()
+            entries = []
+        } else {
+            instructions = await self.instructions(episode?.id)
+            entries = await thread.contents.currentEpisodeEntries
+        }
+        await provider.prepare(ModelRequest(
+            instructions: instructions, entries: entries, tools: tools.map(\.definition), webSearch: webSearch))
     }
 
     /// Handles one instruction from the person. Returns when the model has finished, and

@@ -1,17 +1,22 @@
 import Foundation
+import Synchronization
 
 /// The OpenAI provider: the Responses API at api.openai.com, streamed, authorized with the
-/// access token from Sign in with ChatGPT.
+/// access token from Sign in with ChatGPT. A local model goes to Ollama on this Mac instead,
+/// which takes the same requests. See `Ollama`.
 public struct OpenAIResponsesProvider: ModelProvider {
     public static let baseURL = URL(string: "https://api.openai.com/v1")!
 
     public enum ProviderError: Error, LocalizedError {
         case http(status: Int, body: String)
+        case ollamaNotRunning(URL)
 
         public var errorDescription: String? {
             switch self {
             case .http(let status, let body):
                 OpenAIResponsesProvider.explain("OpenAI API error (\(status)): \(body)")
+            case .ollamaNotRunning(let url):
+                "Ollama is not running at \(url.host() ?? "localhost"):\(url.port ?? 11434). Open Ollama, or choose an OpenAI model."
             }
         }
     }
@@ -22,6 +27,22 @@ public struct OpenAIResponsesProvider: ModelProvider {
     private let promptCacheKey: String
     private let session: URLSession
     private let timeZone: TimeZone
+    private let ollamaBaseURL: URL
+    /// The last prefix `prepare` warmed, shared by copies of the provider.
+    private let lastWarmed = LastWarmed()
+
+    final class LastWarmed: Sendable {
+        private let value = Mutex<(digest: String, date: Date)?>(nil)
+
+        /// True, and remembered, when this digest was not warmed in the last minute.
+        func claim(_ digest: String, at now: Date) -> Bool {
+            value.withLock { last in
+                if let last, last.digest == digest, now.timeIntervalSince(last.date) < 60 { return false }
+                last = (digest, now)
+                return true
+            }
+        }
+    }
 
     /// - Parameters:
     ///   - model: Read at the start of each reply, so a change in settings applies to the next one.
@@ -32,7 +53,8 @@ public struct OpenAIResponsesProvider: ModelProvider {
         reasoningEffort: String = OpenAIModel.defaultReasoningEffort,
         promptCacheKey: String,
         session: URLSession = .shared,
-        timeZone: TimeZone = .current
+        timeZone: TimeZone = .current,
+        ollamaBaseURL: URL = Ollama.baseURL
     ) {
         self.authenticator = authenticator
         self.model = model
@@ -40,6 +62,7 @@ public struct OpenAIResponsesProvider: ModelProvider {
         self.promptCacheKey = promptCacheKey
         self.session = session
         self.timeZone = timeZone
+        self.ollamaBaseURL = ollamaBaseURL
     }
 
     public func streamReply(to request: ModelRequest) -> AsyncThrowingStream<ModelStreamEvent, Error> {
@@ -56,49 +79,35 @@ public struct OpenAIResponsesProvider: ModelProvider {
         return stream
     }
 
-    private func run(_ request: ModelRequest, continuation: AsyncThrowingStream<ModelStreamEvent, Error>.Continuation) async throws {
-        let model = model()
-        let body = OpenAIResponses.body(
-            for: request, model: model, reasoningEffort: reasoningEffort, promptCacheKey: promptCacheKey,
-            timeZone: timeZone)
-        continuation.yield(.requestSent(items: RequestDigest.make(tools: body["tools"], input: body["input"]?.arrayValue ?? [])))
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        let bodyData = try encoder.encode(body)
+    /// Where a request goes and as what: OpenAI with the ChatGPT sign-in, or Ollama on this Mac
+    /// for a model setting such as `ollama/inkling-2-mini`, with no sign-in.
+    struct Route {
+        var url: URL
+        var model: String
+        var provider: String
+        var signsIn: Bool
+    }
 
-        var bytes: URLSession.AsyncBytes
-        var attempt = 0
-        while true {
-            attempt += 1
-            var urlRequest = URLRequest(url: Self.baseURL.appending(path: "responses"))
-            urlRequest.httpMethod = "POST"
-            urlRequest.httpBody = bodyData
-            urlRequest.timeoutInterval = 300
-            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-            urlRequest.setValue("mac-os-agent", forHTTPHeaderField: "User-Agent")
-            urlRequest.setValue("Bearer \(try await authenticator.accessToken())", forHTTPHeaderField: "Authorization")
-            for (field, value) in Self.sessionHeaders(promptCacheKey: promptCacheKey) {
-                urlRequest.setValue(value, forHTTPHeaderField: field)
-            }
-
-            let (responseBytes, response) = try await session.bytes(for: urlRequest)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            if (200..<300).contains(status) {
-                bytes = responseBytes
-                break
-            }
-            var errorBody = Data()
-            for try await byte in responseBytes where errorBody.count < 16_384 { errorBody.append(byte) }
-            if status == 401, attempt == 1 {
-                // The token may have been revoked or expired early. Refresh once and retry.
-                await authenticator.discardAccessToken()
-                continue
-            }
-            throw ProviderError.http(status: status, body: String(decoding: errorBody, as: UTF8.self))
+    func route(for modelID: String) -> Route {
+        if let name = Ollama.modelName(fromID: modelID) {
+            return Route(
+                url: ollamaBaseURL.appending(path: "v1/responses"), model: name, provider: Ollama.providerName,
+                signsIn: false)
         }
+        return Route(
+            url: Self.baseURL.appending(path: "responses"), model: modelID, provider: OpenAIResponses.providerName,
+            signsIn: true)
+    }
 
-        var parser = OpenAIResponses.StreamParser(model: model)
+    private func run(_ request: ModelRequest, continuation: AsyncThrowingStream<ModelStreamEvent, Error>.Continuation) async throws {
+        let route = route(for: model())
+        let body = OpenAIResponses.body(
+            for: request, model: route.model, reasoningEffort: reasoningEffort, promptCacheKey: promptCacheKey,
+            timeZone: timeZone, provider: route.provider)
+        continuation.yield(.requestSent(items: RequestDigest.make(tools: body["tools"], input: body["input"]?.arrayValue ?? [])))
+        let bytes = try await send(body, to: route, accept: "text/event-stream")
+
+        var parser = OpenAIResponses.StreamParser(model: route.model, provider: route.provider)
         for try await line in bytes.lines {
             guard line.hasPrefix("data:") else { continue }
             let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
@@ -110,6 +119,70 @@ public struct OpenAIResponsesProvider: ModelProvider {
         }
         try Task.checkCancellation()
         try parser.finish()
+    }
+
+    /// Reads the request's prefix into a local model's cache ahead of the owner's message, so
+    /// the first reply of an episode does not wait for it. A cold read of the instructions and
+    /// tools takes Ollama about 40 seconds on the owner's Mac, and a warm one about 3. It asks
+    /// for one token and keeps nothing of the reply. OpenAI models are left alone: there a
+    /// refresh costs plan usage, and their cache already lasts 30 minutes.
+    ///
+    /// The same prefix is warmed at most once a minute, so opening the panel again and again
+    /// sends nothing new.
+    public func prepare(_ request: ModelRequest) async {
+        let route = route(for: model())
+        guard route.provider == Ollama.providerName else { return }
+        var body = OpenAIResponses.body(
+            for: request, model: route.model, reasoningEffort: reasoningEffort, promptCacheKey: promptCacheKey,
+            timeZone: timeZone, provider: route.provider)
+        let digest = RequestDigest.digest(body)
+        guard lastWarmed.claim(digest, at: Date()), case .object(var object) = body else { return }
+        object["stream"] = false
+        object["max_output_tokens"] = 1
+        body = .object(object)
+        guard let bytes = try? await send(body, to: route, accept: "application/json") else { return }
+        do { for try await _ in bytes {} } catch {}
+    }
+
+    private func send(_ body: JSONValue, to route: Route, accept: String) async throws -> URLSession.AsyncBytes {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let bodyData = try encoder.encode(body)
+        var attempt = 0
+        while true {
+            attempt += 1
+            var urlRequest = URLRequest(url: route.url)
+            urlRequest.httpMethod = "POST"
+            urlRequest.httpBody = bodyData
+            urlRequest.timeoutInterval = 300
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.setValue(accept, forHTTPHeaderField: "Accept")
+            urlRequest.setValue("mac-os-agent", forHTTPHeaderField: "User-Agent")
+            if route.signsIn {
+                urlRequest.setValue("Bearer \(try await authenticator.accessToken())", forHTTPHeaderField: "Authorization")
+                for (field, value) in Self.sessionHeaders(promptCacheKey: promptCacheKey) {
+                    urlRequest.setValue(value, forHTTPHeaderField: field)
+                }
+            }
+
+            let responseBytes: URLSession.AsyncBytes
+            let response: URLResponse
+            do {
+                (responseBytes, response) = try await session.bytes(for: urlRequest)
+            } catch let error as URLError where !route.signsIn && error.code == .cannotConnectToHost {
+                throw ProviderError.ollamaNotRunning(route.url)
+            }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if (200..<300).contains(status) { return responseBytes }
+            var errorBody = Data()
+            for try await byte in responseBytes where errorBody.count < 16_384 { errorBody.append(byte) }
+            if status == 401, attempt == 1, route.signsIn {
+                // The token may have been revoked or expired early. Refresh once and retry.
+                await authenticator.discardAccessToken()
+                continue
+            }
+            throw ProviderError.http(status: status, body: String(decoding: errorBody, as: UTF8.self))
+        }
     }
 
     /// Headers that tie every request in the thread to one session, so OpenAI routes them to the

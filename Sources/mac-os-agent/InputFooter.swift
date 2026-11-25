@@ -104,7 +104,9 @@ struct InputFooterContent: Equatable {
 
     /// The model's name as the menu bar menu shows it, or its id for one the app does not list.
     static func modelName(id: String) -> String {
-        OpenAIModel.all.first { $0.id == id }?.name ?? id
+        let local = Ollama.modelName(fromID: id) != nil
+        return ModelSetting.displayName(
+            id: local && !Experiment.localModelsThroughOllama.isOn() ? OpenAIModel.defaultID : id)
     }
 
     var spoken: String {

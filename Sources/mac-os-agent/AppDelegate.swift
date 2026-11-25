@@ -19,6 +19,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Each line says which Mac and build wrote it, read at the first request, after launch has
     /// set the data folder.
     private let usageLog = UsageLog(device: { UsageDevice.thisMac })
+    /// The models Ollama serves on this Mac, read at launch and each time the menu opens, with
+    /// the local models experiment on.
+    private let localModels = LocalModelList()
     /// Created at launch, so it checks on its own schedule. In a build with no feed it does nothing.
     private var updater: AppUpdater!
     /// Journals a change made to the memory folder outside the app, such as in an editor.
@@ -33,6 +36,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Before anything reads the quick actions folder, which used to be `actions/`.
         let quickActionsMove = QuickActionLibrary.moveFolderFromOldName()
         let installationID = AgentPaths.installationID()
+        if Experiment.localModelsThroughOllama.isOn() {
+            Task { [localModels] in await localModels.refresh() }
+        }
         // A release build moves the sign-in from secrets.json to the Keychain here, once.
         let secretStorage = SecretStorage.forThisRun()
         let authenticator = ChatGPTAuthenticator(secrets: secretStorage.store, installationID: installationID)
@@ -75,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let thread {
             let provider = OpenAIResponsesProvider(
                 authenticator: authenticator,
-                model: { ModelSetting.current() },
+                model: { ModelSetting.effective() },
                 promptCacheKey: "mac-os-agent-\(installationID.uuidString.lowercased())")
             let prompt = prompt
             let usageLog = usageLog
@@ -86,13 +92,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 instructionsForEpisode: { episodeID in prompt.current(episodeID: episodeID) },
                 usageLog: usageLog,
                 episodeTimeout: timeout,
-                webSearch: webSearch.launched.usesHostedSearch)
+                webSearch: webSearch.launched.usesHostedSearch,
+                instructionsForNewEpisode: { prompt.forNewEpisode() })
         }
         // The incognito window has a provider of its own with its own cache key, so its
         // requests, with their own instructions and tools, are a separate cached prefix.
         let incognitoProvider = OpenAIResponsesProvider(
             authenticator: authenticator,
-            model: { ModelSetting.current() },
+            model: { ModelSetting.effective() },
             promptCacheKey: "mac-os-agent-incognito-\(installationID.uuidString.lowercased())")
         let makeIncognitoLoop = { [prompt = self.prompt, usageLog = self.usageLog] in
             IncognitoWindowController.makeLoop(provider: incognitoProvider, prompt: prompt, usageLog: usageLog)
@@ -249,6 +256,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        // For the next time it opens. The menu draws with the list as last read.
+        if Experiment.localModelsThroughOllama.isOn() {
+            Task { [localModels] in await localModels.refresh() }
+        }
         menu.removeAllItems()
 
         // The panel's presented state, not whether its window is on screen, so during a slide
@@ -287,14 +298,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let modelItem = NSMenuItem(title: "Model", action: nil, keyEquivalent: "")
         let models = NSMenu()
-        let current = ModelSetting.current()
+        let current = ModelSetting.effective()
         for model in OpenAIModel.all {
             let entry = item(model.name, #selector(chooseModel(_:)))
             entry.representedObject = model.id
             entry.state = model.id == current ? .on : .off
             models.addItem(entry)
         }
-        if !OpenAIModel.all.contains(where: { $0.id == current }) {
+        var listed = OpenAIModel.all.map(\.id)
+        if Experiment.localModelsThroughOllama.isOn() {
+            models.addItem(.separator())
+            let local = localModels.models
+            if local.isEmpty { models.addItem(disabledItem("No models in Ollama")) }
+            for name in local {
+                let id = Ollama.modelID(name)
+                let entry = item(Ollama.displayName(name), #selector(chooseModel(_:)))
+                entry.representedObject = id
+                entry.state = id == current ? .on : .off
+                models.addItem(entry)
+                listed.append(id)
+            }
+        }
+        if !listed.contains(current) {
             let custom = disabledItem(current)
             custom.state = .on
             models.addItem(custom)
