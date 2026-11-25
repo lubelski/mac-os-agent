@@ -383,7 +383,25 @@ final class SummonPanel: NSPanel {
     func showForPreview() {
         floatsWithoutFocus = true
         updateLayering()
-        present(makeKey: false)
+        if PreviewRender.isRendering {
+            prepareForRender()
+        } else {
+            present(makeKey: false)
+        }
+    }
+
+    /// Everything `present` does to place and lay out the panel, without ordering it in, so a
+    /// render draws it as it would look and nothing appears on screen. See `PreviewRender`.
+    private func prepareForRender() {
+        if placement.preset.slideOverEdge != nil {
+            applyPreset()
+        } else {
+            placeOnActiveScreen()
+        }
+        isPresented = true
+        if session.panelWithBars { session.suggestionListFollowsDraft() }
+        updateFooterGrowth()
+        PreviewRender.render(self)
     }
 
     private func present(makeKey: Bool) {

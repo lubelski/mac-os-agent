@@ -142,8 +142,11 @@ struct SettingsRootView: View {
         // A plain row rather than a split view, so the sidebar keeps its width: it cannot be
         // dragged or collapsed, and there is no sidebar button.
         HStack(spacing: 0) {
+            // A render draws offscreen, where the sidebar's selection material comes out as a
+            // solid block over the row. It selects nothing there and draws the highlight itself,
+            // as meeting-agenda-clock does. See `PreviewRender`.
             List(selection: Binding<SettingsSection?>(
-                get: { navigation.section },
+                get: { PreviewRender.isRendering ? nil : navigation.section },
                 set: { if let section = $0 { navigation.section = section } }
             )) {
                 ForEach(navigation.sections) { section in
@@ -156,6 +159,12 @@ struct SettingsRootView: View {
                         Image(systemName: section.symbolName)
                     }
                     .tag(section)
+                    .listRowBackground(
+                        PreviewRender.isRendering && navigation.section == section
+                            ? RoundedRectangle(cornerRadius: 8)
+                                .fill(Color(nsColor: .unemphasizedSelectedContentBackgroundColor))
+                                .padding(.horizontal, 10)
+                            : nil)
                 }
             }
             .listStyle(.sidebar)
@@ -423,8 +432,15 @@ enum SettingsPreview {
             if section == .mcpServers { controller.models.mcpServers.selection = item }
             controller.models.debugging.scrollTarget = item
         }
-        controller.show(section, takeFocus: false)
         controller.models.debugging.reload()
+        if PreviewRender.isRendering, let window = controller.window {
+            // Drawn offscreen, never ordered in. See `PreviewRender`.
+            controller.models.navigation.section = section
+            window.center()
+            PreviewRender.render(window)
+            return
+        }
+        controller.show(section, takeFocus: false)
         // Quits on its own, so a failed capture script cannot leave it on screen.
         Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { _ in exit(0) }
     }

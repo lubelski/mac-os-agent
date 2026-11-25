@@ -3,7 +3,8 @@ import MacOSAgentCore
 
 MainActor.assumeIsolated {
     let app = NSApplication.shared
-    app.setActivationPolicy(.accessory)
+    // A render never shows anything: no Dock icon, no menu bar, no activation.
+    app.setActivationPolicy(PreviewRender.isRendering ? .prohibited : .accessory)
 
     MainMenu.install()
     let arguments = CommandLine.arguments
@@ -70,6 +71,13 @@ MainActor.assumeIsolated {
             app.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         }
         let name = arguments[index + 1]
+        // A render draws one window, so states made of two windows are captured instead.
+        if PreviewRender.isRendering, name == "incognito-beside" || PanelPreview.inspectedCall(named: name) != nil
+            || arguments.contains("--backdrop") || arguments.contains("--preview-slide-cycle")
+        {
+            FileHandle.standardError.write(Data("render: \(name) needs two windows or motion. Use scripts/capture-panel-previews.sh.\n".utf8))
+            exit(2)
+        }
         let panel = SummonPanel(session: session, role: PanelPreview.role(named: name), remembersFrame: false)
         // `incognito-beside` shows the main panel as well, with the incognito window placed
         // beside it the way it opens.
