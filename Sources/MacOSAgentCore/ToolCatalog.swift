@@ -159,6 +159,53 @@ public struct ToolGroup: Sendable, Equatable, Identifiable {
     public var id: String { source.id }
     public var source: ToolSource
     public var tools: [ToolSummary]
+
+    /// The number of tools, for a list row: "1 tool" or "7 tools".
+    public var countLabel: String {
+        tools.count == 1 ? "1 tool" : "\(tools.count) tools"
+    }
+
+    /// Whether any of the group's tools can ask for a go-ahead. An MCP tool's go-ahead can change
+    /// while the app runs, so the caller can pass the current one.
+    public func asksForGoAhead(_ goAhead: (ToolSummary) -> ToolGoAhead = \.goAhead) -> Bool {
+        tools.contains { goAhead($0) != .never }
+    }
+}
+
+extension ToolSource {
+    /// The SF Symbol for the source's group in Settings.
+    public var symbolName: String {
+        if isMCPServer { return "server.rack" }
+        switch id {
+        case ToolSource.builtIn.id: return "terminal"
+        case ToolSource.system.id: return "desktopcomputer"
+        case ToolSource.reminders.id: return "checklist"
+        case ToolSource.calendar.id: return "calendar"
+        case ToolSource.memory.id: return "brain"
+        case ToolSource.quickActions.id: return "bolt"
+        case ToolSource.appearance.id: return "paintpalette"
+        case ToolSource.webSearch.id: return "globe"
+        case ToolSource.taskLinks.id: return "link"
+        default: return "wrench.and.screwdriver"
+        }
+    }
+
+    /// One line under the group's title in Settings, saying what its tools are for.
+    public var summary: String {
+        if isMCPServer { return "Tools from the \(title) MCP server" }
+        switch id {
+        case ToolSource.builtIn.id: return "Shell commands, apps, history, and skills"
+        case ToolSource.system.id: return "Files, the clipboard, quitting apps, and the desktop picture"
+        case ToolSource.reminders.id: return "Read and change reminders"
+        case ToolSource.calendar.id: return "Read and change calendar events"
+        case ToolSource.memory.id: return "What the agent remembers between conversations"
+        case ToolSource.quickActions.id: return "Read and save quick actions"
+        case ToolSource.appearance.id: return "The panel's themes"
+        case ToolSource.webSearch.id: return "Search the web"
+        case ToolSource.taskLinks.id: return "Links beside a running task"
+        default: return title
+        }
+    }
 }
 
 extension ToolRegistry {
