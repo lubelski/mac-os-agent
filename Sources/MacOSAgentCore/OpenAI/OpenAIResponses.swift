@@ -126,7 +126,23 @@ public enum OpenAIResponses {
             inputTokens: Int(input),
             cachedInputTokens: Int(usage["input_tokens_details"]?["cached_tokens"]?.numberValue ?? 0),
             outputTokens: Int(usage["output_tokens"]?.numberValue ?? 0),
-            reasoningTokens: usage["output_tokens_details"]?["reasoning_tokens"]?.numberValue.map { Int($0) })
+            reasoningTokens: usage["output_tokens_details"]?["reasoning_tokens"]?.numberValue.map { Int($0) },
+            reasoningRemovals: reasoningRemovals(from: response?["input_transformations"]))
+    }
+
+    /// Counts the replayed reasoning items the response says were withheld, by reason. From
+    /// GPT-6.2 on, OpenAI lists them in `input_transformations`, as pi's `appendReasoningRemovals`
+    /// reads them. `turn_boundary` is left out: older models drop every earlier turn's reasoning
+    /// that way as a matter of course.
+    static func reasoningRemovals(from transformations: JSONValue?) -> [String: Int]? {
+        var counts: [String: Int] = [:]
+        for item in transformations?.arrayValue ?? [] {
+            guard item["type"]?.stringValue == "reasoning", item["action"]?.stringValue == "removed" else { continue }
+            let reason = item["reason"]?.stringValue ?? "unknown"
+            if reason == "turn_boundary" { continue }
+            counts[reason, default: 0] += 1
+        }
+        return counts.isEmpty ? nil : counts
     }
 
     public enum StreamError: Error, Equatable, LocalizedError {
