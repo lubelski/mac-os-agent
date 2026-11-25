@@ -21,6 +21,7 @@ public struct OpenAIResponsesProvider: ModelProvider {
     private let reasoningEffort: String
     private let promptCacheKey: String
     private let session: URLSession
+    private let timeZone: TimeZone
 
     /// - Parameters:
     ///   - model: Read at the start of each reply, so a change in settings applies to the next one.
@@ -30,13 +31,15 @@ public struct OpenAIResponsesProvider: ModelProvider {
         model: @escaping @Sendable () -> String,
         reasoningEffort: String = OpenAIModel.defaultReasoningEffort,
         promptCacheKey: String,
-        session: URLSession = .shared
+        session: URLSession = .shared,
+        timeZone: TimeZone = .current
     ) {
         self.authenticator = authenticator
         self.model = model
         self.reasoningEffort = reasoningEffort
         self.promptCacheKey = promptCacheKey
         self.session = session
+        self.timeZone = timeZone
     }
 
     public func streamReply(to request: ModelRequest) -> AsyncThrowingStream<ModelStreamEvent, Error> {
@@ -56,7 +59,9 @@ public struct OpenAIResponsesProvider: ModelProvider {
     private func run(_ request: ModelRequest, continuation: AsyncThrowingStream<ModelStreamEvent, Error>.Continuation) async throws {
         let model = model()
         let body = OpenAIResponses.body(
-            for: request, model: model, reasoningEffort: reasoningEffort, promptCacheKey: promptCacheKey)
+            for: request, model: model, reasoningEffort: reasoningEffort, promptCacheKey: promptCacheKey,
+            timeZone: timeZone)
+        continuation.yield(.requestSent(items: RequestDigest.make(tools: body["tools"], input: body["input"]?.arrayValue ?? [])))
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let bodyData = try encoder.encode(body)
