@@ -34,21 +34,25 @@ struct GeneralSettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Section {
-                LabeledContent("Account") {
-                    switch session.signInState {
-                    case .signedIn:
-                        HStack {
-                            Text("Signed in")
-                            Button("Sign Out") { session.signOut() }
+                if session.modelAccess == .gateway {
+                    LabeledContent("Account", value: "Through inference-gateway")
+                } else {
+                    LabeledContent("Account") {
+                        switch session.signInState {
+                        case .signedIn:
+                            HStack {
+                                Text("Signed in")
+                                Button("Sign Out") { session.signOut() }
+                            }
+                        case .signingIn:
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                Text("Waiting for the browser…")
+                                Button("Cancel") { session.cancelSignIn() }
+                            }
+                        case .signedOut:
+                            Button("Sign in with ChatGPT…") { session.signIn() }
                         }
-                    case .signingIn:
-                        HStack {
-                            ProgressView().controlSize(.small)
-                            Text("Waiting for the browser…")
-                            Button("Cancel") { session.cancelSignIn() }
-                        }
-                    case .signedOut:
-                        Button("Sign in with ChatGPT…") { session.signIn() }
                     }
                 }
                 Picker("Model", selection: $model) {
@@ -69,9 +73,12 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("ChatGPT")
             } footer: {
-                Text(localModelsOn
+                Text((localModelsOn
                     ? "A new model applies from the next reply. The model is also in the menu bar menu. Models marked Ollama run on this Mac, through Ollama at localhost:11434, and need no sign-in.\(localModels.isEmpty ? " Ollama has no models, or is not running." : "")"
                     : "A new model applies from the next reply. The model is also in the menu bar menu.")
+                    + (session.modelAccess == .gateway
+                        ? " This development build has no sign-in of its own. It sends every model request through inference-gateway at \(InferenceGateway.address())."
+                        : ""))
                     .foregroundStyle(.secondary)
             }
             .task(id: localModelsOn) {

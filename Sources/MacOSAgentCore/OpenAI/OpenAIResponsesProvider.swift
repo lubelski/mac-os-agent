@@ -3,13 +3,18 @@ import Synchronization
 
 /// The OpenAI provider: the Responses API at api.openai.com, streamed, authorized with the
 /// access token from Sign in with ChatGPT. A local model goes to Ollama on this Mac instead,
-/// which takes the same requests. See `Ollama`.
+/// which takes the same requests. See `Ollama`. A development build sends both through
+/// inference-gateway instead, with no sign-in of its own. See `Access`.
 public struct OpenAIResponsesProvider: ModelProvider {
     public static let baseURL = URL(string: "https://api.openai.com/v1")!
 
     public enum ProviderError: Error, LocalizedError {
         case http(status: Int, body: String)
         case ollamaNotRunning(URL)
+        /// Nothing answered at inference-gateway's address.
+        case gatewayNotRunning(URL)
+        /// inference-gateway answered 503 because it has no sign-in. The message says what to run.
+        case gatewayNotSignedIn(String)
 
         public var errorDescription: String? {
             switch self {
@@ -17,11 +22,24 @@ public struct OpenAIResponsesProvider: ModelProvider {
                 OpenAIResponsesProvider.explain("OpenAI API error (\(status)): \(body)")
             case .ollamaNotRunning(let url):
                 "Ollama is not running at \(url.host() ?? "localhost"):\(url.port ?? 11434). Open Ollama, or choose an OpenAI model."
+            case .gatewayNotRunning(let url):
+                InferenceGateway.notRunningMessage(url)
+            case .gatewayNotSignedIn(let message):
+                "inference-gateway: \(message)"
             }
         }
     }
 
-    private let authenticator: ChatGPTAuthenticator
+    /// How requests reach the models.
+    public enum Access: Sendable {
+        /// Straight to api.openai.com with this app's own sign-in, and to Ollama on this Mac.
+        case signIn(ChatGPTAuthenticator)
+        /// Through inference-gateway at this address, which adds the sign-in itself. Requests
+        /// carry no credentials and name the app in `X-Client-App`.
+        case gateway(URL)
+    }
+
+    private let access: Access
     private let model: @Sendable () -> String
     private let reasoningEffort: String
     private let promptCacheKey: String
@@ -47,8 +65,9 @@ public struct OpenAIResponsesProvider: ModelProvider {
     /// - Parameters:
     ///   - model: Read at the start of each reply, so a change in settings applies to the next one.
     ///   - promptCacheKey: The same for every request in the thread, so OpenAI routes them to the same cache.
+    ///   - ollamaBaseURL: Used with `.signIn` access only. Through the gateway, Ollama is behind it.
     public init(
-        authenticator: ChatGPTAuthenticator,
+        access: Access,
         model: @escaping @Sendable () -> String,
         reasoningEffort: String = OpenAIModel.defaultReasoningEffort,
         promptCacheKey: String,
@@ -56,7 +75,7 @@ public struct OpenAIResponsesProvider: ModelProvider {
         timeZone: TimeZone = .current,
         ollamaBaseURL: URL = Ollama.baseURL
     ) {
-        self.authenticator = authenticator
+        self.access = access
         self.model = model
         self.reasoningEffort = reasoningEffort
         self.promptCacheKey = promptCacheKey
@@ -80,23 +99,35 @@ public struct OpenAIResponsesProvider: ModelProvider {
     }
 
     /// Where a request goes and as what: OpenAI with the ChatGPT sign-in, or Ollama on this Mac
-    /// for a model setting such as `ollama/inkling-2-mini`, with no sign-in.
+    /// for a model setting such as `ollama/inkling-2-mini`, with no sign-in. Through the gateway,
+    /// both go to it with no sign-in, on the same paths after its prefix.
     struct Route {
         var url: URL
         var model: String
         var provider: String
+        /// Sends this app's ChatGPT access token. Only for OpenAI reached directly.
         var signsIn: Bool
+        /// The gateway's address, when the request goes through it.
+        var gateway: URL?
     }
 
     func route(for modelID: String) -> Route {
+        var gateway: URL?
+        var openAIBaseURL = Self.baseURL
+        var ollamaBaseURL = ollamaBaseURL
+        if case .gateway(let base) = access {
+            gateway = base
+            openAIBaseURL = InferenceGateway.openAIBaseURL(base)
+            ollamaBaseURL = InferenceGateway.ollamaBaseURL(base)
+        }
         if let name = Ollama.modelName(fromID: modelID) {
             return Route(
                 url: ollamaBaseURL.appending(path: "v1/responses"), model: name, provider: Ollama.providerName,
-                signsIn: false)
+                signsIn: false, gateway: gateway)
         }
         return Route(
-            url: Self.baseURL.appending(path: "responses"), model: modelID, provider: OpenAIResponses.providerName,
-            signsIn: true)
+            url: openAIBaseURL.appending(path: "responses"), model: modelID, provider: OpenAIResponses.providerName,
+            signsIn: gateway == nil, gateway: gateway)
     }
 
     private func run(_ request: ModelRequest, continuation: AsyncThrowingStream<ModelStreamEvent, Error>.Continuation) async throws {
@@ -158,8 +189,14 @@ public struct OpenAIResponsesProvider: ModelProvider {
             urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
             urlRequest.setValue(accept, forHTTPHeaderField: "Accept")
             urlRequest.setValue("mac-os-agent", forHTTPHeaderField: "User-Agent")
-            if route.signsIn {
+            if route.gateway != nil {
+                urlRequest.setValue(InferenceGateway.clientName, forHTTPHeaderField: InferenceGateway.clientHeader)
+            }
+            if route.signsIn, case .signIn(let authenticator) = access {
                 urlRequest.setValue("Bearer \(try await authenticator.accessToken())", forHTTPHeaderField: "Authorization")
+            }
+            // OpenAI gets the session headers either way. The gateway passes them on.
+            if route.provider == OpenAIResponses.providerName {
                 for (field, value) in Self.sessionHeaders(promptCacheKey: promptCacheKey) {
                     urlRequest.setValue(value, forHTTPHeaderField: field)
                 }
@@ -169,19 +206,25 @@ public struct OpenAIResponsesProvider: ModelProvider {
             let response: URLResponse
             do {
                 (responseBytes, response) = try await session.bytes(for: urlRequest)
-            } catch let error as URLError where !route.signsIn && error.code == .cannotConnectToHost {
-                throw ProviderError.ollamaNotRunning(route.url)
+            } catch let error as URLError where error.code == .cannotConnectToHost {
+                if let gateway = route.gateway { throw ProviderError.gatewayNotRunning(gateway) }
+                if !route.signsIn { throw ProviderError.ollamaNotRunning(route.url) }
+                throw error
             }
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             if (200..<300).contains(status) { return responseBytes }
             var errorBody = Data()
             for try await byte in responseBytes where errorBody.count < 16_384 { errorBody.append(byte) }
-            if status == 401, attempt == 1, route.signsIn {
+            if status == 401, attempt == 1, route.signsIn, case .signIn(let authenticator) = access {
                 // The token may have been revoked or expired early. Refresh once and retry.
                 await authenticator.discardAccessToken()
                 continue
             }
-            throw ProviderError.http(status: status, body: String(decoding: errorBody, as: UTF8.self))
+            let text = String(decoding: errorBody, as: UTF8.self)
+            if route.gateway != nil, let message = InferenceGateway.notSignedInMessage(status: status, body: text) {
+                throw ProviderError.gatewayNotSignedIn(message)
+            }
+            throw ProviderError.http(status: status, body: text)
         }
     }
 

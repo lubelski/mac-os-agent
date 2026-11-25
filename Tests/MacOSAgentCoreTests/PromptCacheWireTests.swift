@@ -207,7 +207,7 @@ enum WireEpisode {
         ])
         let authenticator = ChatGPTAuthenticator(secrets: secrets, installationID: UUID(), transport: transport)
         let provider = OpenAIResponsesProvider(
-            authenticator: authenticator, model: { model.current }, promptCacheKey: cacheKey,
+            access: .signIn(authenticator), model: { model.current }, promptCacheKey: cacheKey,
             session: server.session(), timeZone: timeZone)
         return AgentLoop(
             provider: provider, thread: thread, tools: [RecordingTool()],

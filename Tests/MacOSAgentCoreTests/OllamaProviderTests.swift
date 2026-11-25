@@ -119,7 +119,7 @@ import Testing
         // Nothing listens on port 1, so the connection is refused at once.
         let secrets = MemorySecrets()
         let provider = OpenAIResponsesProvider(
-            authenticator: ChatGPTAuthenticator(secrets: secrets, installationID: UUID(), transport: FakeTransport(body: [:])),
+            access: .signIn(ChatGPTAuthenticator(secrets: secrets, installationID: UUID(), transport: FakeTransport(body: [:]))),
             model: { Self.local }, promptCacheKey: "k", ollamaBaseURL: URL(string: "http://127.0.0.1:1")!)
         let request = ModelRequest(instructions: "x", entries: [], tools: [])
         await #expect(throws: OpenAIResponsesProvider.ProviderError.self) {
@@ -144,7 +144,7 @@ struct OllamaLiveTests {
         let file = temporaryThreadFile()
         let usageLog = UsageLog(fileURL: file.deletingLastPathComponent().appending(path: "usage.jsonl"))
         let provider = OpenAIResponsesProvider(
-            authenticator: ChatGPTAuthenticator(secrets: MemorySecrets(), installationID: UUID(), transport: FakeTransport(body: [:])),
+            access: .signIn(ChatGPTAuthenticator(secrets: MemorySecrets(), installationID: UUID(), transport: FakeTransport(body: [:]))),
             model: { Ollama.modelID(name) }, promptCacheKey: "mac-os-agent-live-test")
         let tool = RecordingTool(result: "Now drawing from 'Battery Power'\n -InternalBattery-0\t82%; discharging; 4:51 remaining\n[exit status 0]")
         // About as long as the app's real prompt with its tools, around 9,000 tokens. Ollama

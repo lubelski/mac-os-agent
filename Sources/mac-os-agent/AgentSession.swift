@@ -105,6 +105,9 @@ final class AgentSession {
     /// Makes the loop for a new incognito conversation, over a fresh `InMemoryThreadStore`.
     @ObservationIgnored private let makeLoop: (() -> AgentLoop)?
     @ObservationIgnored private let authenticator: ChatGPTAuthenticator?
+    /// `.gateway` in a development build, which reaches its models through inference-gateway.
+    /// It starts signed in and shows no sign-in controls.
+    @ObservationIgnored var modelAccess: ModelAccess = .signIn
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var confirmation: CheckedContinuation<ConfirmationAnswer, Never>?
     @ObservationIgnored private let episodeTimeout: () -> TimeInterval

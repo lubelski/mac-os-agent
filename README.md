@@ -11,7 +11,7 @@ The agent is called Iris unless you name it otherwise in Settings, General. The 
 ## Running it
 
 - `scripts/bundle.sh --install` builds the app, moves it to `~/Applications`, and launches it.
-- Choose "Sign in with ChatGPT" in the menu bar menu or in Settings.
+- Choose "Sign in with ChatGPT" in the menu bar menu or in Settings. A development build has no sign-in. It reaches its models through [inference-gateway](https://github.com/lubelski/inference-gateway) on this Mac, which has to be running and signed in.
 - Press the summon shortcut, Option-Shift-Space unless you change it in Settings, General, or click the menu bar icon, to show or hide the panel, and type what you want done. Right-click or Control-click the icon for its menu.
 - Typing an app's name, or part of it, and pressing Return opens the app at once, without the model. Command-Return sends the text to the agent instead.
 - Typing a quick action's name and pressing Return runs it at once, without the model. A quick action is a fixed tool call, or a few, kept in `quick-actions/`. Ask the agent to "make that instant" to save one.
@@ -52,7 +52,7 @@ scripts/release.sh --check          # say whether this Mac can release now, and 
 - A release is a GitHub Release with the zipped app and `appcast.xml`, the feed. Installed copies read the feed from the latest release. The one-time setup is at the top of the script.
 - The version is the release tag. The build number is the commit count, which Sparkle compares, so releases are built from `main`.
 - A build from `bundle.sh` alone has no feed and never updates itself.
-- A release build keeps the sign-in in the login Keychain. A build from `bundle.sh` alone keeps it in `secrets.json` in the data folder.
+- A release build keeps the sign-in in the login Keychain. A build from `bundle.sh` alone has no sign-in. It sends its model requests through inference-gateway, and keeps other secrets, such as a Brave Search key, in `secrets.json` in the data folder.
 - Notarization uses an App Store Connect API key from `~/.appstoreconnect/notary.conf` when there is one, which works with the screen locked. Otherwise it uses the `AIMeter` notarytool profile in the Keychain, which macOS opens only while the screen is unlocked.
 - The notarization login and the Sparkle signing key are shared with AI Meter and Claude FM. The public key is in `scripts/sparkle-public-key.txt`.
 

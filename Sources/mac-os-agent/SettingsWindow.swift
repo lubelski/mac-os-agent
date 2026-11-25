@@ -228,7 +228,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     init(
         session: AgentSession, prompt: AgentPrompt, usageLog: UsageLog, tools: ToolRegistry,
         history: ThreadStore?, problems: ProblemLog, signInStatus: @escaping @Sendable () async -> SignInStatus?,
-        secretStorage: SecretStorage.Status? = nil,
+        secretStorage: SecretStorage.Status? = nil, modelAccess: ModelAccess = .signIn,
         summonTrigger: SummonTriggerController, defaults: UserDefaults = .standard, remembersFrame: Bool = true,
         privacyAccess: any PrivacyAccessGate = EventKitStore.shared,
         quickActions: QuickActionLibrary = QuickActionLibrary(),
@@ -249,7 +249,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             history: HistorySettingsModel(history: history),
             debugging: DebuggingSettingsModel(
                 prompt: prompt, usageLog: usageLog, tools: tools, problems: problems,
-                signInStatus: signInStatus, secretStorage: secretStorage, webSearch: webSearch, defaults: defaults),
+                signInStatus: signInStatus, secretStorage: secretStorage, modelAccess: modelAccess,
+                webSearch: webSearch, defaults: defaults),
             webSearch: WebSearchSettingsModel(context: webSearch),
             updater: updater)
 
@@ -383,6 +384,10 @@ enum SettingsPreview {
 
     static func show(_ section: SettingsSection, item: String?) {
         let session = AgentSession(previewEntries: [])
+        // `--preview-item gateway` in General or Debugging shows a development build, which
+        // reaches its models through inference-gateway and has no sign-in.
+        let modelAccess: ModelAccess = item == "gateway" && [.general, .debugging].contains(section) ? .gateway : .signIn
+        session.modelAccess = modelAccess
         // Preferences of their own, so the model picker never reads or writes the real setting.
         let defaults = UserDefaults(suiteName: "dev.lubelski.mac-os-agent.preview") ?? .standard
         // The default instructions take the agent's name from the same preferences.
@@ -434,6 +439,7 @@ enum SettingsPreview {
             },
             // A stand-in. A preview decides nothing about the real store and never opens the Keychain.
             secretStorage: SecretStorage.Status(location: .file, reason: .anotherDataFolder, migration: nil),
+            modelAccess: modelAccess,
             summonTrigger: summonTrigger, defaults: defaults, remembersFrame: false,
             privacyAccess: StandInPrivacyAccess(), mcp: mcp, mcpServersOverride: showsMCP ? true : nil,
             webSearch: webSearch)
@@ -450,7 +456,7 @@ enum SettingsPreview {
                 controller.models.tools.selection = item
             }
             if section == .mcpServers { controller.models.mcpServers.selection = item }
-            controller.models.debugging.scrollTarget = item
+            controller.models.debugging.scrollTarget = item == "gateway" ? "sign-in" : item
         }
         controller.models.debugging.reload()
         if PreviewRender.isRendering, let window = controller.window {

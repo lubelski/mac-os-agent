@@ -41,7 +41,7 @@ import Testing
                     let usage = UsageCounter()
                     let provider = CountingProvider(
                         inner: OpenAIResponsesProvider(
-                            authenticator: authenticator, model: { model },
+                            access: .signIn(authenticator), model: { model },
                             promptCacheKey: "mac-os-agent-tool-probe-\(UUID().uuidString.lowercased())"),
                         counter: usage)
                     let recorder = CallRecorder()
