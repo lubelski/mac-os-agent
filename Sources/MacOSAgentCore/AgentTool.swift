@@ -129,35 +129,37 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
     /// The button that goes ahead.
     public var approveTitle: String {
         switch kind {
-        case .shellCommand: "Run"
+        case .shellCommand: "Allow Once"
         case .reminderChanges, .eventChanges: changeCount == 1 ? "Make Change" : "Make Changes"
         case .quitApplication: "Quit"
         case .deleteTheme, .deleteQuickAction: "Delete"
-        case .mcpToolCall: "Call"
+        case .mcpToolCall: "Allow Once"
         case .settingsChange: "Change"
         }
     }
 
-    /// A third button that goes ahead and stops this tool asking from now on, or nil for a card
-    /// with only two. Only an MCP tool's card has it, since its go-ahead is a setting per tool.
-    public var alwaysApproveTitle: String? {
-        kind == .mcpToolCall ? "Always Call" : nil
-    }
+    /// Whether the card also offers Always Deny and Always Allow, which answer this call and
+    /// save the answer for the tool. Only an MCP tool's card does, since its go-ahead is a
+    /// setting per tool.
+    public var offersAlways: Bool { kind == .mcpToolCall }
 
-    /// The line under the buttons that says where to turn asking back on, for a card with the
-    /// third button.
-    public var alwaysApproveNote: String? {
-        kind == .mcpToolCall ? "Always Call stops asking for this tool. Settings > Tools turns asking back on." : nil
+    public static let alwaysDenyTitle = "Always Deny"
+    public static let alwaysAllowTitle = "Always Allow"
+
+    /// The line beside the buttons that says where a saved answer can be changed, for a card
+    /// that offers the Always choices.
+    public var alwaysNote: String? {
+        offersAlways ? "Always Allow and Always Deny are saved for this tool. Change them in Settings > Tools." : nil
     }
 
     /// The button that declines.
     public var declineTitle: String {
         switch kind {
-        case .shellCommand: "Don’t Run"
+        case .shellCommand: "Deny"
         case .reminderChanges, .eventChanges: "Don’t Change"
         case .quitApplication: "Don’t Quit"
         case .deleteTheme, .deleteQuickAction: "Don’t Delete"
-        case .mcpToolCall: "Don’t Call"
+        case .mcpToolCall: "Deny"
         case .settingsChange: "Don’t Change"
         }
     }
@@ -199,15 +201,19 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
     }
 }
 
-/// The owner's answer to a go-ahead card.
+/// The owner's answer to a go-ahead card, one per button.
 public enum ConfirmationAnswer: Sendable, Equatable {
-    case declined
-    case approved
-    /// Go ahead, and stop asking before this tool from now on. Only a card with
-    /// `alwaysApproveTitle` offers it. The tool that asked records the setting.
-    case approvedAlways
+    case deny
+    /// Deny this call, and every later call to this tool without asking. Only a card that
+    /// `offersAlways` has it. The tool that asked saves the setting.
+    case alwaysDeny
+    /// Allow this call, and every later call to this tool without asking. Only a card that
+    /// `offersAlways` has it. The tool that asked saves the setting.
+    case alwaysAllow
+    case allowOnce
 
-    public var isApproved: Bool { self != .declined }
+    /// Whether this call goes ahead.
+    public var allows: Bool { self == .allowOnce || self == .alwaysAllow }
 }
 
 /// What a tool can reach while it runs.
@@ -239,13 +245,13 @@ public struct ToolRunContext: Sendable {
         confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
     ) {
         self.init(callID: callID, episodeID: episodeID, report: report) { request in
-            await confirm(request) ? .approved : .declined
+            await confirm(request) ? .allowOnce : .deny
         }
     }
 
-    /// Asks the person whether to go ahead. Either way of going ahead counts as yes.
+    /// Asks the person whether to go ahead. Either way of allowing counts as yes.
     public func confirm(_ request: ConfirmationRequest) async -> Bool {
-        await answer(request).isApproved
+        await answer(request).allows
     }
 }
 

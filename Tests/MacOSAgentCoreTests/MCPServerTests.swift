@@ -186,23 +186,46 @@ private func context(approve: Bool, asked: Asked? = nil) -> ToolRunContext {
         defer { folder.remove() }
         let store = MCPSettingsStore(file: folder.settings)
         #expect(store.goAhead(server: "weather", tool: "add_alert", readOnly: false) == .ask)
-        #expect(store.goAhead(server: "weather", tool: "get_forecast", readOnly: true) == .dontAsk)
+        #expect(store.goAhead(server: "weather", tool: "get_forecast", readOnly: true) == .allow)
     }
 
     @Test func anOverrideIsKeptAndSettingTheDefaultRemovesIt() throws {
         let folder = try Folder()
         defer { folder.remove() }
         let store = MCPSettingsStore(file: folder.settings)
-        try store.setGoAhead(.dontAsk, server: "weather", tool: "add_alert", readOnly: false)
+        try store.setGoAhead(.allow, server: "weather", tool: "add_alert", readOnly: false)
         try store.setGoAhead(.ask, server: "weather", tool: "get_forecast", readOnly: true)
         let reread = MCPSettingsStore(file: folder.settings)
-        #expect(reread.goAhead(server: "weather", tool: "add_alert", readOnly: false) == .dontAsk)
+        #expect(reread.goAhead(server: "weather", tool: "add_alert", readOnly: false) == .allow)
         #expect(reread.goAhead(server: "weather", tool: "get_forecast", readOnly: true) == .ask)
         let text = try String(contentsOf: folder.settings, encoding: .utf8)
         #expect(text.contains(#""add_alert" : "dont-ask""#))
 
         try store.setGoAhead(.ask, server: "weather", tool: "add_alert", readOnly: false)
         #expect(store.goAheadOverride(server: "weather", tool: "add_alert") == nil)
+    }
+
+    @Test func aFileFromBeforeAlwaysDenyStillLoads() throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        // As an older build wrote it: only ask and dont-ask.
+        try Data(#"{"disabled": ["notes"], "goAhead": {"weather": {"add_alert": "dont-ask", "get_forecast": "ask"}}}"#.utf8)
+            .write(to: folder.settings)
+        let store = MCPSettingsStore(file: folder.settings)
+        #expect(!store.isEnabled("notes"))
+        #expect(store.goAhead(server: "weather", tool: "add_alert", readOnly: false) == .allow)
+        #expect(store.goAhead(server: "weather", tool: "get_forecast", readOnly: true) == .ask)
+    }
+
+    @Test func aValueThisBuildDoesNotKnowLeavesTheRestInPlace() throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        try Data(#"{"goAhead": {"weather": {"add_alert": "deny", "get_forecast": "sometimes"}, "files": {"x": "later"}}}"#.utf8)
+            .write(to: folder.settings)
+        let store = MCPSettingsStore(file: folder.settings)
+        #expect(store.goAhead(server: "weather", tool: "add_alert", readOnly: false) == .deny)
+        #expect(store.goAheadOverride(server: "weather", tool: "get_forecast") == nil)
+        #expect(store.goAheadOverride(server: "files", tool: "x") == nil)
     }
 
     @Test func aBrokenFileReadsAsTheDefaults() throws {
@@ -382,14 +405,14 @@ private func context(approve: Bool, asked: Asked? = nil) -> ToolRunContext {
         #expect(request.kind == .mcpToolCall)
         #expect(request.body == .toolCall(server: "weather", tool: "add_alert", arguments: JSONValue.object(["city": "Lisbon"]).prettyEncodedString()))
         #expect(request.question == "Call this tool?")
-        #expect(request.approveTitle == "Call")
+        #expect(request.approveTitle == "Allow Once")
         #expect(request.waitingText == "waiting for your go-ahead to call add_alert")
 
         #expect(await alert.run(arguments: [:], context: context(approve: false)) == MCPTool.declinedOutput)
         #expect(connection.calls == ["get_forecast", "add_alert"])
 
         // An override in Settings applies to the next call without a relaunch.
-        try pool.settings.setGoAhead(.dontAsk, server: "weather", tool: "add_alert", readOnly: false)
+        try pool.settings.setGoAhead(.allow, server: "weather", tool: "add_alert", readOnly: false)
         #expect(alert.goAhead == .never)
         let askedAgain = Asked()
         #expect(await alert.run(arguments: [:], context: context(approve: false, asked: askedAgain)) == "done")
@@ -397,64 +420,141 @@ private func context(approve: Bool, asked: Asked? = nil) -> ToolRunContext {
         #expect(ToolSummary(alert).mcp == MCPToolReference(server: "weather", tool: "add_alert", readOnly: false))
     }
 
-    @Test func alwaysCallRunsTheCallAndStopsAskingForThatTool() async throws {
-        let folder = try Folder()
-        defer { folder.remove() }
-        let connection = StandInConnection(tools: [forecast, addAlert])
-        let pool = pool(config("weather"), folder: folder, cache: MCPToolCache(servers: ["weather": .init(tools: [forecast, addAlert])])) { _ in connection }
-        let alert = try #require(pool.makeTools().first { $0.definition.name == "weather__add_alert" })
-        var changes = 0
-        let observer = NotificationCenter.default.addObserver(
-            forName: MCPSettingsStore.goAheadDidChange, object: pool.settings, queue: nil) { _ in changes += 1 }
-        defer { NotificationCenter.default.removeObserver(observer) }
-
-        let asked = Asked()
-        let always = ToolRunContext(callID: "call_1") { (request: ConfirmationRequest) -> ConfirmationAnswer in
+    private func answering(_ answer: ConfirmationAnswer, asked: Asked) -> ToolRunContext {
+        ToolRunContext(callID: "call_1") { (request: ConfirmationRequest) -> ConfirmationAnswer in
             asked.append(request)
-            return .approvedAlways
+            return answer
         }
-        #expect(await alert.run(arguments: ["city": "Lisbon"], context: always) == "done")
-        let request = try #require(asked.requests.first)
-        #expect(request.alwaysApproveTitle == "Always Call")
-        #expect(request.alwaysApproveNote == "Always Call stops asking for this tool. Settings > Tools turns asking back on.")
-        #expect(connection.calls == ["add_alert"])
-
-        // The same setting Tools writes, saved to the file and read by the next call.
-        #expect(pool.settings.goAheadOverride(server: "weather", tool: "add_alert") == .dontAsk)
-        #expect(MCPSettingsStore(file: folder.settings).goAhead(server: "weather", tool: "add_alert", readOnly: false) == .dontAsk)
-        #expect(alert.goAhead == .never)
-        #expect(changes == 1)
-        let askedAgain = Asked()
-        #expect(await alert.run(arguments: [:], context: context(approve: false, asked: askedAgain)) == "done")
-        #expect(askedAgain.requests.isEmpty)
-        // Another tool on the same server still asks.
-        #expect(pool.settings.goAhead(server: "weather", tool: "get_forecast", readOnly: false) == .ask)
     }
 
-    @Test func alwaysCallOnACardAScriptAskedForStopsAskingToo() async throws {
+    @Test func theCardOffersTheAlwaysChoicesInTheOwnersWords() async throws {
         let folder = try Folder()
         defer { folder.remove() }
         let connection = StandInConnection(tools: [addAlert])
         let pool = pool(config("weather"), folder: folder, cache: MCPToolCache(servers: ["weather": .init(tools: [addAlert])])) { _ in connection }
         let alert = try #require(pool.makeTools().first)
         let asked = Asked()
-        let scriptCall = ToolRunContext(callID: "call_script") { (request: ConfirmationRequest) -> ConfirmationAnswer in
-            asked.append(request)
-            return .approvedAlways
-        }
-        let result = await RunScriptTool.call(alert, named: alert.definition.name, arguments: "{}", context: scriptCall, waiting: WaitedTime())
-        #expect(result.ok)
-        #expect(result.value == "done")
-        #expect(asked.requests.first?.fromScript == true)
-        #expect(alert.goAhead == .never)
+        _ = await alert.run(arguments: [:], context: answering(.allowOnce, asked: asked))
+        let request = try #require(asked.requests.first)
+        #expect(request.offersAlways)
+        #expect(request.declineTitle == "Deny")
+        #expect(request.approveTitle == "Allow Once")
+        #expect(ConfirmationRequest.alwaysDenyTitle == "Always Deny")
+        #expect(ConfirmationRequest.alwaysAllowTitle == "Always Allow")
+        #expect(request.alwaysNote == "Always Allow and Always Deny are saved for this tool. Change them in Settings > Tools.")
+        // Allow Once saves nothing.
+        #expect(pool.settings.goAheadOverride(server: "weather", tool: "add_alert") == nil)
     }
 
-    @Test func onlyAnMCPToolsCardOffersAlwaysCall() {
+    @Test func alwaysAllowRunsTheCallAndStopsAskingForThatTool() async throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let connection = StandInConnection(tools: [forecast, addAlert])
+        let pool = pool(config("weather"), folder: folder, cache: MCPToolCache(servers: ["weather": .init(tools: [forecast, addAlert])])) { _ in connection }
+        let alert = try #require(pool.makeTools().first { $0.definition.name == "weather__add_alert" })
+        let changes = Mutex(0)
+        let observer = NotificationCenter.default.addObserver(
+            forName: MCPSettingsStore.goAheadDidChange, object: pool.settings, queue: nil) { _ in changes.withLock { $0 += 1 } }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        #expect(await alert.run(arguments: ["city": "Lisbon"], context: answering(.alwaysAllow, asked: Asked())) == "done")
+        #expect(connection.calls == ["add_alert"])
+
+        // The same setting Tools writes, saved to the file and read by the next call.
+        #expect(pool.settings.goAheadOverride(server: "weather", tool: "add_alert") == .allow)
+        #expect(MCPSettingsStore(file: folder.settings).goAhead(server: "weather", tool: "add_alert", readOnly: false) == .allow)
+        #expect(alert.goAhead == .never)
+        #expect(changes.withLock { $0 } == 1)
+        let askedAgain = Asked()
+        #expect(await alert.run(arguments: [:], context: context(approve: false, asked: askedAgain)) == "done")
+        #expect(askedAgain.requests.isEmpty)
+        // Another tool on the same server keeps its own go-ahead.
+        #expect(pool.settings.goAhead(server: "weather", tool: "get_forecast", readOnly: false) == .ask)
+    }
+
+    @Test func alwaysDenySavesAndLaterCallsNeitherAskNorReachTheServer() async throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let connection = StandInConnection(tools: [forecast, addAlert])
+        let opened = Mutex(0)
+        let pool = pool(config("weather"), folder: folder, cache: MCPToolCache(servers: ["weather": .init(tools: [forecast, addAlert])])) { _ in
+            opened.withLock { $0 += 1 }
+            return connection
+        }
+        let tools = Dictionary(uniqueKeysWithValues: pool.makeTools().map { ($0.definition.name, $0) })
+        let alert = try #require(tools["weather__add_alert"])
+        let read = try #require(tools["weather__get_forecast"])
+        let denied = MCPTool.deniedOutput(tool: "add_alert", server: "weather")
+        #expect(denied == "The owner has set add_alert on weather to always be denied, so it did not run. Only the owner can change that, in Settings > Tools.")
+
+        // Always Deny on the card denies this call and saves the setting.
+        let asked = Asked()
+        #expect(await alert.run(arguments: ["city": "Lisbon"], context: answering(.alwaysDeny, asked: asked)) == denied)
+        #expect(asked.requests.count == 1)
+        #expect(connection.calls.isEmpty)
+        #expect(pool.settings.goAheadOverride(server: "weather", tool: "add_alert") == .deny)
+        #expect(MCPSettingsStore(file: folder.settings).goAhead(server: "weather", tool: "add_alert", readOnly: false) == .deny)
+        #expect(alert.goAhead == .denied)
+        let text = try String(contentsOf: folder.settings, encoding: .utf8)
+        #expect(text.contains(#""add_alert" : "deny""#))
+
+        // The next call neither asks nor reaches the server, which is not even opened for it.
+        let openedBefore = opened.withLock { $0 }
+        let askedAgain = Asked()
+        #expect(await alert.run(arguments: [:], context: answering(.allowOnce, asked: askedAgain)) == denied)
+        #expect(askedAgain.requests.isEmpty)
+        #expect(connection.calls.isEmpty)
+        #expect(opened.withLock { $0 } == openedBefore)
+
+        // The other tool on the server is unaffected, and the denied one stays in the model's list.
+        #expect(await read.run(arguments: ["city": "Lisbon"], context: answering(.deny, asked: Asked())) == "done")
+        #expect(connection.calls == ["get_forecast"])
+        #expect(pool.makeTools().contains { $0.definition.name == "weather__add_alert" })
+
+        // Set in Tools, it applies the same way, and asking again undoes it.
+        try pool.settings.setGoAhead(.ask, server: "weather", tool: "add_alert", readOnly: false)
+        #expect(alert.goAhead == .always)
+        #expect(pool.settings.goAheadOverride(server: "weather", tool: "add_alert") == nil)
+    }
+
+    @Test func aScriptsCallGetsTheSavedAnswerToo() async throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let connection = StandInConnection(tools: [addAlert])
+        let pool = pool(config("weather"), folder: folder, cache: MCPToolCache(servers: ["weather": .init(tools: [addAlert])])) { _ in connection }
+        let alert = try #require(pool.makeTools().first)
+        let asked = Asked()
+        let allowed = await RunScriptTool.call(
+            alert, named: alert.definition.name, arguments: "{}", context: answering(.alwaysAllow, asked: asked), waiting: WaitedTime())
+        #expect(allowed.ok)
+        #expect(allowed.value == "done")
+        #expect(asked.requests.first?.fromScript == true)
+        #expect(alert.goAhead == .never)
+
+        try pool.settings.setGoAhead(.ask, server: "weather", tool: "add_alert", readOnly: false)
+        let denied = await RunScriptTool.call(
+            alert, named: alert.definition.name, arguments: "{}", context: answering(.alwaysDeny, asked: Asked()), waiting: WaitedTime())
+        #expect(!denied.ok)
+        #expect(alert.goAhead == .denied)
+        // Later calls from a script fail with the same sentence, without asking.
+        let again = Asked()
+        let later = await RunScriptTool.call(
+            alert, named: alert.definition.name, arguments: "{}", context: answering(.allowOnce, asked: again), waiting: WaitedTime())
+        #expect(!later.ok)
+        #expect(later.value == MCPTool.deniedOutput(tool: "add_alert", server: "weather"))
+        #expect(again.requests.isEmpty)
+        #expect(connection.calls == ["add_alert"])
+    }
+
+    @Test func onlyAnMCPToolsCardOffersTheAlwaysChoices() {
         let shell = ConfirmationRequest(callID: "c", command: "rm -r ~/Desktop/old", reason: "deletes files")
-        #expect(shell.alwaysApproveTitle == nil)
-        #expect(shell.alwaysApproveNote == nil)
+        #expect(!shell.offersAlways)
+        #expect(shell.alwaysNote == nil)
+        #expect(shell.declineTitle == "Deny")
+        #expect(shell.approveTitle == "Allow Once")
         let setting = ConfirmationRequest(callID: "c", kind: .settingsChange, body: .setting(change: "Add", notes: []), reason: "changes how MOA works")
-        #expect(setting.alwaysApproveTitle == nil)
+        #expect(!setting.offersAlways)
+        #expect(setting.approveTitle == "Change")
     }
 
     @Test func aCallWaitsForAServerThatIsStarting() async throws {

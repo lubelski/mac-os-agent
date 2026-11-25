@@ -158,7 +158,7 @@ public final class AgentLoop: Sendable {
     ) async throws {
         try await run(
             userText, skill: skill, startsNewEpisode: startsNewEpisode, now: now, onEvent: onEvent,
-            answer: { request in await confirm(request) ? .approved : .declined })
+            answer: { request in await confirm(request) ? .allowOnce : .deny })
     }
 
     /// Handles one instruction from the person, as `run(_:skill:startsNewEpisode:now:onEvent:confirm:)`
@@ -305,7 +305,7 @@ public final class AgentLoop: Sendable {
         let timedConfirm: @Sendable (ConfirmationRequest) async -> ConfirmationAnswer = { request in
             let asked = ContinuousClock.now
             let answer = await confirm(request)
-            let approved = answer.isApproved
+            let approved = answer.allows
             let waited = Self.seconds(ContinuousClock.now - asked)
             // Stopping the task ends the wait with no answer from the owner, so none is noted.
             let stopped = !approved && Task.isCancelled

@@ -205,8 +205,8 @@ import Testing
         #expect(request.kind == .shellCommand)
         #expect(request.body == .command("rm /nonexistent/mac-os-agent-test"))
         #expect(request.prompt == "Run this command? It deletes files.")
-        #expect(request.approveTitle == "Run")
-        #expect(request.declineTitle == "Don’t Run")
+        #expect(request.approveTitle == "Allow Once")
+        #expect(request.declineTitle == "Deny")
         #expect(request.waitingText == "waiting for your go-ahead")
         #expect(request.text == "rm /nonexistent/mac-os-agent-test")
     }

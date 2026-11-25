@@ -143,15 +143,19 @@ public struct RunScriptTool: AgentTool {
             var request = request
             request.fromScript = true
             waiting.begin()
-            // The full answer passes through, so Always Call on a script's card stops that
-            // tool asking just as it does for a direct call.
+            // The full answer passes through, so Always Allow or Always Deny on a script's
+            // card is saved just as it is for a direct call.
             let answer = await context.answer(request)
             waiting.end()
-            if !answer.isApproved, !Task.isCancelled { declined.set() }
+            if !answer.allows, !Task.isCancelled { declined.set() }
             return answer
         }
         let output = await tool.run(arguments: arguments, context: nested)
         if declined.isSet { return (false, output) }
+        // A tool set to always deny never asks, so nothing above saw it decline.
+        if let mcp = tool as? MCPTool, output == MCPTool.deniedOutput(tool: mcp.info.name, server: mcp.server) {
+            return (false, output)
+        }
         // The app's tools and MCP results report failure as text that starts this way.
         // The script's Error carries the rest, since its message is shown as "Error: …".
         if output.hasPrefix("Error:") {

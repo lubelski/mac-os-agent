@@ -24,6 +24,8 @@ public enum ToolGoAhead: Sendable, Equatable {
     case sometimes(String)
     /// It asks before every call.
     case always
+    /// It never runs, since the owner set it to always deny.
+    case denied
 
     /// A short label for a list.
     public var label: String {
@@ -31,6 +33,7 @@ public enum ToolGoAhead: Sendable, Equatable {
         case .never: "No"
         case .sometimes: "Sometimes"
         case .always: "Always"
+        case .denied: "Denied"
         }
     }
 
@@ -40,6 +43,7 @@ public enum ToolGoAhead: Sendable, Equatable {
         case .never: "Runs without asking."
         case .sometimes(let text): text
         case .always: "Asks for a go-ahead before every call."
+        case .denied: "Never runs. Each call is denied without asking."
         }
     }
 }
