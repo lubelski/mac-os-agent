@@ -80,10 +80,11 @@ public struct RunScriptTool: AgentTool {
         .sometimes("Never asks for the script itself. Each tool the script calls asks exactly when a direct call to it would.")
     }
 
-    /// The name its rows show, before the script's first line.
-    public static let displayName = "Script"
+    /// The name its rows show, before the script's first line. A script is a run of tool calls,
+    /// so its row reads as tools, as a shell command's reads as `Bash`.
+    public static let displayName = "Tools"
 
-    /// `Script` and the script's first line of code, such as `Script const events = await …`.
+    /// `Tools` and the script's first line of code, such as `Tools const events = await …`.
     public func summary(arguments: JSONValue) -> String {
         guard let code = arguments["code"]?.stringValue else { return Self.displayName }
         let firstLine = code.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }

@@ -196,7 +196,7 @@ import Testing
 
     @Test func itsRowShowsTheFirstLineOfCode() {
         let tool = RunScriptTool(tools: [])
-        #expect(tool.summary(arguments: ["code": "// @options: {\"timeout_ms\": 1}\n\nconst a = 1\nreturn a"]) == "Script const a = 1")
+        #expect(tool.summary(arguments: ["code": "// @options: {\"timeout_ms\": 1}\n\nconst a = 1\nreturn a"]) == "Tools const a = 1")
     }
 
     // MARK: The tool list
