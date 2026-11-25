@@ -112,7 +112,7 @@ private final class GoAheadProvider: ModelProvider, @unchecked Sendable {
         session.submit()
         #expect(await eventually { session.pendingConfirmation != nil })
 
-        // Command-Period goes to the main menu first, never to the card's Don't Run.
+        // Command-Period goes to the main menu first, never to the card's Deny.
         _ = panel.performKeyEquivalent(with: try commandPeriod())
         #expect(session.pendingConfirmation != nil, "Command-Period did not answer the go-ahead")
 

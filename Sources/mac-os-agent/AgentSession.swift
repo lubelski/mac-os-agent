@@ -761,17 +761,17 @@ final class AgentSession {
     }
 
     func resolveConfirmation(_ approved: Bool) {
-        resolveConfirmation(approved ? .approved : .declined)
+        resolveConfirmation(approved ? .allowOnce : .deny)
     }
 
-    /// Answers the waiting go-ahead. `.approvedAlways` comes only from a card that offers it,
-    /// and the tool that asked saves the setting before it runs.
+    /// Answers the waiting go-ahead. `.alwaysAllow` and `.alwaysDeny` come only from a card
+    /// that offers them, and the tool that asked saves the setting.
     func resolveConfirmation(_ answer: ConfirmationAnswer) {
         guard let confirmation else { return }
         self.confirmation = nil
         if let request = pendingConfirmation {
             // A script runs on after a call it made is declined.
-            let status: TranscriptRow.ToolStatus = answer.isApproved || request.fromScript ? .running : .finished
+            let status: TranscriptRow.ToolStatus = answer.allows || request.fromScript ? .running : .finished
             transcript.setToolStatus(request.callID, status)
         }
         pendingConfirmation = nil
@@ -780,7 +780,7 @@ final class AgentSession {
     }
 
     private func requestConfirmation(_ request: ConfirmationRequest, in conversation: Int) async -> ConfirmationAnswer {
-        if Task.isCancelled || conversation != self.conversation { return .declined }
+        if Task.isCancelled || conversation != self.conversation { return .deny }
         resolveConfirmation(false)
         pendingConfirmation = request
         transcript.setToolStatus(request.callID, .waitingForConfirmation)

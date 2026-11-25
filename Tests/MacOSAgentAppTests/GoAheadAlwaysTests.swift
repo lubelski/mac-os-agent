@@ -22,7 +22,7 @@ private final class AskingTool: AgentTool, Sendable {
             body: .toolCall(server: "tasks", tool: "create_task", arguments: "{}"),
             reason: "comes from an MCP server and is set to ask before each call"))
         answers.withLock { $0.append(answer) }
-        return answer.isApproved ? "done" : MCPTool.declinedOutput
+        return answer.allows ? "done" : MCPTool.declinedOutput
     }
 }
 
@@ -51,14 +51,14 @@ private struct NoPrivacyAccess: PrivacyAccessGate {
     func requestAccess(_ kind: PrivacyAccessKind) async -> PrivacyAccessStatus { .notDetermined }
 }
 
-/// Always Call on an MCP tool's go-ahead card: the answer reaches the tool, and Settings > Tools
-/// shows the change while it is open.
+/// Always Allow and Always Deny on an MCP tool's go-ahead card: each answer reaches the tool,
+/// and Settings > Tools shows a change made from the card while it is open.
 @MainActor
-@Suite(.serialized) struct AlwaysCallTests {
+@Suite(.serialized) struct GoAheadAlwaysTests {
     init() { _ = NSApplication.shared }
 
     private let folder = FileManager.default.temporaryDirectory
-        .appending(path: "mac-os-agent-always-call-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        .appending(path: "mac-os-agent-go-ahead-always-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
 
     private func eventually(_ condition: () -> Bool) async -> Bool {
         for _ in 0..<400 {
@@ -68,7 +68,8 @@ private struct NoPrivacyAccess: PrivacyAccessGate {
         return condition()
     }
 
-    @Test func alwaysCallReachesTheToolAsItsOwnAnswer() async throws {
+    /// Runs one call that asks, answers its card, and returns what the tool got and its result.
+    private func answer(_ answer: ConfirmationAnswer) async throws -> ([ConfirmationAnswer], ThreadItem.ToolResult?) {
         defer { try? FileManager.default.removeItem(at: folder) }
         let tool = AskingTool()
         let thread = try ThreadStore(fileURL: folder.appending(path: "thread.jsonl"))
@@ -77,18 +78,27 @@ private struct NoPrivacyAccess: PrivacyAccessGate {
         session.draft = "add a task"
         session.submit()
         #expect(await eventually { session.pendingConfirmation != nil })
-        #expect(session.pendingConfirmation?.alwaysApproveTitle == "Always Call")
-
-        session.resolveConfirmation(.approvedAlways)
+        #expect(session.pendingConfirmation?.offersAlways == true)
+        session.resolveConfirmation(answer)
         #expect(session.pendingConfirmation == nil)
         await session.waitUntilIdle()
-        #expect(tool.answers.withLock { $0 } == [.approvedAlways])
-
         let result = await thread.entries.compactMap { entry -> ThreadItem.ToolResult? in
             if case .toolResult(let result) = entry.item { result } else { nil }
         }.first
+        return (tool.answers.withLock { $0 }, result)
+    }
+
+    @Test func alwaysAllowReachesTheToolAsItsOwnAnswer() async throws {
+        let (answers, result) = try await answer(.alwaysAllow)
+        #expect(answers == [.alwaysAllow])
         #expect(result?.output == "done")
         #expect(result?.details?.goAhead == .approved)
+    }
+
+    @Test func alwaysDenyReachesTheToolAsItsOwnAnswer() async throws {
+        let (answers, result) = try await answer(.alwaysDeny)
+        #expect(answers == [.alwaysDeny])
+        #expect(result?.details?.goAhead == .declined)
     }
 
     @Test func theToolsPaneShowsAChangeMadeFromTheCard() async throws {
@@ -96,10 +106,38 @@ private struct NoPrivacyAccess: PrivacyAccessGate {
         let store = MCPSettingsStore(file: folder.appending(path: "mcp-settings.json"))
         let model = ToolsSettingsModel(registry: ToolRegistry(builtIn: []), access: NoPrivacyAccess(), mcpSettings: store)
         let before = model.goAheadRevision
-        // As MCPTool does after Always Call, off the main thread.
+        // As MCPTool does after Always Deny, off the main thread.
         try await Task.detached {
-            try store.setGoAhead(.dontAsk, server: "tasks", tool: "create_task", readOnly: false)
+            try store.setGoAhead(.deny, server: "tasks", tool: "create_task", readOnly: false)
         }.value
         #expect(await eventually { model.goAheadRevision > before })
+    }
+
+    @Test func theToolListRowShowsAnMCPToolsSavedChoice() {
+        var mcp = ToolSummary(AskingTool())
+        mcp.mcp = MCPToolReference(server: "tasks", tool: "create_task", readOnly: false)
+        #expect(ToolRow(tool: mcp, goAhead: .always).mark?.text == "Asks each time")
+        #expect(ToolRow(tool: mcp, goAhead: .never).mark?.text == "Always allowed")
+        #expect(ToolRow(tool: mcp, goAhead: .denied).mark?.symbol == "nosign")
+        #expect(ToolRow(tool: mcp, goAhead: .denied).mark?.text == "Always denied")
+        // A built-in tool that never asks has no mark, as before.
+        let builtIn = ToolSummary(AskingTool())
+        #expect(ToolRow(tool: builtIn, goAhead: .never).mark == nil)
+        #expect(ToolRow(tool: builtIn, goAhead: .always).mark?.text == "Can ask for a go-ahead")
+    }
+
+    @Test func theToolsPaneSetsEachOfTheThreeChoices() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = MCPSettingsStore(file: folder.appending(path: "mcp-settings.json"))
+        let model = ToolsSettingsModel(registry: ToolRegistry(builtIn: []), access: NoPrivacyAccess(), mcpSettings: store)
+        var tool = ToolSummary(AskingTool())
+        tool.mcp = MCPToolReference(server: "tasks", tool: "create_task", readOnly: false)
+        #expect(model.mcpGoAhead(of: tool) == .ask)
+        for value in [MCPGoAhead.deny, .allow, .ask] {
+            model.setGoAhead(value, tool)
+            #expect(model.mcpGoAhead(of: tool) == value)
+            #expect(model.goAhead(of: tool) == value.toolGoAhead)
+        }
+        #expect(model.errorMessage == nil)
     }
 }

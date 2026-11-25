@@ -301,7 +301,7 @@ struct WorkingRow: View {
                 .controlSize(.mini)
                 .accessibilityLabel("Working")
             Button(Self.title, action: stop)
-                .buttonStyle(.glass)
+                .panelGlassButton()
                 .controlSize(.small)
                 .font(.system(size: 11))
                 .help(Self.help)
