@@ -13,34 +13,38 @@ public enum OpenAIResponses {
     /// reasoning comes back encrypted and is replayed from the thread.
     public static func body(
         for request: ModelRequest, model: String, reasoningEffort: String, promptCacheKey: String,
-        timeZone: TimeZone = .current
+        timeZone: TimeZone = .current, provider: String = providerName
     ) -> JSONValue {
         var object: [String: JSONValue] = [
             "model": .string(model),
-            "input": .array(input(for: request, model: model, timeZone: timeZone)),
+            "input": .array(input(for: request, model: model, timeZone: timeZone, provider: provider)),
             "stream": true,
             "store": false,
             "prompt_cache_key": .string(String(promptCacheKey.prefix(64))),
             "reasoning": ["effort": .string(reasoningEffort), "summary": "auto"],
             "include": ["reasoning.encrypted_content"],
         ]
-        if !request.tools.isEmpty {
-            object["tools"] = .array(request.tools.map { tool in
-                [
-                    "type": "function",
-                    "name": .string(tool.name),
-                    "description": .string(tool.description),
-                    "parameters": tool.parameters,
-                    "strict": true,
-                ]
-            })
+        var tools: [JSONValue] = request.tools.map { tool in
+            [
+                "type": "function",
+                "name": .string(tool.name),
+                "description": .string(tool.description),
+                "parameters": tool.parameters,
+                "strict": .bool(tool.strict),
+            ]
         }
+        // The hosted web search goes after the function tools, so the list before it is the
+        // same as without it.
+        if request.webSearch { tools.append(["type": .string(HostedWebSearch.toolName)]) }
+        if !tools.isEmpty { object["tools"] = .array(tools) }
         return .object(object)
     }
 
     /// The thread as Responses input items. Items that only make sense to the model that
     /// produced them, such as encrypted reasoning, are left out after a model change.
-    public static func input(for request: ModelRequest, model: String, timeZone: TimeZone = .current) -> [JSONValue] {
+    public static func input(
+        for request: ModelRequest, model: String, timeZone: TimeZone = .current, provider: String = providerName
+    ) -> [JSONValue] {
         var items: [JSONValue] = [["role": "developer", "content": .string(request.instructions)]]
         for (index, entry) in request.entries.enumerated() {
             switch entry.item {
@@ -54,14 +58,17 @@ public enum OpenAIResponses {
                     "role": "assistant",
                     "content": [["type": "output_text", "text": .string(message.text), "annotations": []]],
                     "status": "completed",
-                    "id": .string(messageID(message, index: index)),
+                    "id": .string(messageID(message, index: index, provider: provider)),
                 ]
-                if message.provider == providerName, let phase = message.providerData?["phase"], phase != .null {
+                if message.provider == provider, let phase = message.providerData?["phase"], phase != .null {
                     item["phase"] = phase
                 }
                 items.append(.object(item))
             case .providerItem(let providerItem):
-                guard providerItem.provider == providerName, providerItem.model == model else { continue }
+                // Reasoning and hosted web search calls are replayed under the same rule: only
+                // to the model that produced them. With `store` false the next request in the
+                // episode has to carry them, as Codex does.
+                guard providerItem.provider == provider, providerItem.model == model else { continue }
                 items.append(providerItem.payload)
             case .toolCall(let call):
                 var item: [String: JSONValue] = [
@@ -72,7 +79,7 @@ public enum OpenAIResponses {
                 ]
                 // OpenAI pairs function call ids with the reasoning that produced them. Leave the
                 // id out after a model change so it does not check that pairing.
-                if call.provider == providerName, call.model == model, let id = call.providerID, id.hasPrefix("fc_") {
+                if call.provider == provider, call.model == model, let id = call.providerID, id.hasPrefix("fc_") {
                     item["id"] = .string(id)
                 }
                 items.append(.object(item))
@@ -82,6 +89,12 @@ public enum OpenAIResponses {
                     "call_id": .string(result.callID),
                     "output": .string(result.output),
                 ])
+            case .appOpened(let opening):
+                // Logged when it happened and sent only now, with the next request of its
+                // episode. It comes after everything the earlier requests carried, so their
+                // prefix is unchanged.
+                let stamped = "[\(timestamp(entry.date, timeZone: timeZone))] \(opening.message)"
+                items.append(["role": "user", "content": [["type": "input_text", "text": .string(stamped)]]])
             case .episodeStart:
                 // The loop sends only the current episode and leaves its marker out. A marker
                 // carries nothing for the model in any case.
@@ -91,8 +104,8 @@ public enum OpenAIResponses {
         return items
     }
 
-    static func messageID(_ message: ThreadItem.AssistantMessage, index: Int) -> String {
-        if message.provider == providerName, let id = message.providerID, id.hasPrefix("msg_"), id.count <= 64 {
+    static func messageID(_ message: ThreadItem.AssistantMessage, index: Int, provider: String = providerName) -> String {
+        if message.provider == provider, let id = message.providerID, id.hasPrefix("msg_"), id.count <= 64 {
             return id
         }
         return "msg_mac_os_agent_\(index)"
@@ -115,7 +128,24 @@ public enum OpenAIResponses {
             inputTokens: Int(input),
             cachedInputTokens: Int(usage["input_tokens_details"]?["cached_tokens"]?.numberValue ?? 0),
             outputTokens: Int(usage["output_tokens"]?.numberValue ?? 0),
-            reasoningTokens: usage["output_tokens_details"]?["reasoning_tokens"]?.numberValue.map { Int($0) })
+            reasoningTokens: usage["output_tokens_details"]?["reasoning_tokens"]?.numberValue.map { Int($0) },
+            reasoningRemovals: reasoningRemovals(from: response?["input_transformations"]),
+            cacheWriteTokens: usage["input_tokens_details"]?["cache_write_tokens"]?.numberValue.map { Int($0) })
+    }
+
+    /// Counts the replayed reasoning items the response says were withheld, by reason. From
+    /// GPT-6.2 on, OpenAI lists them in `input_transformations`, as pi's `appendReasoningRemovals`
+    /// reads them. `turn_boundary` is left out: older models drop every earlier turn's reasoning
+    /// that way as a matter of course.
+    static func reasoningRemovals(from transformations: JSONValue?) -> [String: Int]? {
+        var counts: [String: Int] = [:]
+        for item in transformations?.arrayValue ?? [] {
+            guard item["type"]?.stringValue == "reasoning", item["action"]?.stringValue == "removed" else { continue }
+            let reason = item["reason"]?.stringValue ?? "unknown"
+            if reason == "turn_boundary" { continue }
+            counts[reason, default: 0] += 1
+        }
+        return counts.isEmpty ? nil : counts
     }
 
     public enum StreamError: Error, Equatable, LocalizedError {
@@ -135,10 +165,13 @@ public enum OpenAIResponses {
     /// Turns Responses stream events into `ModelStreamEvent`s.
     public struct StreamParser {
         public let model: String
+        /// The provider recorded on what it parses: `openai`, or `ollama` for a local model.
+        public let provider: String
         public private(set) var sawTerminalEvent = false
 
-        public init(model: String) {
+        public init(model: String, provider: String = OpenAIResponses.providerName) {
             self.model = model
+            self.provider = provider
         }
 
         /// Handles one `data:` payload of the event stream.
@@ -149,6 +182,9 @@ public enum OpenAIResponses {
                    let callID = item["call_id"]?.stringValue, let name = item["name"]?.stringValue
                 {
                     return [.toolCallStarted(callID: callID, name: name)]
+                }
+                if let item = event["item"], let call = HostedWebSearch.call(fromOpenAIItem: item) {
+                    return [.hostedToolStarted(call)]
                 }
             case "response.output_text.delta", "response.refusal.delta":
                 if let delta = event["delta"]?.stringValue { return [.textDelta(delta)] }
@@ -187,13 +223,15 @@ public enum OpenAIResponses {
 
         private func usageEvent(_ response: JSONValue?) -> [ModelStreamEvent] {
             guard let usage = OpenAIResponses.usage(from: response) else { return [] }
-            return [.usage(usage, provider: providerName, model: model)]
+            return [.usage(usage, provider: provider, model: model)]
         }
 
         private func finishedItem(_ item: JSONValue) -> ThreadItem? {
             switch item["type"]?.stringValue {
-            case "reasoning":
-                return .providerItem(.init(provider: providerName, model: model, payload: item))
+            case "reasoning", HostedWebSearch.itemType:
+                // Kept whole, so it can be sent back as it came. A web search call also shows
+                // as a row in the panel. See `ProviderItem.hostedToolCall`.
+                return .providerItem(.init(provider: provider, model: model, payload: item))
             case "message":
                 let text = (item["content"]?.arrayValue ?? []).compactMap { part -> String? in
                     part["type"]?.stringValue == "refusal" ? part["refusal"]?.stringValue : part["text"]?.stringValue
@@ -201,13 +239,13 @@ public enum OpenAIResponses {
                 var data: JSONValue? = nil
                 if let phase = item["phase"], phase != .null { data = ["phase": phase] }
                 return .assistantMessage(.init(
-                    text: text, provider: providerName, model: model,
+                    text: text, provider: provider, model: model,
                     providerID: item["id"]?.stringValue, providerData: data))
             case "function_call":
                 guard let callID = item["call_id"]?.stringValue, let name = item["name"]?.stringValue else { return nil }
                 return .toolCall(.init(
                     callID: callID, name: name, arguments: item["arguments"]?.stringValue ?? "{}",
-                    provider: providerName, model: model, providerID: item["id"]?.stringValue))
+                    provider: provider, model: model, providerID: item["id"]?.stringValue))
             default:
                 return nil
             }

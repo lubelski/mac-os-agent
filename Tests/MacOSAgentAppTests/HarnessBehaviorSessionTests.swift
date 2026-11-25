@@ -555,7 +555,7 @@ struct MessageQueueRenders {
                     MessageQueueRows(session: session)
                     PanelDivider()
                     HStack {
-                        Text(verbatim: Mark.prompt).font(.system(size: 17, design: .monospaced)).foregroundStyle(.secondary)
+                        InputMark(target: nil)
                         Text("Tell your Mac what to do").font(.system(size: 15)).foregroundStyle(.tertiary)
                         Spacer()
                     }

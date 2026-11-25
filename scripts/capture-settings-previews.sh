@@ -9,13 +9,17 @@
 # BIN picks another build, and SECTIONS another list of sections. An entry with a colon, such
 # as skills:half-written, selects that skill or tool in its section, or scrolls Debugging
 # to that part, as debugging:sign-in does. general:recording, general:conflict, and
-# general:rejected show the summon shortcut recorder in those states.
+# general:rejected show the summon shortcut recorder in those states. general:brave shows
+# Brave Search chosen with no key yet, and general:brave-saved with a key saved. mcp-servers:<name>
+# selects a server, and tools:weather__add_alert shows an MCP tool's go-ahead. The MCP
+# servers are stand-ins that start no process: notes fails, files never finishes starting,
+# clock is new, and the rest connect.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 BIN="${BIN:-build/mac-os-agent.app/Contents/MacOS/mac-os-agent}"
 OUT="${1:-docs/screenshots}"
-SECTIONS="${SECTIONS:-general general:recording general:conflict instructions skills skills:half-written actions actions:empty-downloads tools history history:receipts debugging debugging:sign-in}"
+SECTIONS="${SECTIONS:-general general:recording general:conflict general:brave instructions skills skills:half-written actions actions:empty-downloads tools tools:weather__add_alert mcp-servers mcp-servers:weather mcp-servers:clock mcp-servers:notes history history:receipts debugging debugging:sign-in}"
 mkdir -p "$OUT"
 
 WORK="$(mktemp -d)"
@@ -83,6 +87,46 @@ JSON
 cat > "$DATA/quick-actions/focus-music.json" <<'JSON'
 { "format": 1, "name": "Focus Music", "description": "Opens Music for a work session.", "enabled": false,
   "steps": [ { "tool": "open_application", "arguments": { "bundle_identifier_or_path": "com.apple.Music" } } ] }
+JSON
+
+# MCP servers, with cached tool lists for all but clock, one turned off, and one with a bad name.
+# Previews use stand-in connections, so none of these commands runs.
+cat > "$DATA/mcp-servers.json" <<'JSON'
+{
+  "mcpServers": {
+    "weather": { "command": "npx", "args": ["-y", "@example/weather-mcp"], "env": { "WEATHER_API_KEY": "placeholder" } },
+    "files": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "~/Documents"] },
+    "notes": { "command": "uvx", "args": ["notes-mcp"], "env": { "NOTES_API_TOKEN": "", "NOTES_FOLDER": "~/Notes" } },
+    "calendar-sync": { "command": "/usr/local/bin/calendar-sync-mcp" },
+    "clock": { "command": "npx", "args": ["-y", "@example/clock-mcp"] },
+    "my server": { "command": "npx", "args": ["my-server"] }
+  }
+}
+JSON
+printf '{"disabled":["calendar-sync"]}\n' > "$DATA/mcp-settings.json"
+cat > "$DATA/mcp-tools-cache.json" <<'JSON'
+{
+  "servers": {
+    "weather": { "updated": "2026-11-21T09:00:00Z", "tools": [
+      { "name": "get_forecast", "description": "The forecast for a city for the next few days.", "readOnly": true,
+        "inputSchema": { "type": "object", "properties": { "city": { "type": "string", "description": "A city name, such as Lisbon." }, "days": { "type": "integer", "description": "How many days, 1 to 7." } }, "required": ["city"] } },
+      { "name": "add_alert", "description": "Adds an alert for severe weather in a city. The alert is kept on the weather service.", "readOnly": false,
+        "inputSchema": { "type": "object", "properties": { "city": { "type": "string" }, "kinds": { "type": "array", "items": { "type": "string", "enum": ["storm", "heat", "frost"] } } }, "required": ["city"] } }
+    ] },
+    "files": { "updated": "2026-11-21T09:00:00Z", "tools": [
+      { "name": "read_file", "description": "Read a file in an allowed folder.", "readOnly": true, "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
+      { "name": "write_file", "description": "Write a file in an allowed folder.", "readOnly": false, "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } }, "required": ["path", "content"] } },
+      { "name": "list_directory", "description": "List a folder.", "readOnly": true, "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } }
+    ] },
+    "notes": { "updated": "2026-11-20T18:00:00Z", "tools": [
+      { "name": "search_notes", "description": "Search notes by text.", "readOnly": true, "inputSchema": { "type": "object", "properties": { "query": { "type": "string" } } } },
+      { "name": "create_note", "description": "Create a note.", "readOnly": false, "inputSchema": { "type": "object", "properties": { "title": { "type": "string" }, "body": { "type": "string" } } } }
+    ] },
+    "calendar-sync": { "updated": "2026-11-19T08:00:00Z", "tools": [
+      { "name": "sync_now", "description": "Sync the calendars now.", "readOnly": false, "inputSchema": { "type": "object" } }
+    ] }
+  }
+}
 JSON
 
 # Usage lines from the last hour, and a thread file with a few entries that hold no real content.

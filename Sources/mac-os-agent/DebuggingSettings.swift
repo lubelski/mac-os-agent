@@ -16,6 +16,11 @@ final class DebuggingSettingsModel {
     @ObservationIgnored let signInStatus: @Sendable () async -> SignInStatus?
     /// Where this run keeps the sign-in. Decided once at launch.
     @ObservationIgnored let secretStorage: SecretStorage.Status?
+    /// `.gateway` in a development build, which has no sign-in. Decided once at launch.
+    @ObservationIgnored let modelAccess: ModelAccess
+    /// The web search this run launched with, and the Brave key's store. Only whether a key
+    /// is set is shown, never the key.
+    @ObservationIgnored let webSearch: WebSearchContext
     @ObservationIgnored let defaults: UserDefaults
     @ObservationIgnored private var loading: Task<Void, Never>?
     /// A part to scroll to when the section appears, such as "sign-in". Used by previews.
@@ -24,7 +29,7 @@ final class DebuggingSettingsModel {
     init(
         prompt: AgentPrompt, usageLog: UsageLog, tools: ToolRegistry, problems: ProblemLog,
         signInStatus: @escaping @Sendable () async -> SignInStatus?, secretStorage: SecretStorage.Status?,
-        defaults: UserDefaults
+        modelAccess: ModelAccess = .signIn, webSearch: WebSearchContext, defaults: UserDefaults
     ) {
         self.prompt = prompt
         self.usageLog = usageLog
@@ -32,6 +37,8 @@ final class DebuggingSettingsModel {
         self.problems = problems
         self.signInStatus = signInStatus
         self.secretStorage = secretStorage
+        self.modelAccess = modelAccess
+        self.webSearch = webSearch
         self.defaults = defaults
     }
 
@@ -52,7 +59,9 @@ final class DebuggingSettingsModel {
                 threadFile: AgentPaths.threadFile,
                 usageLog: usageLog,
                 problems: problems.problems,
-                secretStorage: secretStorage)
+                secretStorage: secretStorage,
+                webSearch: webSearch.status(defaults),
+                modelAccess: modelAccess)
         }
     }
 
@@ -140,6 +149,9 @@ struct DebuggingSettingsView: View {
                 }
                 LabeledContent("Unchanged since", value: Self.time(report.prompt.unchangedSince, none: "Not recorded yet"))
                 LabeledContent("Tools", value: "\(report.tools)")
+                if let webSearch = report.webSearch {
+                    LabeledContent("Web search", value: webSearch.text)
+                }
                 LabeledContent("Skills", value: "\(report.skills.total), \(report.skills.on) on, \(report.skills.withProblems) with problems")
                 LabeledContent("Memory", value: "Core \(report.memories.coreCharacters.formatted()) characters, \(report.memories.topicFiles) topic files, block \(report.memories.blockCharacters.formatted()) characters")
                 HStack {
@@ -154,32 +166,49 @@ struct DebuggingSettingsView: View {
                      : "The fingerprint covers the instructions and the tool list. When it changes, the prompt cache starts over.")
                     .foregroundStyle(.secondary)
             }
-            Section {
-                if let signIn = report.signIn {
-                    LabeledContent("Signed in", value: signIn.isSignedIn ? "Yes" : "No")
-                    LabeledContent("Access token expires", value: Self.time(signIn.accessTokenExpires, none: "Not fetched since launch"))
-                    LabeledContent("Last token received", value: Self.time(signIn.lastTokenDate, none: "Not since launch"))
-                    LabeledContent("Last error") {
-                        Text(signIn.lastError.map { "\($0) (\(Self.time(signIn.lastErrorDate)))" } ?? "None")
-                            .multilineTextAlignment(.trailing)
-                            .textSelection(.enabled)
+            if report.modelAccess == .gateway {
+                Section {
+                    LabeledContent("Models", value: "Through inference-gateway")
+                    LabeledContent("Address", value: InferenceGateway.address())
+                    if let storage = report.secretStorage {
+                        LabeledContent("Other secrets kept in", value: storage.place)
                     }
-                } else {
-                    Text("Not available.").foregroundStyle(.secondary)
-                }
-                if let storage = report.secretStorage {
-                    LabeledContent("Kept in", value: storage.place)
-                }
-            } header: {
-                Text("Sign-in")
-            } footer: {
-                if let storage = report.secretStorage {
-                    Text(storage.explanation)
+                } header: {
+                    Text("Models")
+                } footer: {
+                    Text("This is a development build. It has no sign-in of its own and sends every model request, to OpenAI and to Ollama, through inference-gateway, which adds the sign-in. Other secrets, such as a Brave Search key, stay in this build's store.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                .id("sign-in")
+            } else {
+                Section {
+                    if let signIn = report.signIn {
+                        LabeledContent("Signed in", value: signIn.isSignedIn ? "Yes" : "No")
+                        LabeledContent("Access token expires", value: Self.time(signIn.accessTokenExpires, none: "Not fetched since launch"))
+                        LabeledContent("Last token received", value: Self.time(signIn.lastTokenDate, none: "Not since launch"))
+                        LabeledContent("Last error") {
+                            Text(signIn.lastError.map { "\($0) (\(Self.time(signIn.lastErrorDate)))" } ?? "None")
+                                .multilineTextAlignment(.trailing)
+                                .textSelection(.enabled)
+                        }
+                    } else {
+                        Text("Not available.").foregroundStyle(.secondary)
+                    }
+                    if let storage = report.secretStorage {
+                        LabeledContent("Kept in", value: storage.place)
+                    }
+                } header: {
+                    Text("Sign-in")
+                } footer: {
+                    if let storage = report.secretStorage {
+                        Text(storage.explanation)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .id("sign-in")
             }
-            .id("sign-in")
             Section("Thread") {
                 LabeledContent("File") {
                     Text(report.thread.path)

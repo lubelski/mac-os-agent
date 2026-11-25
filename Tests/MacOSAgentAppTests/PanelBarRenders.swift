@@ -78,7 +78,7 @@ enum PanelBarDrawing {
 
 /// Renders the real conversation window and the real inspector offscreen, for a pull request
 /// when screen capture is not available: each built-in theme in each of its appearances, with
-/// the suggestions experiment off and on, a running task with its Stop button, the incognito
+/// the suggestions experiment off and on, a running task with the working row and Stop, the incognito
 /// window, the panel flush against the left edge with its square corners, the inspector, and
 /// the theme samples in Settings. Run with MAC_OS_AGENT_RENDER_BARS set to a folder. See
 /// `PanelBarDrawing` for what is not drawn.

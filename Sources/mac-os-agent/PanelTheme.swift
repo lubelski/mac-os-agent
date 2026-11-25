@@ -55,6 +55,11 @@ struct PanelPalette {
     var agentEdge: AnyShapeStyle { edge(appearance.agentReply) }
     var goAheadFill: AnyShapeStyle { fill(appearance.goAhead) }
     var goAheadEdge: AnyShapeStyle { edge(appearance.goAhead) }
+    /// The text field drawn as a pill, with the panel with bars experiment on: the theme's
+    /// `field`, or one derived from its primary text. Increase Contrast strengthens it as it
+    /// does the boxes.
+    var fieldFill: AnyShapeStyle { fill(appearance.fieldBox) }
+    var fieldEdge: AnyShapeStyle { edge(appearance.fieldBox) }
     var incognitoBadge: AnyShapeStyle { style(appearance.incognito.badge) }
     /// The bracket around code and command output.
     var code: AnyShapeStyle { style(appearance.code) }
@@ -156,6 +161,17 @@ struct PanelPalette {
     private func scaled(_ color: ThemeColor, toOpacity opacity: Double) -> ThemeColor {
         color.scaled(toOpacity: opacity)
     }
+
+    /// The match card's fill as one opaque, plain color: the field's fill over the bars' fill
+    /// over the surface's own fill, over the window background. It is how the pill looks at rest
+    /// on a solid surface. Plain, because the system label tints are drawn vibrant inside the
+    /// panel's glass, and in slide over that reads as a light gray.
+    var matchCardFill: Color {
+        let window = isDark ? RGBA(red: 0.118, green: 0.118, blue: 0.118) : RGBA(red: 0.925, green: 0.925, blue: 0.925)
+        let field = increasedContrast ? scaled(appearance.fieldBox.fill, by: 1.3) : appearance.fieldBox.fill
+        let mixed = [appearance.surface.fill, appearance.barFill, field].reduce(window) { $1.resolved(dark: isDark).over($0) }
+        return Color(.sRGB, red: mixed.red, green: mixed.green, blue: mixed.blue, opacity: 1)
+    }
 }
 
 extension EnvironmentValues {
@@ -168,8 +184,15 @@ extension View {
     /// or the solid fill, with the incognito tint while an incognito episode is on.
     /// - Parameter squareEdges: the sides flush against the screen's edge, whose corners are
     ///   square. See `PanelShape.surface(squareEdges:)`.
-    func panelSurface(_ palette: PanelPalette, incognito: Bool, squareEdges: Set<PanelEdge> = []) -> some View {
-        modifier(PanelSurface(palette: palette, incognito: incognito, shape: PanelShape.surface(squareEdges: squareEdges)))
+    /// - Parameter cornerRadius: the panel's outer radius, which the panel with bars
+    ///   experiment makes larger. See `PanelFrame.cornerRadius(panelWithBars:)`.
+    func panelSurface(
+        _ palette: PanelPalette, incognito: Bool, squareEdges: Set<PanelEdge> = [],
+        cornerRadius: CGFloat = PanelShape.cornerRadius
+    ) -> some View {
+        modifier(PanelSurface(
+            palette: palette, incognito: incognito,
+            shape: PanelShape.surface(squareEdges: squareEdges, radius: cornerRadius)))
     }
 
     /// Sets the hierarchical text levels and the accent to the theme's own, unless the theme
@@ -303,10 +326,18 @@ extension View {
     func themedPanel(incognito: Bool = false) -> some View {
         modifier(ThemedPanelRoot(incognito: incognito))
     }
+
+    /// The root of a window that draws with the active theme but has no surface of its own,
+    /// such as the part of the match card below the panel: the palette, the text levels and
+    /// accent, and the window held to a theme's only appearance.
+    func themedWithoutSurface() -> some View {
+        modifier(ThemedPanelRoot(incognito: false, drawsSurface: false))
+    }
 }
 
 private struct ThemedPanelRoot: ViewModifier {
     let incognito: Bool
+    var drawsSurface = true
     /// A model of its own for an offscreen render, which must not read the owner's themes
     /// folder. The app sets none, and the panel draws from the shared model.
     @Environment(ThemeModel.self) private var injectedModel: ThemeModel?
@@ -323,11 +354,20 @@ private struct ThemedPanelRoot: ViewModifier {
         let palette = PanelPalette(
             theme: theme, dark: colorScheme == .dark, increasedContrast: contrast == .increased,
             allowsGlass: model.usesGlass && !reduceTransparency)
-        content
-            .panelText(palette)
-            .environment(\.panelPalette, palette)
-            .panelSurface(palette, incognito: incognito, squareEdges: placement?.squareEdges ?? [])
-            .background(WindowAppearance(fixed: theme.fixedAppearance))
+        if drawsSurface {
+            content
+                .panelText(palette)
+                .environment(\.panelPalette, palette)
+                .panelSurface(
+                    palette, incognito: incognito, squareEdges: placement?.squareEdges ?? [],
+                    cornerRadius: placement?.cornerRadius ?? PanelShape.cornerRadius)
+                .background(WindowAppearance(fixed: theme.fixedAppearance))
+        } else {
+            content
+                .panelText(palette)
+                .environment(\.panelPalette, palette)
+                .background(WindowAppearance(fixed: theme.fixedAppearance))
+        }
     }
 }
 

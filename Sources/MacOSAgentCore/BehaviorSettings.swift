@@ -50,18 +50,89 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
     /// footer under it that says what the keys do, and Down Arrow grows the footer into a short
     /// list of matches. The row above the field is not shown. See `InputFooter`.
     case suggestionsInFieldAndFooter
+    /// Tools from MCP servers listed in `mcp-servers.json`, and the MCP Servers section in
+    /// Settings. A change takes effect in the tool list at the next launch. See `MCPServerPool`.
+    case mcpServers
+    /// The panel's frame redrawn as bar, conversation, band: a title bar with the model's name,
+    /// "MacOS Agent", and the menu, and a band at the bottom holding the text field as a pill
+    /// with the app's logo as its mark, and a status line under it. It uses the suggestions
+    /// experiment's gray completion and status line whether or not that switch is on. See
+    /// `PanelFrame`.
+    case panelWithBarsAndInputPill
+    /// `run_script`, a tool that runs JavaScript calling the agent's other tools, at the end of
+    /// the tool list. Read at launch, since it changes the tool list. See `RunScriptTool`.
+    case scripts
+    /// Models served by Ollama on this Mac join the model pickers, and choosing one sends the
+    /// agent's requests to it instead of OpenAI. See `Ollama`.
+    case localModelsThroughOllama
+    /// `find_tools` and `use_tool` at the end of the built-in tools, with the settings group
+    /// behind them: `read_settings` and `change_settings`, for the app's MCP servers and
+    /// experiments. Read at launch, since it changes the tool list and the instructions. See
+    /// `OnDemandToolGroup` and `SettingsToolGroup`.
+    case settingsTools
+    /// Settings, Tools, as panes that slide over each other from the right, each leaving a strip
+    /// of the one under it showing: the groups, a group's tools, and a tool's details. Built on
+    /// `PaneStackPath`, which any section could use. Takes effect now. See `PaneStackView`.
+    case settingsPaneStack
 
     public var id: String { rawValue }
+
+    /// The switch's title in Settings, Experiments.
+    public var title: String {
+        switch self {
+        case .queueMessagesWhileRunning: "Queue messages while a task runs"
+        case .suggestionsInFieldAndFooter: "Suggestions in the field and a footer"
+        case .mcpServers: "MCP servers"
+        case .panelWithBarsAndInputPill: "Panel with bars and an input pill"
+        case .scripts: "Scripts that call tools"
+        case .localModelsThroughOllama: "Local models through Ollama"
+        case .settingsTools: "Settings the agent can change"
+        case .settingsPaneStack: "Settings panes that slide over"
+        }
+    }
+
+    /// When a change to the switch takes effect, in a sentence. An experiment that changes the
+    /// tool list or the instructions is read at launch, since both stay fixed for a run.
+    public var whenAChangeTakesEffect: String {
+        switch self {
+        case .queueMessagesWhileRunning, .suggestionsInFieldAndFooter, .localModelsThroughOllama, .settingsPaneStack:
+            "Now."
+        case .mcpServers:
+            "The servers start or stop now. Their tools join or leave the tool list at the next launch."
+        case .panelWithBarsAndInputPill:
+            "The panel's look changes now. set_links and its rule in the instructions come or go at the next launch."
+        case .scripts, .settingsTools:
+            "At the next launch, since it changes the tool list."
+        }
+    }
+
+    /// True when some of what the switch does is read only at launch, so this run keeps what
+    /// the switch was then.
+    public var isReadAtLaunch: Bool {
+        switch self {
+        case .queueMessagesWhileRunning, .suggestionsInFieldAndFooter, .localModelsThroughOllama, .settingsPaneStack: false
+        case .mcpServers, .panelWithBarsAndInputPill, .scripts, .settingsTools: true
+        }
+    }
+
+    /// Every experiment is off until the owner turns it on.
+    public var defaultValue: Bool { false }
 
     public var key: String {
         switch self {
         case .queueMessagesWhileRunning: "ExperimentQueueMessagesWhileRunning"
         case .suggestionsInFieldAndFooter: "ExperimentSuggestionsInFieldAndFooter"
+        case .mcpServers: "ExperimentMCPServers"
+        case .panelWithBarsAndInputPill: "ExperimentPanelWithBarsAndInputPill"
+        case .scripts: "ExperimentScripts"
+        case .localModelsThroughOllama: "ExperimentLocalModelsThroughOllama"
+        case .settingsTools: "ExperimentSettingsTools"
+        case .settingsPaneStack: "ExperimentSettingsPaneStack"
         }
     }
 
     public func isOn(_ defaults: UserDefaults = .standard) -> Bool {
-        defaults.bool(forKey: key)
+        defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
     }
 
     public func set(_ on: Bool, _ defaults: UserDefaults = .standard) {

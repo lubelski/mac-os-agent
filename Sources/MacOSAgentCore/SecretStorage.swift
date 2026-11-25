@@ -27,25 +27,29 @@ public enum SecretStorage {
         return hasFeed ? (.keychain, .releaseBuild) : (.file, .developmentBuild)
     }
 
+    /// The key that says a store has the sign-in. The Keychain can hold other secrets without
+    /// it, such as a Brave Search API key, and still need the sign-in moved.
+    static let signInKey = ChatGPTAuthenticator.refreshTokenKey
+
     /// What a release build does at launch with the secrets in the file.
     public enum Decision: Equatable, Sendable {
         /// The file has no secrets.
         case nothingToMove
-        /// The Keychain already has the app's secrets, so the file is left alone. A
-        /// development build may have signed in to it since.
+        /// The Keychain already has the sign-in, so the file is left alone. A development
+        /// build may have signed in to it since.
         case alreadyInKeychain
         case move
     }
 
-    public static func decide(keychainHasSecrets: Bool, fileHasSecrets: Bool) -> Decision {
-        if keychainHasSecrets { return .alreadyInKeychain }
+    public static func decide(keychainHasSignIn: Bool, fileHasSecrets: Bool) -> Decision {
+        if keychainHasSignIn { return .alreadyInKeychain }
         return fileHasSecrets ? .move : .nothingToMove
     }
 
     public enum Migration: Equatable, Sendable {
         case nothingToMove
         /// `fileHasSecrets` is true when `secrets.json` also has a sign-in, which this build
-        /// does not use.
+        /// does not use. Other keys in the file, such as a Brave Search key, do not count.
         case alreadyInKeychain(fileHasSecrets: Bool)
         /// `count` secrets went to the Keychain. `fileProblem` is set when they could not be
         /// removed from the file afterwards.
@@ -55,26 +59,29 @@ public enum SecretStorage {
         case failed(String)
     }
 
-    /// Moves every secret in `file` to `keychain` when the Keychain has none, then removes
-    /// them from the file. Nothing goes the other way. If a write fails, whatever was written
-    /// is taken out of the Keychain again and the file is left alone, so the next launch tries
-    /// again from the same place.
+    /// Moves the secrets in `file` to `keychain` when the Keychain has no sign-in, then removes
+    /// them from the file. A key the Keychain already has, such as a Brave Search key saved by
+    /// this build, keeps the Keychain's value and stays in the file. Nothing goes the other
+    /// way. If a write fails, whatever was written is taken out of the Keychain again and the
+    /// file is left alone, so the next launch tries again from the same place.
     public static func migrate(from file: FileSecrets, to keychain: KeychainSecrets) -> Migration {
-        let values = file.all()
-        let keychainHasSecrets: Bool
+        let stored = file.all()
+        let keychainKeys: Set<String>
         do {
-            keychainHasSecrets = try keychain.hasSecrets()
+            keychainKeys = Set(try keychain.keys())
         } catch {
             return .failed("The Keychain could not be read: \(error.localizedDescription)")
         }
-        switch decide(keychainHasSecrets: keychainHasSecrets, fileHasSecrets: !values.isEmpty) {
+        switch decide(keychainHasSignIn: keychainKeys.contains(signInKey), fileHasSecrets: !stored.isEmpty) {
         case .nothingToMove:
             return .nothingToMove
         case .alreadyInKeychain:
-            return .alreadyInKeychain(fileHasSecrets: !values.isEmpty)
+            return .alreadyInKeychain(fileHasSecrets: stored[signInKey] != nil)
         case .move:
             break
         }
+        let values = stored.filter { !keychainKeys.contains($0.key) }
+        if values.isEmpty { return .nothingToMove }
         var written: [String] = []
         for (key, value) in values.sorted(by: { $0.key < $1.key }) {
             do {

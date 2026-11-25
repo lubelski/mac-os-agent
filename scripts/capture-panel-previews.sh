@@ -12,6 +12,15 @@
 #                                                           the panel, one state per kind of output
 #   scripts/capture-panel-previews.sh --states incognito [out-dir]  the incognito window, and the
 #                                                           two windows side by side
+#   scripts/capture-panel-previews.sh --states bars [out-dir]  the panel with bars and an input
+#                                                           pill experiment: at rest, typing, a long
+#                                                           message, a match, the slash list, running,
+#                                                           Stop under the pointer, queued messages,
+#                                                           the lines in the conversation, the same
+#                                                           lines with the experiment off, three task
+#                                                           links, five with the overflow, and the
+#                                                           match card down, up, and with the slash
+#                                                           list
 #
 # An inspector state is always captured over the busy page, since it is two windows: the panel
 # and the inspector attached to it. `incognito-beside` is captured as the rectangle around both
@@ -32,7 +41,7 @@ BACKDROP=0
 DOCK=()
 THEME=()
 SUFFIX=""
-STATES=(empty history running confirmation finished draft multiline-draft fresh-start scrollback incognito incognito-empty incognito-closing incognito-command-hint command-hint tool-states first-message streaming fresh-start-slot markdown markdown-streaming markdown-code-streaming controls)
+STATES=(empty history running confirmation finished draft multiline-draft fresh-start scrollback incognito incognito-empty incognito-closing incognito-command-hint command-hint tool-states first-message streaming fresh-start-slot markdown markdown-streaming markdown-code-streaming controls web-search)
 APPEARANCES=(dark light)
 while [[ "${1:-}" == --* ]]; do
   case "$1" in
@@ -45,6 +54,8 @@ while [[ "${1:-}" == --* ]]; do
         STATES=(incognito incognito-empty incognito-closing incognito-command-hint incognito-beside)
       elif [[ "$2" == "instant" ]]; then
         STATES=(instant-one instant-several)
+      elif [[ "$2" == "bars" ]]; then
+        STATES=(bars-rest bars-typing bars-long bars-match bars-slash bars-running bars-working-hover bars-queued bars-lines bars-lines-off bars-links bars-links-more bars-card-down bars-card-up bars-card-slash)
       else
         read -r -a STATES <<<"$2"
       fi

@@ -230,7 +230,7 @@ struct ThemeSample: View {
                 // The band with the text field, on the same fill as the top bar.
                 Rectangle().fill(palette.divider).frame(height: 1)
                 HStack(spacing: 5) {
-                    Text(verbatim: "›").foregroundStyle(.secondary)
+                    PromptMark(size: 7)
                     Text(verbatim: "Tell your Mac what to do").foregroundStyle(.tertiary)
                 }
                 .font(.system(size: 9))

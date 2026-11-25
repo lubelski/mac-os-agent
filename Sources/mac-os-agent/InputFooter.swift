@@ -41,10 +41,14 @@ struct InputFooterContent: Equatable {
         case commands(count: Int, completes: Bool)
     }
 
+    /// - Parameter statusLine: true for the status line under the pill, with the panel with
+    ///   bars experiment on. The model's name is in the title bar there, so it is left out,
+    ///   and Return while typing a message reads "↵ send".
     static func make(
-        _ state: State, modelName: String, recallsMessages: Bool, queuesWhileRunning: Bool
+        _ state: State, modelName: String, recallsMessages: Bool, queuesWhileRunning: Bool,
+        statusLine: Bool = false
     ) -> InputFooterContent {
-        let model = FooterHint(keys: "", words: modelName, spokenKeys: "")
+        let model: FooterHint? = statusLine ? nil : FooterHint(keys: "", words: modelName, spokenKeys: "")
         let ask = FooterHint(keys: Mark.commandReturn, words: "ask the agent", spokenKeys: "Command-Return")
         switch state {
         case .idle:
@@ -54,9 +58,17 @@ struct InputFooterContent: Equatable {
             return InputFooterContent(leading: hints, trailing: model)
         case .typing:
             return InputFooterContent(leading: [
-                FooterHint(keys: Mark.returnKey, words: "ask the agent", spokenKeys: "Return"),
+                FooterHint(keys: Mark.returnKey, words: statusLine ? "send" : "ask the agent", spokenKeys: "Return"),
                 FooterHint(keys: "⇧↵", words: "new line", spokenKeys: "Shift-Return"),
             ], trailing: model)
+        case .running(let queued) where statusLine:
+            // The status line: how to stop at the left, how to queue at the right. Steering is
+            // not built, so there is no hint for it.
+            var hints = [FooterHint(keys: "⌘.", words: "stop", spokenKeys: "Command-Period")]
+            guard queuesWhileRunning else { return InputFooterContent(leading: hints, trailing: nil) }
+            if queued > 0 { hints.append(FooterHint(keys: Mark.up, words: "edit queued", spokenKeys: "Up Arrow")) }
+            return InputFooterContent(
+                leading: hints, trailing: FooterHint(keys: Mark.returnKey, words: "queue", spokenKeys: "Return"))
         case .running(let queued):
             var hints = [FooterHint(keys: "⌘.", words: "stop", spokenKeys: "Command-Period")]
             if queuesWhileRunning {
@@ -92,7 +104,9 @@ struct InputFooterContent: Equatable {
 
     /// The model's name as the menu bar menu shows it, or its id for one the app does not list.
     static func modelName(id: String) -> String {
-        OpenAIModel.all.first { $0.id == id }?.name ?? id
+        let local = Ollama.modelName(fromID: id) != nil
+        return ModelSetting.displayName(
+            id: local && !Experiment.localModelsThroughOllama.isOn() ? OpenAIModel.defaultID : id)
     }
 
     var spoken: String {
@@ -123,6 +137,8 @@ extension AgentSession {
 /// the right. Its weight never changes.
 struct InputFooter: View {
     let content: InputFooterContent
+    /// False for the keys row of the match card, which is on the card's own fill.
+    var drawsFill = true
 
     static let height: CGFloat = 26
     static let font = Font.system(size: 11)
@@ -142,31 +158,31 @@ struct InputFooter: View {
         .padding(.horizontal, 16)
         .frame(height: Self.height)
         .frame(maxWidth: .infinity)
-        .background(PanelBarFill())
+        .background { if drawsFill { PanelBarFill() } }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(content.spoken)
     }
 }
 
-/// The mark to the left of the text field. It is `›` whenever Return sends the text as a
-/// message, and the icon of the app or quick action Return will act on otherwise, so the
-/// owner can see at a glance whether Return runs something or sends it.
+/// The one icon at the left of the text field. It is the sparkle whenever Return sends the
+/// text as a message, and the icon of the app or quick action Return will act on otherwise, so
+/// the owner can see at a glance whether Return runs something or sends it. Both take the same
+/// square slot, centered on the first line, so the text never moves when one replaces the other.
 struct InputMark: View {
     let target: InstantActionCandidate?
+
+    static let size: CGFloat = 18
 
     var body: some View {
         Group {
             if let target {
-                SuggestionIcon(target: target.target, size: 18)
+                SuggestionIcon(target: target.target, size: Self.size)
                     .accessibilityLabel("Return \(target.target.actionLabel) \(target.title)")
             } else {
-                Text(verbatim: Mark.prompt)
-                    .font(.system(size: 17, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
+                PromptMark()
             }
         }
-        .frame(width: 18, height: InputField.rowHeight)
+        .frame(width: Self.size, height: InputField.rowHeight)
     }
 }
 
@@ -231,6 +247,8 @@ struct SuggestionListView: View {
     let rows: [SuggestionRow]
     let highlight: Int
     let incognito: Bool
+    /// The panel with bars: the Ask row shows the logo, as the field does.
+    var usesLogo = false
     var activate: (Int) -> Void = { _ in }
 
     static let rowHeight: CGFloat = 24
@@ -250,7 +268,8 @@ struct SuggestionListView: View {
             PanelDivider()
             VStack(spacing: 0) {
                 ForEach(window, id: \.self) { index in
-                    SuggestionRowView(row: rows[index], highlighted: index == highlight, incognito: incognito)
+                    SuggestionRowView(
+                        row: rows[index], highlighted: index == highlight, incognito: incognito, usesLogo: usesLogo)
                         .contentShape(.rect)
                         .onTapGesture { activate(index) }
                 }
@@ -267,6 +286,7 @@ private struct SuggestionRowView: View {
     let row: SuggestionRow
     let highlighted: Bool
     let incognito: Bool
+    var usesLogo = false
     @Environment(\.panelPalette) private var palette
 
     var body: some View {
@@ -297,9 +317,8 @@ private struct SuggestionRowView: View {
         case .candidate(let candidate):
             SuggestionIcon(target: candidate.target, size: 16)
         case .ask:
-            Text(verbatim: Mark.prompt)
-                .font(.system(size: 14, design: .monospaced))
-                .foregroundStyle(.secondary)
+            // The field shows its own mark when the Ask row is highlighted, so the row does too.
+            if usesLogo { LogoMark(size: 10) } else { PromptMark(size: 11) }
         case .command:
             Color.clear
         }

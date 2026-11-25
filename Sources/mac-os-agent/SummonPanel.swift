@@ -63,7 +63,7 @@ final class SummonPanel: NSPanel {
     /// the keys above, and removed.
     static let legacyDockKey = "SummonPanelDock"
     static let legacyUndockedFrameKey = "SummonPanelUndockedFrame"
-    /// The preferences previews and tests read, such as the agent's name, so they never read
+    /// The preferences previews and tests read, such as the model and the experiments, so they never read
     /// the owner's.
     static let previewPreferences = UserDefaults(suiteName: "dev.lubelski.mac-os-agent.preview") ?? .standard
 
@@ -175,6 +175,11 @@ final class SummonPanel: NSPanel {
     /// The frame autosave name, set aside while the window is grown so the grown frame is
     /// never saved.
     private var suspendedAutosaveName: NSWindow.FrameAutosaveName?
+    /// The part of the match card below the panel, with the panel with bars on, made when first
+    /// needed. See `MatchCard`.
+    private var matchCardWindow: MatchCardWindow?
+    /// The preferences the panel's content reads, which the match card's window reads too.
+    private let contentPreferences: UserDefaults
 
     /// - Parameters:
     ///   - role: the main panel, or the incognito window. The incognito window never reads or
@@ -202,6 +207,8 @@ final class SummonPanel: NSPanel {
         // Remembering where the incognito window was would be a trace of it.
         let remembersFrame = remembersFrame && role == .main
         defaults = role == .incognito ? nil : placementDefaults ?? (remembersFrame ? .standard : nil)
+        // A preview reads its settings from the preview preferences, never the owner's.
+        contentPreferences = remembersFrameArgument ? UserDefaults.standard : Self.previewPreferences
         hostingController = NSHostingController(rootView: AnyView(EmptyView()))
         // The window's size is the owner's to choose, not the content's.
         hostingController.sizingOptions = []
@@ -242,8 +249,7 @@ final class SummonPanel: NSPanel {
         inspector.callIDs = { [weak session] in session?.transcript.toolCallIDs ?? [] }
         inspector.onChange = { [weak self] in self?.updateInspector() }
         inspectorWindow.onResize = { [weak self] in self?.placeInspector() }
-        // A preview reads the agent's name from the preview preferences, never the owner's.
-        let preferences = remembersFrameArgument ? UserDefaults.standard : Self.previewPreferences
+        let preferences = contentPreferences
         hostingController.rootView = AnyView(SummonView(session: session, onDismiss: { [weak self] in
             self?.escape()
         }).environment(placement).environment(inspector).defaultAppStorage(preferences))
@@ -284,6 +290,7 @@ final class SummonPanel: NSPanel {
         applyLayer(PanelLayering.layer(for: layeringState))
         session.suggestionList.layoutNeedsUpdate = { [weak self] in self?.updateFooterGrowth() }
         observeSuggestionList()
+        observeCornerRadius()
     }
 
     /// An owner who had docked the panel with PR #17 finds it in the matching slide over, and
@@ -376,7 +383,25 @@ final class SummonPanel: NSPanel {
     func showForPreview() {
         floatsWithoutFocus = true
         updateLayering()
-        present(makeKey: false)
+        if PreviewRender.isRendering {
+            prepareForRender()
+        } else {
+            present(makeKey: false)
+        }
+    }
+
+    /// Everything `present` does to place and lay out the panel, without ordering it in, so a
+    /// render draws it as it would look and nothing appears on screen. See `PreviewRender`.
+    private func prepareForRender() {
+        if placement.preset.slideOverEdge != nil {
+            applyPreset()
+        } else {
+            placeOnActiveScreen()
+        }
+        isPresented = true
+        if session.panelWithBars { session.suggestionListFollowsDraft() }
+        updateFooterGrowth()
+        PreviewRender.render(self)
     }
 
     private func present(makeKey: Bool) {
@@ -410,7 +435,9 @@ final class SummonPanel: NSPanel {
         updateInspector()
         if slide == nil { reportMotion() }
         scheduleLayeringUpdate()
-        // A list of slash commands still showing for the draft comes back with the panel.
+        // A list of slash commands still showing for the draft comes back with the panel, and
+        // so does the match card for a match in the field.
+        if session.panelWithBars { session.suggestionListFollowsDraft() }
         updateFooterGrowth()
     }
 
@@ -421,6 +448,7 @@ final class SummonPanel: NSPanel {
         session.closeSuggestionList()
         isPresented = false
         setFooterGrowth(0)
+        updateMatchCard()
         if var slide {
             slide.retarget(.hidden)
             self.slide = slide
@@ -456,7 +484,7 @@ final class SummonPanel: NSPanel {
     }
 
     /// Command-Period goes to the main menu's Stop before the window's views, so no button whose
-    /// shortcut is Escape, such as the go-ahead card's Don't Run, takes it as Escape.
+    /// shortcut is Escape, such as the go-ahead card's Deny, takes it as Escape.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if MainMenu.isStopShortcut(event), let menu = NSApp.mainMenu {
             return menu.performKeyEquivalent(with: event)
@@ -522,6 +550,7 @@ final class SummonPanel: NSPanel {
     /// back with the panel.
     private func finishHiding() {
         hideInspectorWindow()
+        hideMatchCard()
         // The pointer leaves with the window, and no exit comes for it, so the close button
         // is hidden again when the panel next shows.
         placement.barIsHovered = false
@@ -577,6 +606,7 @@ final class SummonPanel: NSPanel {
         alphaValue = 1
         inspectorWindow?.alphaValue = 1
         placeInspector()
+        updateMatchCard()
     }
 
     /// Draws the glass where the slide has it: moved toward the edge, or faded.
@@ -748,11 +778,14 @@ final class SummonPanel: NSPanel {
         let visible = currentScreen()?.visible ?? glass
         if placement.visibleFrame != visible { placement.visibleFrame = visible }
         updateSquareEdges()
+        updateMatchCardRoom()
     }
 
     /// The sides whose corners are square now, because they are flush against the screen's
     /// edge. The glass reads them from `placement`.
     private(set) var squareEdges: Set<PanelEdge> = []
+    /// The radius the glass's layer is clipped to now. See `PanelPlacement.cornerRadius`.
+    private var clippedCornerRadius = PanelShape.cornerRadius
 
     /// Squares the clip on the glass's layer on the sides flush against the screen's edge, and
     /// rounds it again when the panel moves off. The window server traces the shadow from what
@@ -760,9 +793,11 @@ final class SummonPanel: NSPanel {
     /// in its new shape. That keeps the shadow on the rounded corners, not on a square fill.
     private func updateSquareEdges() {
         let edges = placement.squareEdges
-        guard edges != squareEdges else { return }
+        let radius = placement.cornerRadius
+        guard edges != squareEdges || radius != clippedCornerRadius else { return }
         squareEdges = edges
-        if let layer = host.layer { PanelShape.clipToSurface(layer, squareEdges: edges) }
+        clippedCornerRadius = radius
+        if let layer = host.layer { PanelShape.clipToSurface(layer, squareEdges: edges, radius: radius) }
         invalidateShadow()
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated { self?.invalidateShadow() }
@@ -775,6 +810,7 @@ final class SummonPanel: NSPanel {
         defer {
             updatePlacementFrames()
             placeInspector()
+            updateMatchCard()
         }
         guard !isPlacing, slide == nil else { return }
         if let grownSize, frame.size != grownSize {
@@ -844,6 +880,13 @@ final class SummonPanel: NSPanel {
     /// Grows or shrinks the window for the list under the text field, or leaves it at its own
     /// size and lets the list cover the bottom of the conversation when there is no room.
     func updateFooterGrowth() {
+        // With the panel with bars, the window never grows. The match card opens past the
+        // panel's edge in a window of its own instead.
+        if session.panelWithBars {
+            setFooterGrowth(0)
+            updateMatchCard()
+            return
+        }
         let wanted = session.suggestionListHeight
         setFooterGrowth(wanted > 0 && canGrowDownward(by: wanted) ? wanted : 0)
     }
@@ -894,12 +937,29 @@ final class SummonPanel: NSPanel {
         setFooterGrowth(0)
     }
 
+    /// Clips the glass again when its radius changes, as the panel with bars switch does.
+    private func observeCornerRadius() {
+        withObservationTracking {
+            _ = placement.cornerRadius
+        } onChange: { [weak self] in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.updateSquareEdges()
+                    self.observeCornerRadius()
+                }
+            }
+        }
+    }
+
     /// Follows changes to the list that come from typing, a turn after they happen, since they
     /// arrive while the text field is still processing the edit. The list keeps the room the
     /// window has until then, so nothing above it moves in between.
     private func observeSuggestionList() {
         withObservationTracking {
             _ = session.suggestionListHeight
+            _ = session.matchCardSide
+            _ = session.matchCardVisibleRows
         } onChange: { [weak self] in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
@@ -909,6 +969,55 @@ final class SummonPanel: NSPanel {
                 }
             }
         }
+    }
+
+    // MARK: - The match card
+
+    /// Keeps the room below the panel that the match card may open into current. None in slide
+    /// over, while hidden, and while sliding, so the card opens upward then.
+    private func updateMatchCardRoom() {
+        var room: CGFloat = 0
+        if isPresented, slide == nil, !session.suggestionList.previewOpensUpward, let visible = currentScreen()?.visible {
+            room = MatchCard.roomBelow(panel: panelFrame, visible: visible, slideOver: placement.preset.slideOverEdge != nil)
+        }
+        if session.suggestionList.roomBelow != room { session.suggestionList.roomBelow = room }
+    }
+
+    /// Where the part of the match card below the panel goes on screen, or nil when there is no
+    /// card that opens downward. It is never part of `panelFrame`.
+    var matchCardFrame: CGRect? {
+        guard session.matchCardSide == .below else { return nil }
+        let pill = session.suggestionList.pillFrame
+        guard pill.width > 0, pill.height > 0 else { return nil }
+        let content = host.frame.offsetBy(dx: frame.minX, dy: frame.minY)
+        return MatchCard.frameBelow(pill: pill, content: content, rows: session.matchCardVisibleRows)
+    }
+
+    /// Shows the part of the match card below the panel, under the pill, while there is a card
+    /// that opens downward and the panel is up, and hides it otherwise. It is a child window,
+    /// so it moves with the panel and is ordered with it.
+    func updateMatchCard() {
+        updateMatchCardRoom()
+        guard let target = matchCardFrame, isVisible, isPresented, slide == nil else {
+            hideMatchCard()
+            return
+        }
+        let card = matchCardWindow ?? MatchCardWindow(session: session, preferences: contentPreferences)
+        matchCardWindow = card
+        card.appearance = effectiveAppearance
+        card.level = level
+        if card.frame != target {
+            card.setFrame(target, display: true)
+            card.invalidateShadow()
+        }
+        if card.parent == nil { addChildWindow(card, ordered: .above) }
+        if !card.isVisible { card.orderFront(nil) }
+    }
+
+    private func hideMatchCard() {
+        guard let matchCardWindow else { return }
+        if matchCardWindow.parent != nil { removeChildWindow(matchCardWindow) }
+        if matchCardWindow.isVisible { matchCardWindow.orderOut(nil) }
     }
 
     // MARK: - The inspector
@@ -1060,6 +1169,7 @@ final class SummonPanel: NSPanel {
         let level: NSWindow.Level = new == .floating ? .floating : .normal
         if self.level != level { self.level = level }
         if let inspectorWindow, inspectorWindow.level != level { inspectorWindow.level = level }
+        if let matchCardWindow, matchCardWindow.level != level { matchCardWindow.level = level }
         if placement.keepsOnTop != keepOnTop.isOn { placement.keepsOnTop = keepOnTop.isOn }
     }
 

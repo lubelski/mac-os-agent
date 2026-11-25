@@ -13,6 +13,7 @@ enum PanelPreview {
         "fresh-start", "scrollback", "command-hint", "tool-states", "first-message", "streaming",
         "fresh-start-slot", "markdown", "markdown-streaming", "markdown-code-streaming", "controls",
     ] + goAheadStates + incognitoStates + inspectorStates + InstantActionPreview.names + FooterPreview.names
+        + PanelWithBarsPreview.names
 
     /// The states shown in the incognito window rather than the main panel. `incognito-beside`
     /// shows the main panel too, with the incognito window beside it.
@@ -27,7 +28,8 @@ enum PanelPreview {
 
     /// The go-ahead card for each tool that asks, beside the shell tool's `confirmation`.
     static let goAheadStates = [
-        "confirmation-reminders", "confirmation-events", "confirmation-quit", "confirmation-theme",
+        "confirmation-reminders", "confirmation-events", "confirmation-quit", "confirmation-theme", "confirmation-mcp",
+        "confirmation-settings-server", "confirmation-settings-experiment",
     ]
 
     /// The states that show the tool call inspector beside the panel, each open on one call.
@@ -70,6 +72,7 @@ enum PanelPreview {
         if inspectorStates.contains(name) { return inspectorSession() }
         if let session = InstantActionPreview.session(named: name) { return session }
         if let session = FooterPreview.session(named: name) { return session }
+        if let session = PanelWithBarsPreview.session(named: name) { return session }
         switch name {
         case "empty":
             return AgentSession(previewEntries: [])
@@ -92,7 +95,10 @@ enum PanelPreview {
                 previewEntries: thread.entries,
                 pendingConfirmation: ConfirmationRequest(callID: waiting, command: command, reason: "scripts an app to delete or quit"),
                 isRunning: true)
-        case "confirmation-reminders", "confirmation-events", "confirmation-quit", "confirmation-theme":
+        case "script-running", "script-confirmation", "script-finished":
+            return scriptSession(named: name)
+        case "confirmation-reminders", "confirmation-events", "confirmation-quit", "confirmation-theme", "confirmation-mcp",
+             "confirmation-settings-server", "confirmation-settings-experiment":
             return goAheadSession(named: name)
         case "draft", "multiline-draft":
             var thread = StandInThread(now: Date())
@@ -205,6 +211,20 @@ enum PanelPreview {
             thread.tool("osascript -e 'tell application \"System Events\" to tell every desktop to set picture to \"/System/Library/Desktop Pictures/Sunset.heic\"'",
                         output: "[exit status 0]")
             thread.reply("Done. Every desktop now shows the Sunset picture from the system wallpapers.")
+            return AgentSession(previewEntries: thread.entries)
+        case "web-search":
+            // OpenAI's hosted search, as its rows read from the saved thread, then a Brave search.
+            var thread = StandInThread(now: Date())
+            thread.user("when does swift 6.2 come out", minutesAgo: 3)
+            thread.hostedSearch("ws_1", action: ["type": "search", "query": "swift 6.2 release date"])
+            thread.hostedSearch("ws_2", action: ["type": "open_page", "url": "https://www.swift.org/blog/"])
+            thread.reply("Swift 6.2 shipped on September 15, with Xcode 26. See the [announcement](https://www.swift.org/blog/swift-6.2-released/).")
+            thread.user("any news on 6.3 this week", minutesAgo: 1)
+            thread.call("call_brave", name: SearchWebTool.name,
+                        arguments: ["query": "Swift 6.3 release", "count": .null, "freshness": "pw"],
+                        output: "1. Swift 6.3 Release Process\n   https://forums.swift.org/t/swift-6-3-release-process\n   The release branch is cut, and the final release is planned for spring.\n   Age: 3 days ago",
+                        details: ToolRunDetails(source: ToolSource.webSearch.title))
+            thread.reply("Only the release process post so far. The branch is cut, and the release is planned for spring.")
             return AgentSession(previewEntries: thread.entries)
         case "history":
             var thread = StandInThread(now: Date())
@@ -335,6 +355,42 @@ enum PanelPreview {
             request = ConfirmationRequest(
                 callID: callID, kind: .quitApplication, body: .item(name: "Safari", detail: "com.apple.Safari"),
                 reason: "may ask you to save unsaved work first")
+        case "confirmation-mcp":
+            thread.user("add a task to call the landlord on friday", minutesAgo: 1)
+            let arguments: JSONValue = ["title": "Call the landlord", "due": "2026-11-27", "list": "Home"]
+            thread.call(callID, name: "tasks__create_task", arguments: arguments, output: nil, details: nil)
+            request = ConfirmationRequest(
+                callID: callID, kind: .mcpToolCall,
+                body: .toolCall(server: "tasks", tool: "create_task", arguments: arguments.prettyEncodedString()),
+                reason: "comes from an MCP server and is set to ask before each call")
+        case "confirmation-settings-server":
+            // The settings tools experiment: adding a remote server through the mcp-remote bridge.
+            thread.user("set up the figma mcp for moa, its endpoint is https://mcp.figma.com/mcp", minutesAgo: 1)
+            let arguments: JSONValue = ["group": "settings", "name": "change_settings", "arguments": [
+                "area": "mcp_servers",
+                "change": ["add": ["name": "figma", "command": "npx", "args": ["-y", "mcp-remote", "https://mcp.figma.com/mcp"], "env_names": []]],
+            ]]
+            thread.call(callID, name: UseToolTool.name, arguments: arguments, output: nil, details: nil)
+            request = ConfirmationRequest(
+                callID: callID, kind: .settingsChange,
+                body: .setting(change: "Add the MCP server figma", notes: [
+                    "Command: npx -y mcp-remote https://mcp.figma.com/mcp",
+                    "figma is a remote server. MOA will reach it through mcp-remote, run with npx.",
+                    "Its tools join at the next launch.",
+                ]),
+                reason: "adds a program MOA starts, whose tools the agent can call")
+        case "confirmation-settings-experiment":
+            thread.user("turn on the scripts experiment", minutesAgo: 1)
+            let arguments: JSONValue = ["group": "settings", "name": "change_settings", "arguments": [
+                "area": "experiments", "change": ["experiment": "scripts", "on": true],
+            ]]
+            thread.call(callID, name: UseToolTool.name, arguments: arguments, output: nil, details: nil)
+            request = ConfirmationRequest(
+                callID: callID, kind: .settingsChange,
+                body: .setting(change: "Turn on the experiment “\(Experiment.scripts.title)”", notes: [
+                    "Takes effect: \(Experiment.scripts.whenAChangeTakesEffect)",
+                ]),
+                reason: "changes how MOA works")
         default:
             thread.user("delete the night swim theme", minutesAgo: 1)
             thread.call(callID, name: ChangeThemeTool.name, arguments: ["action": "delete", "theme_id": "night-swim", "file": nil], output: nil, details: nil)
@@ -346,6 +402,44 @@ enum PanelPreview {
     }
 
     /// Builds stand-in thread entries with send times relative to now.
+    /// `run_script`, the scripts experiment: a script that reads the reminders, then deletes
+    /// the finished ones. `script-running` while it runs, `script-confirmation` with the delete
+    /// waiting for a go-ahead the script asked for, and `script-finished` with its result.
+    static func scriptSession(named name: String) -> AgentSession {
+        var thread = StandInThread(now: Date())
+        thread.earlierExchanges()
+        thread.user("clear out the reminders I've finished in Errands", minutesAgo: 1)
+        let code = """
+            const list = await tools.read_reminders({list: "Errands", include_completed: true})
+            const done = list.split("\n").filter((line) => line.startsWith("[x]"))
+            text(`${done.length} finished`)
+            return await tools.change_reminders({changes: done.map((line) => ({action: "delete", id: line.slice(4, 12)}))})
+            """
+        let finished = name == "script-finished"
+        thread.call(
+            "call_script", name: RunScriptTool.name, arguments: ["code": .string(code)],
+            output: finished ? "Script completed in 6.2 seconds.\n3 finished\nDeleted 3 reminders from Errands." : nil,
+            details: finished ? ToolRunDetails(source: RunScriptTool.scripts.title) : nil)
+        switch name {
+        case "script-finished":
+            thread.reply("Done. I deleted the 3 finished reminders in Errands: Return library books, Pick up dry cleaning, and Buy stamps.")
+            return AgentSession(previewEntries: thread.entries)
+        case "script-confirmation":
+            var request = ConfirmationRequest(
+                callID: "call_script", kind: .reminderChanges,
+                body: .changes([
+                    .init(.delete, "\"Return library books\" from Errands"),
+                    .init(.delete, "\"Pick up dry cleaning\" from Errands"),
+                    .init(.delete, "\"Buy stamps\" from Errands"),
+                ]),
+                reason: "deletes 3 reminders")
+            request.fromScript = true
+            return AgentSession(previewEntries: thread.entries, pendingConfirmation: request, isRunning: true)
+        default:
+            return AgentSession(previewEntries: thread.entries, isRunning: true, runningCallIDs: ["call_script"])
+        }
+    }
+
     struct StandInThread {
         let now: Date
         var entries: [ThreadEntry] = []
@@ -383,6 +477,12 @@ enum PanelPreview {
             if let output {
                 entries.append(ThreadEntry(date: tick(), item: .toolResult(.init(callID: callID, output: output, details: details))))
             }
+        }
+
+        /// A web search the model ran on OpenAI's side, kept as its provider item.
+        mutating func hostedSearch(_ id: String, action: JSONValue) {
+            let payload: JSONValue = ["type": "web_search_call", "id": .string(id), "status": "completed", "action": action]
+            entries.append(ThreadEntry(date: tick(), item: .providerItem(.init(provider: "openai", model: "gpt-6-luna", payload: payload))))
         }
 
         /// A call the model has begun, whose arguments have not arrived.

@@ -81,6 +81,23 @@ struct HistoryView: View {
                     }
                     StreamingReply(session: session, after: rows.last)
                 }
+                // Last in the thread, after the newest row of the running turn, so Stop sits
+                // with the block that is working and the view follows it as it follows new rows.
+                if session.panelWithBars {
+                    // The panel with bars: the marks and "Working…", with Stop as a link under
+                    // the pointer, then the queued messages, which wait for the turn after it.
+                    if session.isRunning {
+                        PanelWorkingRow(stop: session.stop, forcesHover: session.previewHoversWorkingRow)
+                            .padding(.top, Self.spacing(.regular))
+                    }
+                    if session.queuedMessagePlacement == .inConversation {
+                        QueuedMessagesInConversation(session: session)
+                            .padding(.top, Self.spacing(.regular))
+                    }
+                } else if session.isRunning {
+                    WorkingRow(stop: session.stop)
+                        .padding(.top, Self.spacing(.regular))
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, Self.topPadding)
@@ -156,6 +173,7 @@ struct HistoryView: View {
         switch gap {
         case .none: 0
         case .tight: 2
+        case .betweenLines: 6
         case .regular: 10
         case .exchange: 24
         case .episode: 64
@@ -263,6 +281,36 @@ struct EpisodeSeparator: View {
             .opacity(0.5)
             .frame(height: 1)
             .frame(maxWidth: .infinity)
+    }
+}
+
+/// The last row of the thread while a task runs: a spinner, then Stop. It is the thread's one
+/// working indicator, about as tall as a tool row and in line with the replies, and it goes
+/// away when the task ends or is stopped. Command-Period reaches the same stop through Stop in
+/// the main menu.
+struct WorkingRow: View {
+    let stop: () -> Void
+
+    static let height: CGFloat = 20
+    static let title = "Stop"
+    static let help = "Stop the task (Command-Period)"
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.mini)
+                .accessibilityLabel("Working")
+            Button(Self.title, action: stop)
+                .panelGlassButton()
+                .controlSize(.small)
+                .font(.system(size: 11))
+                .help(Self.help)
+                .accessibilityLabel(Self.title)
+        }
+        .frame(height: Self.height)
+        .padding(.leading, MessageStyle.horizontalPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
     }
 }
 

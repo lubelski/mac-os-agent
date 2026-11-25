@@ -23,6 +23,10 @@ APP="build/mac-os-agent.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks"
 cp "$BIN" "$APP/Contents/MacOS/mac-os-agent"
+# The helper that runs run_script's scripts, beside the app's executable, where
+# `ScriptRunner.bundledHelper` looks for it. It is signed below with its own entitlements.
+RUNNER="$APP/Contents/MacOS/mac-os-agent-script-runner"
+cp "$(dirname "$BIN")/mac-os-agent-script-runner" "$RUNNER"
 
 # Sparkle, the updater. SwiftPM builds it next to the binary but does not know about app
 # bundles, so copy it in and tell the binary where to find it.
@@ -36,11 +40,40 @@ MIN_OS=27.0
 SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
 xcrun vtool -set-build-version macos "$MIN_OS" "$SDK_VERSION" -replace \
   -output "$APP/Contents/MacOS/mac-os-agent" "$APP/Contents/MacOS/mac-os-agent"
+xcrun vtool -set-build-version macos "$MIN_OS" "$SDK_VERSION" -replace -output "$RUNNER" "$RUNNER"
 STAMPED="$(xcrun vtool -show-build "$APP/Contents/MacOS/mac-os-agent" | awk '$1 == "sdk" { print $2 }')"
 if [[ "$STAMPED" != "$SDK_VERSION" ]]; then
   echo "error: the binary is stamped with SDK '$STAMPED', expected '$SDK_VERSION'" >&2
   exit 1
 fi
+
+# The app icon. actool compiles the Icon Composer file into Assets.car, which macOS draws
+# with the system's glass, and AppIcon.icns, a flat copy for places that read only that.
+# Info.plist names both below. This runs before signing, so the signature covers the icon.
+# scripts/render-icon.sh redraws the icon's artwork.
+#
+# The paths are absolute because actool hands the work to a daemon, ibtoold, that outlives
+# the command. The daemon resolves a relative path against the folder it was started in,
+# which is another project's when that project's build started it. A relative path then
+# fails, or compiles that project's icon into this app. On failure, show what actool said.
+mkdir -p "$APP/Contents/Resources"
+ICON_PLIST_DIR="$(mktemp -d)"
+ICON_LOG="$ICON_PLIST_DIR/actool.log"
+if ! xcrun actool "$PWD/Resources/AppIcon.icon" --compile "$PWD/$APP/Contents/Resources" \
+  --platform macosx --minimum-deployment-target "$MIN_OS" --app-icon AppIcon \
+  --output-partial-info-plist "$ICON_PLIST_DIR/icon.plist" --errors --warnings \
+  --output-format human-readable-text >"$ICON_LOG" 2>&1; then
+  cat "$ICON_LOG" >&2
+  echo "error: actool failed to compile Resources/AppIcon.icon" >&2
+  exit 1
+fi
+rm -rf "$ICON_PLIST_DIR"
+for f in Assets.car AppIcon.icns; do
+  if [[ ! -f "$APP/Contents/Resources/$f" ]]; then
+    echo "error: actool did not produce $f from Resources/AppIcon.icon" >&2
+    exit 1
+  fi
+done
 
 GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
@@ -71,6 +104,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>dev.lubelski.mac-os-agent</string>
   <key>CFBundleExecutable</key><string>mac-os-agent</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundleIconName</key><string>AppIcon</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
   <key>MacOSAgentGitCommit</key><string>$GIT_COMMIT</string>
@@ -116,6 +151,10 @@ SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
 "${SIGN[@]}" "$SPARKLE/Versions/B/Autoupdate"
 "${SIGN[@]}" "$SPARKLE/Versions/B/Updater.app"
 "${SIGN[@]}" "$SPARKLE"
+# The script runner is sandboxed, with no other entitlement. A sandboxed tool needs an
+# identifier of its own, which names its container.
+"${SIGN[@]}" --identifier dev.lubelski.mac-os-agent.script-runner \
+  --entitlements Resources/mac-os-agent-script-runner.entitlements "$RUNNER"
 # The entitlements let the hardened runtime allow Apple events, Calendar, and Reminders.
 # Without the hardened runtime they change nothing.
 "${SIGN[@]}" --entitlements Resources/mac-os-agent.entitlements "$APP"

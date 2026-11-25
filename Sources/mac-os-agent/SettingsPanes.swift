@@ -8,46 +8,74 @@ import SwiftUI
 struct GeneralSettingsView: View {
     let session: AgentSession
     @Bindable var shortcut: ShortcutRecorderModel
+    let webSearch: WebSearchSettingsModel
     let updater: AppUpdater
     /// Read from Sparkle when the section appears. Sparkle keeps it in its own preferences.
     @State private var updatesAutomatically = false
     @AppStorage(ModelSetting.key) private var model = OpenAIModel.defaultID
+    @AppStorage(Experiment.localModelsThroughOllama.key) private var localModelsOn = false
+    /// Read from Ollama when the section appears, with the local models experiment on.
+    @State private var localModels: [String] = []
     @AppStorage(EpisodeTimeoutSetting.key) private var episodeTimeout = EpisodeTimeoutSetting.defaultMinutes
+
+    private var listedModels: [String] {
+        OpenAIModel.all.map(\.id) + (localModelsOn ? localModels.map(Ollama.modelID) : [])
+    }
 
     var body: some View {
         Form {
             Section {
-                LabeledContent("Account") {
-                    switch session.signInState {
-                    case .signedIn:
-                        HStack {
-                            Text("Signed in")
-                            Button("Sign Out") { session.signOut() }
+                if session.modelAccess == .gateway {
+                    LabeledContent("Account", value: "Through inference-gateway")
+                } else {
+                    LabeledContent("Account") {
+                        switch session.signInState {
+                        case .signedIn:
+                            HStack {
+                                Text("Signed in")
+                                Button("Sign Out") { session.signOut() }
+                            }
+                        case .signingIn:
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                Text("Waiting for the browser…")
+                                Button("Cancel") { session.cancelSignIn() }
+                            }
+                        case .signedOut:
+                            Button("Sign in with ChatGPT…") { session.signIn() }
                         }
-                    case .signingIn:
-                        HStack {
-                            ProgressView().controlSize(.small)
-                            Text("Waiting for the browser…")
-                            Button("Cancel") { session.cancelSignIn() }
-                        }
-                    case .signedOut:
-                        Button("Sign in with ChatGPT…") { session.signIn() }
                     }
                 }
                 Picker("Model", selection: $model) {
                     ForEach(OpenAIModel.all) { model in
                         Text(model.name).tag(model.id)
                     }
-                    if !OpenAIModel.all.contains(where: { $0.id == model }) {
-                        Text(model).tag(model)
+                    if localModelsOn {
+                        Section("Ollama") {
+                            ForEach(localModels, id: \.self) { name in
+                                Text(Ollama.displayName(name)).tag(Ollama.modelID(name))
+                            }
+                        }
+                    }
+                    if !listedModels.contains(model) {
+                        Text(ModelSetting.displayName(id: model)).tag(model)
                     }
                 }
             } header: {
                 Text("ChatGPT")
             } footer: {
-                Text("A new model applies from the next reply. The model is also in the menu bar menu.")
+                Text((localModelsOn
+                    ? "A new model applies from the next reply. The model is also in the menu bar menu. Models marked Ollama run on this Mac, through Ollama at localhost:11434, and need no sign-in.\(localModels.isEmpty ? " Ollama has no models, or is not running." : "")"
+                    : "A new model applies from the next reply. The model is also in the menu bar menu.")
+                    + (session.modelAccess == .gateway
+                        ? " This development build has no sign-in of its own. It sends every model request through inference-gateway at \(InferenceGateway.address())."
+                        : ""))
                     .foregroundStyle(.secondary)
             }
+            .task(id: localModelsOn) {
+                localModels = localModelsOn ? await Ollama.installedModels() : []
+            }
+            WebSearchSettingsSection(model: webSearch)
             Section {
                 Picker("Start a new episode after", selection: $episodeTimeout) {
                     ForEach(EpisodeTimeoutSetting.choices, id: \.self) { minutes in

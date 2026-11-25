@@ -6,11 +6,15 @@ public struct ToolDefinition: Sendable, Equatable {
     public var description: String
     /// A JSON Schema object for the arguments.
     public var parameters: JSONValue
+    /// The model is held to the schema exactly. The built-in tools' schemas are written for
+    /// that. A schema from an MCP server is not, so its tools are sent without it.
+    public var strict: Bool
 
-    public init(name: String, description: String, parameters: JSONValue) {
+    public init(name: String, description: String, parameters: JSONValue, strict: Bool = true) {
         self.name = name
         self.description = description
         self.parameters = parameters
+        self.strict = strict
     }
 }
 
@@ -26,6 +30,10 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case quitApplication
         case deleteTheme
         case deleteQuickAction
+        /// A tool from an MCP server.
+        case mcpToolCall
+        /// A change to the app's own setup, from `change_settings`.
+        case settingsChange
     }
 
     /// One change in a list of them, such as deleting one reminder.
@@ -57,6 +65,11 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case changes([Change])
         /// The one thing acted on, such as an app or a theme, by its name and a detail.
         case item(name: String, detail: String?)
+        /// A call to a tool on an MCP server, with its arguments as indented JSON.
+        case toolCall(server: String, tool: String, arguments: String)
+        /// A change to the app's setup in plain words, such as "Add the MCP server figma", and
+        /// lines about it, such as the command it runs and when it takes effect.
+        case setting(change: String, notes: [String])
     }
 
     public var id: String { callID }
@@ -65,6 +78,9 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
     public var body: Body
     /// Why it needs a go-ahead, in a few words that follow "It", such as "deletes a reminder".
     public var reason: String
+    /// A call made by a `run_script` script. The card says so, and declining does not end the
+    /// row, since the script runs on.
+    public var fromScript = false
 
     public init(callID: String, kind: Kind, body: Body, reason: String) {
         self.callID = callID
@@ -86,6 +102,10 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         if case .item(let name, _) = body { name } else { nil }
     }
 
+    private var toolCallName: String? {
+        if case .toolCall(_, let tool, _) = body { tool } else { nil }
+    }
+
     /// The question the card asks, such as "Run this command?".
     public var question: String {
         switch kind {
@@ -95,32 +115,52 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .quitApplication: "Quit this app?"
         case .deleteTheme: "Delete this theme?"
         case .deleteQuickAction: "Delete this quick action?"
+        case .mcpToolCall: "Call this tool?"
+        case .settingsChange: "Change this setting?"
         }
     }
 
     /// The card's first line: the question and the reason, such as
     /// "Run this command? It deletes files."
     public var prompt: String {
-        "\(question) It \(reason)."
+        "\(question) It \(reason)." + (fromScript ? " A script is asking." : "")
     }
 
     /// The button that goes ahead.
     public var approveTitle: String {
         switch kind {
-        case .shellCommand: "Run"
+        case .shellCommand: "Allow Once"
         case .reminderChanges, .eventChanges: changeCount == 1 ? "Make Change" : "Make Changes"
         case .quitApplication: "Quit"
         case .deleteTheme, .deleteQuickAction: "Delete"
+        case .mcpToolCall: "Allow Once"
+        case .settingsChange: "Change"
         }
+    }
+
+    /// Whether the card also offers Always Deny and Always Allow, which answer this call and
+    /// save the answer for the tool. Only an MCP tool's card does, since its go-ahead is a
+    /// setting per tool.
+    public var offersAlways: Bool { kind == .mcpToolCall }
+
+    public static let alwaysDenyTitle = "Always Deny"
+    public static let alwaysAllowTitle = "Always Allow"
+
+    /// The line beside the buttons that says where a saved answer can be changed, for a card
+    /// that offers the Always choices.
+    public var alwaysNote: String? {
+        offersAlways ? "Always Allow and Always Deny are saved for this tool. Change them in Settings > Tools." : nil
     }
 
     /// The button that declines.
     public var declineTitle: String {
         switch kind {
-        case .shellCommand: "Don’t Run"
+        case .shellCommand: "Deny"
         case .reminderChanges, .eventChanges: "Don’t Change"
         case .quitApplication: "Don’t Quit"
         case .deleteTheme, .deleteQuickAction: "Don’t Delete"
+        case .mcpToolCall: "Deny"
+        case .settingsChange: "Don’t Change"
         }
     }
 
@@ -142,6 +182,10 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
             return itemName.map { "\(waiting) to delete the theme \($0)" } ?? waiting
         case .deleteQuickAction:
             return itemName.map { "\(waiting) to delete the quick action \($0)" } ?? waiting
+        case .mcpToolCall:
+            return toolCallName.map { "\(waiting) to call \($0)" } ?? waiting
+        case .settingsChange:
+            return "\(waiting) to change a setting"
         }
     }
 
@@ -151,8 +195,25 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         case .command(let command): command
         case .changes(let changes): changes.map(\.text).joined(separator: "\n")
         case .item(let name, let detail): detail.map { "\(name) (\($0))" } ?? name
+        case .toolCall(let server, let tool, let arguments): "\(tool) on \(server)\n\(arguments)"
+        case .setting(let change, let notes): ([change] + notes).joined(separator: "\n")
         }
     }
+}
+
+/// The owner's answer to a go-ahead card, one per button.
+public enum ConfirmationAnswer: Sendable, Equatable {
+    case deny
+    /// Deny this call, and every later call to this tool without asking. Only a card that
+    /// `offersAlways` has it. The tool that asked saves the setting.
+    case alwaysDeny
+    /// Allow this call, and every later call to this tool without asking. Only a card that
+    /// `offersAlways` has it. The tool that asked saves the setting.
+    case alwaysAllow
+    case allowOnce
+
+    /// Whether this call goes ahead.
+    public var allows: Bool { self == .allowOnce || self == .alwaysAllow }
 }
 
 /// What a tool can reach while it runs.
@@ -161,20 +222,36 @@ public struct ToolRunContext: Sendable {
     /// The episode the call was made in. History search leaves it out, since the model already
     /// sees it.
     public var episodeID: UUID?
-    /// Asks the person whether to go ahead. Waits as long as it takes.
-    public var confirm: @Sendable (ConfirmationRequest) async -> Bool
+    /// Asks the person whether to go ahead, and returns their full answer. Waits as long as it
+    /// takes.
+    public var answer: @Sendable (ConfirmationRequest) async -> ConfirmationAnswer
     /// Where the tool notes facts about its run for the inspector, such as an exit status.
     /// What it notes is stored beside the result and never reaches the model.
     public var report: ToolRunReport
 
     public init(
         callID: String, episodeID: UUID? = nil, report: ToolRunReport = ToolRunReport(),
-        confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
+        answer: @escaping @Sendable (ConfirmationRequest) async -> ConfirmationAnswer
     ) {
         self.callID = callID
         self.episodeID = episodeID
         self.report = report
-        self.confirm = confirm
+        self.answer = answer
+    }
+
+    /// A context whose go-ahead is yes or no, as most callers and tests need.
+    public init(
+        callID: String, episodeID: UUID? = nil, report: ToolRunReport = ToolRunReport(),
+        confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
+    ) {
+        self.init(callID: callID, episodeID: episodeID, report: report) { request in
+            await confirm(request) ? .allowOnce : .deny
+        }
+    }
+
+    /// Asks the person whether to go ahead. Either way of allowing counts as yes.
+    public func confirm(_ request: ConfirmationRequest) async -> Bool {
+        await answer(request).allows
     }
 }
 
