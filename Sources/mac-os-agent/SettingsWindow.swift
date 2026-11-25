@@ -376,6 +376,9 @@ final class SettingsTitleBar: NSObject, NSToolbarDelegate {
 /// shows it, and `--preview-item <name>` selects a skill or tool in that section.
 @MainActor
 enum SettingsPreview {
+    /// The tools of the settings tools experiment, any of which `--preview-item` can select.
+    static let settingsToolNames: Set = [FindToolsTool.name, UseToolTool.name, ReadSettingsTool.name, ChangeSettingsTool.name]
+
     private static var controller: SettingsWindowController?
 
     static func show(_ section: SettingsSection, item: String?) {
@@ -407,7 +410,15 @@ enum SettingsPreview {
                     skills: prompt.skills, history: history,
                     // `--preview-item set_links` shows the tool as a run with the panel with bars
                     // experiment on has it, without reading or writing its preference.
-                    taskLinks: section == .tools && item == SetLinksTool.name ? SetLinksTool(store: TaskLinkStore(fileURL: URL(filePath: "/dev/null"))) : nil),
+                    taskLinks: section == .tools && item == SetLinksTool.name ? SetLinksTool(store: TaskLinkStore(fileURL: URL(filePath: "/dev/null"))) : nil,
+                    // `--preview-item` with a tool of the settings tools experiment, such as
+                    // `use_tool` or `change_settings`, shows the tools as a run with it on has
+                    // them, without reading or writing its preference.
+                    onDemandGroups: section == .tools && SettingsPreview.settingsToolNames.contains(item ?? "")
+                        ? [SettingsToolGroup.make(access: AppSettingsAccess(
+                            serversFile: URL(filePath: "/dev/null"), mcp: mcp, toolsInThisRun: [:], defaults: defaults,
+                            experimentsOnAtLaunch: []))]
+                        : []),
                 additional: mcp.makeTools()
                 // `--preview-item run_script` shows the tool as a run with the scripts
                 // experiment on has it, without reading or writing its preference.

@@ -29,6 +29,7 @@ enum PanelPreview {
     /// The go-ahead card for each tool that asks, beside the shell tool's `confirmation`.
     static let goAheadStates = [
         "confirmation-reminders", "confirmation-events", "confirmation-quit", "confirmation-theme", "confirmation-mcp",
+        "confirmation-settings-server", "confirmation-settings-experiment",
     ]
 
     /// The states that show the tool call inspector beside the panel, each open on one call.
@@ -96,7 +97,8 @@ enum PanelPreview {
                 isRunning: true)
         case "script-running", "script-confirmation", "script-finished":
             return scriptSession(named: name)
-        case "confirmation-reminders", "confirmation-events", "confirmation-quit", "confirmation-theme", "confirmation-mcp":
+        case "confirmation-reminders", "confirmation-events", "confirmation-quit", "confirmation-theme", "confirmation-mcp",
+             "confirmation-settings-server", "confirmation-settings-experiment":
             return goAheadSession(named: name)
         case "draft", "multiline-draft":
             var thread = StandInThread(now: Date())
@@ -361,6 +363,34 @@ enum PanelPreview {
                 callID: callID, kind: .mcpToolCall,
                 body: .toolCall(server: "tasks", tool: "create_task", arguments: arguments.prettyEncodedString()),
                 reason: "comes from an MCP server and is set to ask before each call")
+        case "confirmation-settings-server":
+            // The settings tools experiment: adding a remote server through the mcp-remote bridge.
+            thread.user("set up the figma mcp for moa, its endpoint is https://mcp.figma.com/mcp", minutesAgo: 1)
+            let arguments: JSONValue = ["group": "settings", "name": "change_settings", "arguments": [
+                "area": "mcp_servers",
+                "change": ["add": ["name": "figma", "command": "npx", "args": ["-y", "mcp-remote", "https://mcp.figma.com/mcp"], "env_names": []]],
+            ]]
+            thread.call(callID, name: UseToolTool.name, arguments: arguments, output: nil, details: nil)
+            request = ConfirmationRequest(
+                callID: callID, kind: .settingsChange,
+                body: .setting(change: "Add the MCP server figma", notes: [
+                    "Command: npx -y mcp-remote https://mcp.figma.com/mcp",
+                    "figma is a remote server. MOA will reach it through mcp-remote, run with npx.",
+                    "Its tools join at the next launch.",
+                ]),
+                reason: "adds a program MOA starts, whose tools the agent can call")
+        case "confirmation-settings-experiment":
+            thread.user("turn on the scripts experiment", minutesAgo: 1)
+            let arguments: JSONValue = ["group": "settings", "name": "change_settings", "arguments": [
+                "area": "experiments", "change": ["experiment": "scripts", "on": true],
+            ]]
+            thread.call(callID, name: UseToolTool.name, arguments: arguments, output: nil, details: nil)
+            request = ConfirmationRequest(
+                callID: callID, kind: .settingsChange,
+                body: .setting(change: "Turn on the experiment “\(Experiment.scripts.title)”", notes: [
+                    "Takes effect: \(Experiment.scripts.whenAChangeTakesEffect)",
+                ]),
+                reason: "changes how MOA works")
         default:
             thread.user("delete the night swim theme", minutesAgo: 1)
             thread.call(callID, name: ChangeThemeTool.name, arguments: ["action": "delete", "theme_id": "night-swim", "file": nil], output: nil, details: nil)

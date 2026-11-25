@@ -58,7 +58,7 @@ public struct ToolCallSummaries: Sendable {
     /// out, such as `search_web` after web search was turned off.
     static let conditional: [any AgentTool] = [
         SearchWebTool(key: nil), SetLinksTool(), RunScriptTool(tools: [], helper: nil),
-        FindToolsTool(groups: []), UseToolTool(groups: []),
+        FindToolsTool(groups: []), UseToolTool(groups: [SettingsToolGroup.make(access: .summariesOnly)]),
     ]
 
     /// Built-in tools that were renamed, by their old name. A call in the thread made under an

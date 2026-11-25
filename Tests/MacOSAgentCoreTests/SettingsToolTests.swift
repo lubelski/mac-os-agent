@@ -185,8 +185,10 @@ private let sampleServers = """
         #expect(Self.use.summary(arguments: ["group": "small", "name": "read_notes", "arguments": ["title": "Groceries"]]) == "Stand-in read_notes Groceries")
         let summaries = ToolCallSummaries([Self.use])
         #expect(summaries.summary(name: "use_tool", arguments: #"{"group":"small","name":"read_notes","arguments":{"title":"Errands"}}"#) == "Stand-in read_notes Errands")
-        // A row from a run without the groups still reads as the tool and its group.
-        #expect(ToolCallSummaries.builtIn.summary(name: "use_tool", arguments: #"{"group":"settings","name":"read_settings","arguments":{}}"#) == "read_settings in settings")
+        // A row from a run without the experiment still reads as the settings call, and an
+        // unknown group's as the tool and its group.
+        #expect(ToolCallSummaries.builtIn.summary(name: "use_tool", arguments: #"{"group":"settings","name":"read_settings","arguments":{"area":"experiments"}}"#) == "Settings read experiments")
+        #expect(ToolCallSummaries.builtIn.summary(name: "use_tool", arguments: #"{"group":"linear","name":"get_issue","arguments":{}}"#) == "get_issue in linear")
     }
 
     @Test func thePairGoesLastOfTheBuiltInToolsAndAScriptCanCallUseTool() {
@@ -468,7 +470,7 @@ private let sampleServers = """
         let group = SettingsToolGroup.make(access: setup.access(pool: .empty))
         let use = UseToolTool(groups: [group])
         let arguments: JSONValue = ["group": "settings", "name": "change_settings", "arguments": ["area": "experiments", "change": ["experiment": "scripts", "on": true]]]
-        #expect(use.summary(arguments: arguments) == "Change settings: turn on the experiment Scripts that call tools")
+        #expect(use.summary(arguments: arguments) == "Settings turn on the experiment Scripts that call tools")
         let asked = Asked()
         _ = await use.run(arguments: arguments, context: context(asked: asked, callID: "call_use"))
         #expect(asked.requests.map(\.callID) == ["call_use"])

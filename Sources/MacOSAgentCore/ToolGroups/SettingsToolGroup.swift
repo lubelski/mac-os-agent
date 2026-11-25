@@ -54,6 +54,16 @@ public struct AppSettingsAccess: @unchecked Sendable {
     }
 }
 
+extension AppSettingsAccess {
+    /// Access to nothing real, for tools that only give their rows' summaries, which read
+    /// nothing but the arguments. Their `run` is never called.
+    static var summariesOnly: AppSettingsAccess {
+        AppSettingsAccess(
+            serversFile: FileManager.default.temporaryDirectory.appending(path: "mac-os-agent-no-mcp-servers.json"),
+            mcp: .empty, toolsInThisRun: [:], experimentsOnAtLaunch: [])
+    }
+}
+
 // MARK: - The areas
 
 /// One area of the app's setup, described once: what it holds, where it is kept, what
@@ -174,8 +184,8 @@ public struct ReadSettingsTool: AgentTool {
     }
 
     public func summary(arguments: JSONValue) -> String {
-        guard let area = arguments["area"]?.stringValue.flatMap(SettingsArea.init) else { return "Read settings" }
-        return "Read settings: \(area.title)"
+        guard let area = arguments["area"]?.stringValue.flatMap(SettingsArea.init) else { return "Settings read" }
+        return "Settings read \(area.title)"
     }
 
     public func run(arguments: JSONValue, context: ToolRunContext) async -> String {
@@ -314,17 +324,17 @@ public struct ChangeSettingsTool: AgentTool {
         let change = arguments["change"] ?? .null
         switch arguments["area"]?.stringValue.flatMap(SettingsArea.init) {
         case .mcpServers:
-            if let name = change["add"]?["name"]?.stringValue { return "Change settings: add the MCP server \(name)" }
-            if let name = change["remove"]?.stringValue { return "Change settings: remove the MCP server \(name)" }
-            if let name = change["turn_on"]?.stringValue { return "Change settings: turn on the MCP server \(name)" }
-            if let name = change["turn_off"]?.stringValue { return "Change settings: turn off the MCP server \(name)" }
-            return "Change settings: MCP servers"
+            if let name = change["add"]?["name"]?.stringValue { return "Settings add the MCP server \(name)" }
+            if let name = change["remove"]?.stringValue { return "Settings remove the MCP server \(name)" }
+            if let name = change["turn_on"]?.stringValue { return "Settings turn on the MCP server \(name)" }
+            if let name = change["turn_off"]?.stringValue { return "Settings turn off the MCP server \(name)" }
+            return "Settings MCP servers"
         case .experiments:
-            guard let key = change["experiment"]?.stringValue else { return "Change settings: experiments" }
+            guard let key = change["experiment"]?.stringValue else { return "Settings experiments" }
             let on = change["on"]?.boolValue
-            return "Change settings: turn \(on == false ? "off" : "on") the experiment \(Experiment(rawValue: key)?.title ?? key)"
+            return "Settings turn \(on == false ? "off" : "on") the experiment \(Experiment(rawValue: key)?.title ?? key)"
         case nil:
-            return "Change settings"
+            return "Settings"
         }
     }
 
