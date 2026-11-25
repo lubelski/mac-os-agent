@@ -1,6 +1,6 @@
 # mac-os-agent
 
-Read `README.md` first for what the product is, then `VISION.md` for what a change is judged against, then `planning/`: `decided.md` records what is settled and built, `planned.md` what is proposed, open, or not started, and `ideas.md` experiments to try later.
+Read `README.md` first for what the product is, then `VISION.md` for what a change is judged against, then `docs/architecture.md` for the parts of the app and which one a change belongs in, then `planning/`: `decided.md` records what is settled and built, `planned.md` what is proposed, open, or not started, and `ideas.md` experiments to try later.
 
 ## Product rules
 
@@ -29,6 +29,7 @@ Read `README.md` first for what the product is, then `VISION.md` for what a chan
   - Do not commit screenshots to a branch for this. Earlier pull requests pushed them to a `pr-assets` branch and linked the raw files. That is no longer needed, and nothing new should go there.
 - Screen capture from an agent session often shows only the wallpaper, because the terminal lacks Screen Recording permission. Renders do not need it. If you could not see a change, say so in the pull request.
 - A new feature the owner has not settled goes behind a switch in Settings, Experiments, off by default, with its four lines in `planning/decided.md` under Experiments: question, wins when, decide by, and afterward. With the switch off the app is as it was before.
+- When a change adds a part, removes one, or gives one a new job, update `docs/architecture.md` and its diagrams in the same pull request. When a change breaks one of its six rules, say so in the pull request and hold it.
 - Do not change `VISION.md` without the owner. When a change seems to go against it, say so in the pull request and hold it.
 - When a decision changes, move it between `planning/decided.md` and the Proposed and Open lists in `planning/planned.md` in the same pull request. Keep `README.md` short: what the app is and how to run it.
 

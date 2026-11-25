@@ -36,6 +36,7 @@ Settings > Appearance picks the panel's theme. Everything the agent keeps (the t
   scripts/render-icon.sh 3    # design 3 instead
   ```
 - [VISION.md](VISION.md) says what the app is for and what a change is judged against.
+- [docs/architecture.md](docs/architecture.md) names the parts of the app, how they connect, and what a change to the structure is judged against.
 - [planning/](planning/README.md) records what has been decided, what is planned, and ideas to try later.
 - [AGENTS.md](AGENTS.md) has the rules for changing this repo, including how to preview and capture the interface.
 
