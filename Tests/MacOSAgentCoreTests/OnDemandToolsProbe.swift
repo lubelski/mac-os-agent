@@ -12,7 +12,9 @@ import Testing
 /// MAC_OS_AGENT_TOOL_PROBE=1 swift test --filter OnDemandToolsProbe
 /// ```
 ///
-/// Every tool is a stand-in that records its call and returns made-up text. Nothing runs on the
+/// Every tool is a stand-in that records its call and returns made-up text, apart from the app's own
+/// `find_tools` and `use_tool`, which only reach stand-ins. The settings stand-ins have the real
+/// `read_settings` and `change_settings` definitions. Nothing runs on the
 /// Mac and nothing reaches Linear. The Linear tools are the real definitions from the app's MCP
 /// tool cache. Results go to `MAC_OS_AGENT_PROBE_OUT`, one JSON line per run.
 @Suite struct OnDemandToolsProbe {
@@ -98,8 +100,9 @@ struct ProbeTask: Sendable {
             called("change_settings", calls, containing: ["scripts"]) && noShell(calls)
         },
         ProbeTask(id: "figma-http", prompt: "Configure the Figma MCP for MOA. Its endpoint is https://mcp.figma.com/mcp") { calls in
-            // HTTP servers are not supported. Passing means no server was added, by any route.
-            !called("change_settings", calls, containing: ["figma"]) && noShell(calls)
+            // Decided on MAC-2: a remote server is added through the mcp-remote bridge, which the
+            // go-ahead card names. Passing means it was added as a bridge, through the settings tools.
+            called("change_settings", calls, containing: ["figma", "mcp-remote"]) && noShell(calls)
         },
         ProbeTask(id: "add-server", prompt: "Add the GitHub MCP server to your setup. The command is npx with the arguments -y @modelcontextprotocol/server-github.") { calls in
             called("change_settings", calls, containing: ["server-github"]) && noShell(calls)
@@ -127,17 +130,13 @@ enum Arm: String, CaseIterable, Sendable {
         switch self {
         case .listed: return base
         case .grouped:
-            return base + """
-
-
-                More tools are kept in groups, out of your tool list. Call find_tools with a group's \
-                name to see its tools, then use_tool to call one.
-                Groups:
-                - settings: this app's own setup (this app is MacOS Agent, also called MOA or \
-                mac-os-agent): MCP servers and experiments.
-                - linear: the Linear MCP server: issues, projects, comments, documents, cycles, \
-                and teams in Linear.
-                """
+            // The app's own rules for groups, as a run with the settings tools experiment has them.
+            return AgentInstructions.assemble(
+                editable: AgentInstructions.defaultEditable, skills: [], skillsFolder: AgentPaths.skillsFolder,
+                toolGroups: [
+                    SettingsToolGroup.listing,
+                    .init(name: "linear", summary: "the Linear MCP server: issues, projects, comments, documents, cycles, and teams in Linear."),
+                ])
         }
     }
 
@@ -159,10 +158,18 @@ enum Arm: String, CaseIterable, Sendable {
             }
             return builtIn + settingsTools + linearTools.sorted { $0.definition.name < $1.definition.name }
         case .grouped:
-            let groups = ["settings": settings, "linear": linearDefinitions]
+            // The app's real find_tools and use_tool, over stand-ins that record their calls.
+            let groups = [
+                OnDemandToolGroup(name: "settings", summary: SettingsToolGroup.summary, tools: settings.map {
+                    StandInTool(definition: $0, recorder: recorder, reply: SettingsStandIns.reply)
+                }),
+                OnDemandToolGroup(name: "linear", summary: "The Linear MCP server.", tools: linearDefinitions.map {
+                    StandInTool(definition: $0, recorder: recorder, reply: LinearStandIns.reply)
+                }),
+            ]
             return builtIn + [
-                FindToolsTool(groups: groups, recorder: recorder),
-                UseToolTool(groups: groups, recorder: recorder),
+                RecordedTool(inner: FindToolsTool(groups: groups), recorder: recorder),
+                UseToolTool(groups: groups),
             ]
         }
     }
@@ -200,37 +207,13 @@ enum SettingsStandIns {
         "type": .string("string"), "enum": .array([.string("mcp_servers"), .string("experiments")]),
     ])
 
-    static let definitions = [
-        ToolDefinition(
-            name: "read_settings",
-            description: """
-                Reads this app's own setup. This app is MacOS Agent, also called MOA or mac-os-agent. \
-                mcp_servers: each server with whether it is saved, on, loaded in this run, connected, and \
-                signed in, and which kinds of server are supported. experiments: each experiment and \
-                whether it is on. The result also says what change_settings accepts for the area.
-                """,
-            parameters: .object([
-                "type": .string("object"),
-                "properties": .object(["area": areas]),
-                "required": .array([.string("area")]),
-            ]),
-            strict: false),
-        ToolDefinition(
-            name: "change_settings",
-            description: """
-                Changes this app's own setup and keeps everything else. mcp_servers: {"add": {"name", \
-                "command", "args", "env_names"}}, {"remove": name}, {"turn_on": name}, or {"turn_off": \
-                name}. Only servers the app starts with a command are supported. Remote HTTP servers are \
-                not supported yet. experiments: {"experiment": key, "on": true or false}. The owner is asked \
-                first. The result says when the change takes effect and what the owner still has to do.
-                """,
-            parameters: .object([
-                "type": .string("object"),
-                "properties": .object(["area": areas, "change": .object(["type": .string("object")])]),
-                "required": .array([.string("area"), .string("change")]),
-            ]),
-            strict: false),
-    ]
+    /// The real tools' definitions. Only their definitions are used, which read nothing.
+    static let definitions: [ToolDefinition] = {
+        let access = AppSettingsAccess(
+            serversFile: URL(filePath: NSTemporaryDirectory()).appending(path: "mac-os-agent-probe-no-servers.json"),
+            mcp: .empty, toolsInThisRun: [:], experimentsOnAtLaunch: [])
+        return [ReadSettingsTool(access: access).definition, ChangeSettingsTool(access: access).definition]
+    }()
 
     static let reply: @Sendable (String, JSONValue) -> String = { name, arguments in
         let area = arguments["area"]?.stringValue ?? ""
@@ -249,14 +232,14 @@ enum SettingsStandIns {
             return """
                 {"servers": [{"name": "linear", "command": "npx -y mcp-remote https://mcp.linear.app/sse", \
                 "saved": true, "on": true, "loaded_in_this_run": true, "connected": true, "signed_in": true, "tools": 78}],
-                 "supported": "Servers the app starts with a command (stdio). Remote HTTP servers are not supported yet; see MAC-2.",
+                 "supported": "Servers the app starts with a command. A remote HTTP server through the mcp-remote bridge.",
                  "change": {"add": {"name": "<name>", "command": "<command>", "args": [], "env_names": []}},
                  "takes_effect": "next launch"}
                 """
         }
         if arguments.encodedString().localizedCaseInsensitiveContains("http") && area == "mcp_servers"
-            && !arguments.encodedString().contains("mcp-remote") && !arguments.encodedString().contains("npx") {
-            return "Error: Remote HTTP servers are not supported yet. Only servers the app starts with a command."
+            && !arguments.encodedString().contains("mcp-remote") {
+            return "Error: " + ChangeSettingsTool.remoteAdvice
         }
         return "Saved. The owner said yes. It takes effect at the next launch: the owner has to quit and open the app."
     }
@@ -275,89 +258,17 @@ enum LinearStandIns {
     }
 }
 
-struct FindToolsTool: AgentTool {
-    var groups: [String: [ToolDefinition]]
+/// A real tool that records its calls before it runs.
+struct RecordedTool: AgentTool {
+    var inner: any AgentTool
     var recorder: CallRecorder
 
-    var definition: ToolDefinition {
-        ToolDefinition(
-            name: "find_tools",
-            description: """
-                Lists the tools in one of the groups named in your instructions. With a query, returns the \
-                matching tools with their full descriptions and parameters, ready for use_tool. Without one, \
-                returns every tool's name and first sentence.
-                """,
-            parameters: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "group": .object(["type": .string("string")]),
-                    "query": .object([
-                        "type": .array([.string("string"), .string("null")]),
-                        "description": .string("Words to match against tool names and descriptions, or null for the whole group."),
-                    ]),
-                ]),
-                "required": .array([.string("group"), .string("query")]),
-                "additionalProperties": .bool(false),
-            ]))
-    }
-
-    func summary(arguments: JSONValue) -> String { "find_tools" }
+    var definition: ToolDefinition { inner.definition }
+    func summary(arguments: JSONValue) -> String { inner.summary(arguments: arguments) }
 
     func run(arguments: JSONValue, context: ToolRunContext) async -> String {
-        await recorder.record("find_tools", arguments)
-        let name = arguments["group"]?.stringValue ?? ""
-        guard let tools = groups[name] else { return "Error: no group named \(name). Groups: \(groups.keys.sorted().joined(separator: ", "))." }
-        let words = (arguments["query"]?.stringValue ?? "").lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
-        if tools.count <= 4 || !words.isEmpty {
-            let matches = tools.count <= 4 ? tools : tools.filter { tool in
-                let text = (tool.name + " " + tool.description).lowercased()
-                return words.contains { text.contains($0) }
-            }
-            if matches.isEmpty { return "No tools in \(name) match. Call find_tools with a null query to see them all." }
-            return JSONValue.array(matches.prefix(8).map { tool in
-                .object(["name": .string(tool.name), "description": .string(tool.description), "parameters": tool.parameters])
-            }).encodedString()
-        }
-        return tools.map { "\($0.name): \(Self.firstSentence($0.description))" }.joined(separator: "\n")
-    }
-
-    static func firstSentence(_ text: String) -> String {
-        let line = text.split(separator: "\n").first.map(String.init) ?? text
-        if let end = line.range(of: ". ") { return String(line[..<end.lowerBound]) + "." }
-        return String(line.prefix(160))
-    }
-}
-
-struct UseToolTool: AgentTool {
-    var groups: [String: [ToolDefinition]]
-    var recorder: CallRecorder
-
-    var definition: ToolDefinition {
-        ToolDefinition(
-            name: "use_tool",
-            description: "Calls a tool from a group, by the name find_tools gave, with arguments that match its parameters.",
-            parameters: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "group": .object(["type": .string("string")]),
-                    "name": .object(["type": .string("string")]),
-                    "arguments": .object(["type": .string("object")]),
-                ]),
-                "required": .array([.string("group"), .string("name"), .string("arguments")]),
-            ]),
-            strict: false)
-    }
-
-    func summary(arguments: JSONValue) -> String { "use_tool" }
-
-    func run(arguments: JSONValue, context: ToolRunContext) async -> String {
-        let group = arguments["group"]?.stringValue ?? ""
-        let name = arguments["name"]?.stringValue ?? ""
-        let inner = arguments["arguments"] ?? .object([:])
-        guard let tools = groups[group] else { return "Error: no group named \(group)." }
-        guard tools.contains(where: { $0.name == name }) else { return "Error: \(group) has no tool named \(name). Call find_tools first." }
-        await recorder.record(name, inner)
-        return group == "settings" ? SettingsStandIns.reply(name, inner) : LinearStandIns.reply(name, inner)
+        await recorder.record(inner.definition.name, arguments)
+        return await inner.run(arguments: arguments, context: context)
     }
 }
 
