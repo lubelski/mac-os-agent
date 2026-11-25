@@ -63,7 +63,7 @@ Ideas the owner has raised that nobody has designed or built yet.
 
 ## MCP servers
 
-Agreed with the owner on 2026-11-22, as three slices in this order. The first is built. The other two are not started. All of it is behind the MCP servers switch in Settings, Experiments, including the next two slices.
+Agreed with the owner on 2026-11-22, as three slices in this order. The first is built. The third's first stage is built as the settings tools experiment. The rest is not started. All of it is behind the MCP servers switch in Settings, Experiments, including the next two slices.
 
 ### First slice: the bones
 
@@ -77,18 +77,18 @@ A change to the servers takes effect at the next episode, with no relaunch.
 - The servers file is watched, as the skills folder is. A server that is added, changed, turned on or off, or whose tools change, joins at the next episode. Settings says when a change is waiting for one.
 - To work out: a relaunch partway through an episode has to come back with the same list, or cost one cache miss as the memory block does.
 
-### Third slice: progressive disclosure
+### Third slice: progressive disclosure, stage 2: each MCP server as a group behind `find_tools` and `use_tool`
 
 A server costs the prompt a line, not its whole tool list, as a skill does.
 
-- The prompt lists each server's name and description. Two fixed tools find a server's tools and call one, as `load_skill` reads a skill.
-- The tool list sent to the model then never changes for MCP, so a server can come and go in the middle of an episode, and many servers do not crowd the prompt.
-- To work out: whether this replaces sending a server's tools directly or is a choice per server, and whether the model finds and calls tools as well this way. Measure it with real servers before choosing.
+- Stage 1 is built, behind the settings tools experiment: the pair `find_tools` and `use_tool`, with one group, `settings`. See "Settings the agent can change" under Experiments in [decided.md](decided.md). The probe on MAC-2 found the model finds and calls grouped tools about as reliably as listed ones, for one or two more steps and far fewer input tokens.
+- Stage 2 puts each MCP server in a group of its own behind the same pair, listed in the prompt by its name and a line about it. The tool list sent to the model then never changes for MCP, so a server can come and go in the middle of an episode, and many servers do not crowd the prompt.
+- To work out: whether this replaces sending a server's tools directly or is a choice per server, where a server's one line comes from, and how its tools' go-ahead settings show in Settings.
 
 ### Later, in no order
 
 - Remote servers over HTTP, with OAuth sign-in and the tokens kept where the app's own sign-in is.
 - Adding and editing a server in Settings instead of the file.
-- The agent adding a server itself.
+- The agent adding a server itself. Built, behind the settings tools experiment: `change_settings` adds, removes, and turns servers on and off with the owner's go-ahead. See decided.md. Still to build: a card in Settings for the secret values the agent cannot set.
 - MCP tools as steps of a quick action. A step is checked against the built-in tools today.
 - Resources and prompts from a server. Only tools are used.
