@@ -20,6 +20,7 @@ final class ToolsSettingsModel {
     @ObservationIgnored let mcpSettings: MCPSettingsStore?
     /// Changes when an MCP tool's go-ahead does, so the views read the store again.
     private(set) var goAheadRevision = 0
+    @ObservationIgnored private var goAheadObserver: (any NSObjectProtocol)?
     var errorMessage: String?
 
     init(registry: ToolRegistry, access gate: any PrivacyAccessGate, mcpSettings: MCPSettingsStore? = nil) {
@@ -28,6 +29,19 @@ final class ToolsSettingsModel {
         self.gate = gate
         self.mcpSettings = mcpSettings
         reloadAccess()
+        if let mcpSettings {
+            // Always Allow or Always Deny on a go-ahead card changes a tool's go-ahead while
+            // this pane may be open.
+            goAheadObserver = NotificationCenter.default.addObserver(
+                forName: MCPSettingsStore.goAheadDidChange, object: mcpSettings, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.goAheadRevision += 1 }
+            }
+        }
+    }
+
+    isolated deinit {
+        if let goAheadObserver { NotificationCenter.default.removeObserver(goAheadObserver) }
     }
 
     /// The tool's go-ahead as it is now. An MCP tool's can change while the app runs.
@@ -37,11 +51,19 @@ final class ToolsSettingsModel {
         return mcpSettings.goAhead(server: mcp.server, tool: mcp.tool, readOnly: mcp.readOnly).toolGoAhead
     }
 
-    /// Whether an MCP tool asks before each call. The change applies to its next call.
-    func setAsks(_ asks: Bool, _ tool: ToolSummary) {
+    /// An MCP tool's go-ahead as the owner chose it, or nil for a built-in tool.
+    func mcpGoAhead(of tool: ToolSummary) -> MCPGoAhead? {
+        _ = goAheadRevision
+        guard let mcp = tool.mcp, let mcpSettings else { return nil }
+        return mcpSettings.goAhead(server: mcp.server, tool: mcp.tool, readOnly: mcp.readOnly)
+    }
+
+    /// Sets an MCP tool to ask each time, always allow, or always deny. The change applies to
+    /// its next call.
+    func setGoAhead(_ value: MCPGoAhead, _ tool: ToolSummary) {
         guard let mcp = tool.mcp, let mcpSettings else { return }
         do {
-            try mcpSettings.setGoAhead(asks ? .ask : .dontAsk, server: mcp.server, tool: mcp.tool, readOnly: mcp.readOnly)
+            try mcpSettings.setGoAhead(value, server: mcp.server, tool: mcp.tool, readOnly: mcp.readOnly)
             errorMessage = nil
         } catch {
             errorMessage = "Could not save the go-ahead: \(error.localizedDescription)"
@@ -118,14 +140,27 @@ struct ToolRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
-            if goAhead != .never {
-                Image(systemName: "hand.raised")
+            if let mark {
+                Image(systemName: mark.symbol)
                     .foregroundStyle(.secondary)
-                    .help("Can ask for a go-ahead")
-                    .accessibilityLabel("Can ask for a go-ahead")
+                    .help(mark.text)
+                    .accessibilityLabel(mark.text)
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+extension ToolRow {
+    /// The mark at the end of the row: the hand for a tool that can ask, and for an MCP tool
+    /// its saved choice, so Always allow and Always deny show in the list.
+    var mark: (symbol: String, text: String)? {
+        switch goAhead {
+        case .never: tool.mcp == nil ? nil : ("checkmark.circle", "Always allowed")
+        case .denied: ("nosign", "Always denied")
+        case .always where tool.mcp != nil: ("hand.raised", "Asks each time")
+        case .always, .sometimes: ("hand.raised", "Can ask for a go-ahead")
+        }
     }
 }
 
@@ -212,27 +247,35 @@ extension ToolDetailView {
     }
 }
 
-/// An MCP tool's one setting: whether it asks before each call. A change applies to the next
-/// call, since it does not change what the model is sent.
+/// An MCP tool's one setting: ask each time, always allow, or always deny. A change applies to
+/// the next call, since it does not change what the model is sent. A denied tool stays in the
+/// model's list, and a call to it is answered without asking.
 struct MCPGoAheadControl: View {
     let tool: ToolSummary
     let mcp: MCPToolReference
     let model: ToolsSettingsModel
 
+    static func explanation(_ value: MCPGoAhead) -> String {
+        switch value {
+        case .ask: "Asks before each call, with the server, the tool, and the arguments."
+        case .allow: "Runs without asking."
+        case .deny: "Never runs. Each call is denied without asking, and the agent is told you set it that way."
+        }
+    }
+
     var body: some View {
+        let value = model.mcpGoAhead(of: tool) ?? .defaultValue(readOnly: mcp.readOnly)
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Asks for a go-ahead").font(.headline)
+                Text("Go-ahead").font(.headline)
                 Spacer()
-                Toggle("Ask before each call", isOn: Binding(
-                    get: { model.goAhead(of: tool) == .always },
-                    set: { model.setAsks($0, tool) }))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
+                Picker("Go-ahead", selection: Binding(get: { value }, set: { model.setGoAhead($0, tool) })) {
+                    ForEach(MCPGoAhead.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .labelsHidden()
+                .fixedSize()
             }
-            Text(model.goAhead(of: tool) == .always
-                 ? "Asks before each call, with the server, the tool, and the arguments."
-                 : "Runs without asking.")
+            Text(Self.explanation(value))
                 .fixedSize(horizontal: false, vertical: true)
             Text("\(mcp.defaultExplanation) A change applies to the next call.")
                 .font(.callout)

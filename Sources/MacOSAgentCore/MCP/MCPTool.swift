@@ -72,7 +72,14 @@ public struct MCPTool: AgentTool {
 
     public static let stoppedOutput = "The task was stopped before the call finished."
 
+    /// The output for a tool the owner set to always deny. It never asks and never reaches the server.
+    public static func deniedOutput(tool: String, server: String) -> String {
+        "The owner has set \(tool) on \(server) to always be denied, so it did not run. Only the owner can change that, in Settings > Tools."
+    }
+
     public func run(arguments: JSONValue, context: ToolRunContext) async -> String {
+        // Checked before the server, so a denied tool never starts or waits for one.
+        if currentGoAhead == .deny { return Self.deniedOutput(tool: info.name, server: server) }
         let connection: any MCPServerConnection
         do {
             connection = try await pool.connection(to: server)
@@ -84,12 +91,23 @@ public struct MCPTool: AgentTool {
             return "The MCP server \(server) is not available, so \(info.name) did not run: \(MCPServerPool.describe(error))"
         }
         if currentGoAhead == .ask {
-            let approved = await context.confirm(ConfirmationRequest(
+            let answer = await context.answer(ConfirmationRequest(
                 callID: context.callID, kind: .mcpToolCall,
                 body: .toolCall(server: server, tool: info.name, arguments: arguments.prettyEncodedString()),
                 reason: "comes from an MCP server and is set to ask before each call"))
             if Task.isCancelled { return Self.stoppedOutput }
-            if !approved { return Self.declinedOutput }
+            switch answer {
+            case .deny:
+                return Self.declinedOutput
+            case .alwaysDeny:
+                // The same setting Tools changes. The answer holds for this call even if it cannot be saved.
+                try? pool.settings.setGoAhead(.deny, server: server, tool: info.name, readOnly: info.readOnly)
+                return Self.deniedOutput(tool: info.name, server: server)
+            case .alwaysAllow:
+                try? pool.settings.setGoAhead(.allow, server: server, tool: info.name, readOnly: info.readOnly)
+            case .allowOnce:
+                break
+            }
         }
         let timeout = pool.callTimeout
         let tool = info.name

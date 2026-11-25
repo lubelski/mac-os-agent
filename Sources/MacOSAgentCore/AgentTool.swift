@@ -129,23 +129,37 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
     /// The button that goes ahead.
     public var approveTitle: String {
         switch kind {
-        case .shellCommand: "Run"
+        case .shellCommand: "Allow Once"
         case .reminderChanges, .eventChanges: changeCount == 1 ? "Make Change" : "Make Changes"
         case .quitApplication: "Quit"
         case .deleteTheme, .deleteQuickAction: "Delete"
-        case .mcpToolCall: "Call"
+        case .mcpToolCall: "Allow Once"
         case .settingsChange: "Change"
         }
+    }
+
+    /// Whether the card also offers Always Deny and Always Allow, which answer this call and
+    /// save the answer for the tool. Only an MCP tool's card does, since its go-ahead is a
+    /// setting per tool.
+    public var offersAlways: Bool { kind == .mcpToolCall }
+
+    public static let alwaysDenyTitle = "Always Deny"
+    public static let alwaysAllowTitle = "Always Allow"
+
+    /// The line beside the buttons that says where a saved answer can be changed, for a card
+    /// that offers the Always choices.
+    public var alwaysNote: String? {
+        offersAlways ? "Always Allow and Always Deny are saved for this tool. Change them in Settings > Tools." : nil
     }
 
     /// The button that declines.
     public var declineTitle: String {
         switch kind {
-        case .shellCommand: "Don’t Run"
+        case .shellCommand: "Deny"
         case .reminderChanges, .eventChanges: "Don’t Change"
         case .quitApplication: "Don’t Quit"
         case .deleteTheme, .deleteQuickAction: "Don’t Delete"
-        case .mcpToolCall: "Don’t Call"
+        case .mcpToolCall: "Deny"
         case .settingsChange: "Don’t Change"
         }
     }
@@ -187,26 +201,57 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
     }
 }
 
+/// The owner's answer to a go-ahead card, one per button.
+public enum ConfirmationAnswer: Sendable, Equatable {
+    case deny
+    /// Deny this call, and every later call to this tool without asking. Only a card that
+    /// `offersAlways` has it. The tool that asked saves the setting.
+    case alwaysDeny
+    /// Allow this call, and every later call to this tool without asking. Only a card that
+    /// `offersAlways` has it. The tool that asked saves the setting.
+    case alwaysAllow
+    case allowOnce
+
+    /// Whether this call goes ahead.
+    public var allows: Bool { self == .allowOnce || self == .alwaysAllow }
+}
+
 /// What a tool can reach while it runs.
 public struct ToolRunContext: Sendable {
     public var callID: String
     /// The episode the call was made in. History search leaves it out, since the model already
     /// sees it.
     public var episodeID: UUID?
-    /// Asks the person whether to go ahead. Waits as long as it takes.
-    public var confirm: @Sendable (ConfirmationRequest) async -> Bool
+    /// Asks the person whether to go ahead, and returns their full answer. Waits as long as it
+    /// takes.
+    public var answer: @Sendable (ConfirmationRequest) async -> ConfirmationAnswer
     /// Where the tool notes facts about its run for the inspector, such as an exit status.
     /// What it notes is stored beside the result and never reaches the model.
     public var report: ToolRunReport
 
     public init(
         callID: String, episodeID: UUID? = nil, report: ToolRunReport = ToolRunReport(),
-        confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
+        answer: @escaping @Sendable (ConfirmationRequest) async -> ConfirmationAnswer
     ) {
         self.callID = callID
         self.episodeID = episodeID
         self.report = report
-        self.confirm = confirm
+        self.answer = answer
+    }
+
+    /// A context whose go-ahead is yes or no, as most callers and tests need.
+    public init(
+        callID: String, episodeID: UUID? = nil, report: ToolRunReport = ToolRunReport(),
+        confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
+    ) {
+        self.init(callID: callID, episodeID: episodeID, report: report) { request in
+            await confirm(request) ? .allowOnce : .deny
+        }
+    }
+
+    /// Asks the person whether to go ahead. Either way of allowing counts as yes.
+    public func confirm(_ request: ConfirmationRequest) async -> Bool {
+        await answer(request).allows
     }
 }
 

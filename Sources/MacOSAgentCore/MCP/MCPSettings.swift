@@ -1,15 +1,35 @@
 import Foundation
 import Synchronization
 
-/// Whether a tool from an MCP server asks for the owner's go-ahead before each call.
-public enum MCPGoAhead: String, Sendable, Codable, Equatable {
+/// What a tool from an MCP server does about the owner's go-ahead: ask before each call, run
+/// without asking, or never run.
+public enum MCPGoAhead: String, Sendable, Codable, Equatable, CaseIterable {
     case ask
-    case dontAsk = "dont-ask"
+    /// Runs without asking. Written as `dont-ask`, its name before Always Deny existed, so
+    /// files from older builds read the same and older builds read this one.
+    case allow = "dont-ask"
+    /// Never runs and never asks. The model is told the owner set it that way.
+    case deny
 
     /// The default: ask, except for a tool its server marks read-only.
-    public static func defaultValue(readOnly: Bool) -> MCPGoAhead { readOnly ? .dontAsk : .ask }
+    public static func defaultValue(readOnly: Bool) -> MCPGoAhead { readOnly ? .allow : .ask }
 
-    public var toolGoAhead: ToolGoAhead { self == .ask ? .always : .never }
+    public var toolGoAhead: ToolGoAhead {
+        switch self {
+        case .ask: .always
+        case .allow: .never
+        case .deny: .denied
+        }
+    }
+
+    /// The choice's name in Settings > Tools.
+    public var title: String {
+        switch self {
+        case .ask: "Ask each time"
+        case .allow: "Always allow"
+        case .deny: "Always deny"
+        }
+    }
 }
 
 /// What the app decides about MCP servers, kept in `mcp-settings.json` apart from the servers
@@ -17,7 +37,7 @@ public enum MCPGoAhead: String, Sendable, Codable, Equatable {
 /// on unless it is listed), and each tool's go-ahead where the owner has set one.
 ///
 /// ```json
-/// {"disabled": ["notes"], "goAhead": {"weather": {"get_forecast": "dont-ask"}}}
+/// {"disabled": ["notes"], "goAhead": {"weather": {"get_forecast": "dont-ask", "add_alert": "deny"}}}
 /// ```
 ///
 /// It is read once and kept in memory, so a tool reads its go-ahead at each call without
@@ -36,7 +56,12 @@ public final class MCPSettingsStore: Sendable {
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             disabled = (try? container.decodeIfPresent([String].self, forKey: .disabled)) ?? []
-            goAhead = (try? container.decodeIfPresent([String: [String: MCPGoAhead]].self, forKey: .goAhead)) ?? [:]
+            // Read value by value, so one this build does not know leaves the rest in place.
+            let raw = (try? container.decodeIfPresent([String: [String: String]].self, forKey: .goAhead)) ?? [:]
+            goAhead = raw.compactMapValues { tools in
+                let known = tools.compactMapValues(MCPGoAhead.init(rawValue:))
+                return known.isEmpty ? nil : known
+            }
         }
     }
 
@@ -68,9 +93,15 @@ public final class MCPSettingsStore: Sendable {
         goAheadOverride(server: server, tool: tool) ?? .defaultValue(readOnly: readOnly)
     }
 
+    /// Posted with the store as its object after a tool's go-ahead changes, from any thread, so
+    /// Settings can show a change made from the go-ahead card.
+    public static let goAheadDidChange = Notification.Name("MCPSettingsStore.goAheadDidChange")
+
     /// Sets a tool's go-ahead. Setting it to its default removes the override, so a later
     /// change in the server's read-only mark is followed.
     public func setGoAhead(_ value: MCPGoAhead, server: String, tool: String, readOnly: Bool) throws {
+        // Posted even when the file could not be written, since the change holds in memory.
+        defer { NotificationCenter.default.post(name: Self.goAheadDidChange, object: self) }
         try change { settings in
             var tools = settings.goAhead[server] ?? [:]
             tools[tool] = value == .defaultValue(readOnly: readOnly) ? nil : value

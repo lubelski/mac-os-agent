@@ -484,7 +484,7 @@ final class SummonPanel: NSPanel {
     }
 
     /// Command-Period goes to the main menu's Stop before the window's views, so no button whose
-    /// shortcut is Escape, such as the go-ahead card's Don't Run, takes it as Escape.
+    /// shortcut is Escape, such as the go-ahead card's Deny, takes it as Escape.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if MainMenu.isStopShortcut(event), let menu = NSApp.mainMenu {
             return menu.performKeyEquivalent(with: event)

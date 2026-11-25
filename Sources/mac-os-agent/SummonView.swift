@@ -276,10 +276,10 @@ private struct DiscardCard: View {
             HStack {
                 Spacer()
                 Button(discard == .close ? "Keep Open" : "Keep") { session.cancelDiscard() }
-                    .buttonStyle(.glass)
+                    .panelGlassButton()
                     .keyboardShortcut(.cancelAction)
                 Button(discard == .close ? "Stop and Close" : "Stop and Clear") { session.confirmDiscard() }
-                    .buttonStyle(.glassProminent)
+                    .panelGlassButton(prominent: true)
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -453,13 +453,27 @@ struct ConfirmationCard: View {
             Text(verbatim: request.prompt)
                 .foregroundStyle(.primary)
             requestBody
+            if let note = request.alwaysNote {
+                Text(verbatim: note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            // Left to right from the strongest no to the plainest yes: Deny, Always Deny,
+            // Always Allow, Allow Once. Return allows once and Escape denies.
             HStack {
                 Spacer()
-                Button(request.declineTitle) { session.resolveConfirmation(false) }
-                    .buttonStyle(.glass)
+                Button(request.declineTitle) { session.resolveConfirmation(.deny) }
+                    .panelGlassButton()
                     .keyboardShortcut(.cancelAction)
-                Button(request.approveTitle) { session.resolveConfirmation(true) }
-                    .buttonStyle(.glassProminent)
+                if request.offersAlways {
+                    Button(ConfirmationRequest.alwaysDenyTitle) { session.resolveConfirmation(.alwaysDeny) }
+                        .panelGlassButton()
+                    Button(ConfirmationRequest.alwaysAllowTitle) { session.resolveConfirmation(.alwaysAllow) }
+                        .panelGlassButton()
+                }
+                Button(request.approveTitle) { session.resolveConfirmation(.allowOnce) }
+                    .panelGlassButton(prominent: true)
                     .keyboardShortcut(.defaultAction)
             }
         }
