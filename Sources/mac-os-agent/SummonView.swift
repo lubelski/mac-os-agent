@@ -27,7 +27,6 @@ struct SummonView: View {
     @Environment(PanelPlacement.self) private var placement: PanelPlacement?
     @AppStorage(HarnessBehavior.recallEarlierMessages.key) private var recallSwitch = HarnessBehavior.recallEarlierMessages.defaultValue
     @AppStorage(ModelSetting.key) private var modelID = OpenAIModel.defaultID
-    @AgentName private var agentName
 
     var body: some View {
         VStack(spacing: 0) {
@@ -199,7 +198,7 @@ struct SummonView: View {
         // No hairline above it: the footer continues the band with the field on the same fill,
         // so the two read as one bar at the bottom of the panel.
         return InputFooter(content: .make(
-            session.footerState, agentName: agentName, modelName: InputFooterContent.modelName(id: modelID),
+            session.footerState, modelName: InputFooterContent.modelName(id: modelID),
             recallsMessages: HarnessBehavior.recallEarlierMessages.isOn(session.preferences),
             queuesWhileRunning: session.queuesWhileRunning,
             statusLine: session.panelWithBars))
@@ -207,7 +206,7 @@ struct SummonView: View {
 
     private var suggestionList: some View {
         SuggestionListView(
-            rows: session.suggestionRows, highlight: session.highlightedRowIndex, agentName: agentName,
+            rows: session.suggestionRows, highlight: session.highlightedRowIndex,
             incognito: session.isIncognito, usesLogo: session.panelWithBars, activate: session.activateSuggestionRow)
     }
 
@@ -247,7 +246,7 @@ struct SummonView: View {
     @ViewBuilder private var matchCardAbove: some View {
         if session.matchCardSide == .above {
             let height = MatchCard.heightAbovePill(rows: session.matchCardVisibleRows)
-            MatchCardAbove(session: session, agentName: agentName)
+            MatchCardAbove(session: session)
                 .frame(height: height)
                 .offset(y: -height)
         }

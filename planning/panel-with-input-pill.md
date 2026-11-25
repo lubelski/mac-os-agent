@@ -95,7 +95,7 @@ A match opens the pill into a card that holds the field and an Alfred-style list
 - What the working row's marks do with Reduce Motion on. As built they stand still, all three at full strength.
 - The field color's value in each built-in theme. The mockups use placeholders, and the first slice gives each built-in theme a value of its own for the owner to judge.
 - Whether the logo also replaces the app icon, or is only the mark in the field.
-- The last row of the list still reads "Ask Iris". What it says now that the title is "MacOS Agent".
+- The last row of the list reads "Ask the agent: …", since the agent has no name of its own. Whether it says something else beside a title of "MacOS Agent".
 - Whether the card shows a row under the pointer as the pointer moves over it. As built a click acts on a row and hovering changes nothing.
 
 ## What it changes when built

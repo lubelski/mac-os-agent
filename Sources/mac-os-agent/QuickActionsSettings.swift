@@ -102,7 +102,6 @@ final class QuickActionsSettingsModel {
 /// Quick actions as a list beside the selected action's detail, as Skills is.
 struct QuickActionsSettingsView: View {
     @Bindable var model: QuickActionsSettingsModel
-    @AgentName private var agentName
 
     var body: some View {
         VStack(spacing: 0) {
@@ -133,7 +132,7 @@ struct QuickActionsSettingsView: View {
                         ContentUnavailableView {
                             Label("No Quick Actions Yet", systemImage: "bolt")
                         } description: {
-                            Text("Ask \(agentName) to make something it did instant, and it saves it here.")
+                            Text("Ask the agent to make something it did instant, and it saves it here.")
                         }
                     } else if model.filteredEntries.isEmpty {
                         ContentUnavailableView.search(text: model.filter)
@@ -303,7 +302,6 @@ struct QuickActionStepView: View {
     let number: Int
     let step: QuickAction.Step
     let summaries: ToolCallSummaries
-    @AgentName private var agentName
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -325,7 +323,7 @@ struct QuickActionStepView: View {
                 .background(.background.secondary, in: .rect(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
             if let reason = QuickActionValidation.goAheadNote(step) {
-                Text("When \(agentName) makes this call it asks first, because it \(reason). Here it runs without asking.")
+                Text("When the agent makes this call it asks first, because it \(reason). Here it runs without asking.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

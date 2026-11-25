@@ -210,7 +210,6 @@ struct MatchCardRows: View {
     let rows: [SuggestionRow]
     let highlight: Int
     let visible: Int
-    let agentName: String
     let incognito: Bool
     var activate: (Int) -> Void = { _ in }
 
@@ -221,7 +220,7 @@ struct MatchCardRows: View {
                 MatchCardRowView(
                     row: rows[index], highlighted: index == highlight,
                     key: MatchCard.key(for: rows[index], at: index, highlight: highlight),
-                    agentName: agentName, incognito: incognito)
+                    incognito: incognito)
                     .contentShape(.rect)
                     .onTapGesture { activate(index) }
             }
@@ -238,7 +237,6 @@ struct MatchCardRowView: View {
     let row: SuggestionRow
     let highlighted: Bool
     let key: String?
-    let agentName: String
     let incognito: Bool
     @Environment(\.panelPalette) private var palette
 
@@ -282,7 +280,7 @@ struct MatchCardRowView: View {
     private var name: String {
         switch row {
         case .candidate(let candidate): candidate.title
-        case .ask(let text): "Ask \(agentName): “\(text)”"
+        case .ask(let text): "Ask the agent: “\(text)”"
         case .command(let item): item.name
         }
     }
@@ -295,7 +293,7 @@ struct MatchCardRowView: View {
             case .application: "\(candidate.title), app"
             case .quickAction: "\(candidate.title), quick action"
             }
-        case .ask(let text): "Ask \(agentName): \(text)"
+        case .ask(let text): "Ask the agent: \(text)"
         case .command(let item): "\(item.name), \(item.summary(incognito: incognito))"
         }
     }
@@ -360,14 +358,13 @@ struct MatchCardIcon: View {
 /// card's top corners and the hairline that joins them to the field. Drawn by the panel.
 struct MatchCardAbove: View {
     let session: AgentSession
-    let agentName: String
 
     var body: some View {
         let shape = MatchCard.shape(top: true, bottom: false)
         VStack(spacing: 0) {
             MatchCardRows(
                 rows: session.matchCardRows, highlight: session.highlightedRowIndex, visible: session.matchCardVisibleRows,
-                agentName: agentName, incognito: session.isIncognito, activate: session.activateSuggestionRow)
+                incognito: session.isIncognito, activate: session.activateSuggestionRow)
             Color.clear.frame(height: 1)
         }
         .background(MatchCardFill())
@@ -380,7 +377,6 @@ struct MatchCardAbove: View {
 /// own last row, since the card covers the status line. Drawn by `MatchCardWindow`.
 struct MatchCardBelow: View {
     let session: AgentSession
-    @AgentName private var agentName
     @Environment(\.panelPalette) private var palette
 
     var body: some View {
@@ -388,11 +384,11 @@ struct MatchCardBelow: View {
         VStack(spacing: 0) {
             MatchCardRows(
                 rows: session.matchCardRows, highlight: session.highlightedRowIndex, visible: session.matchCardVisibleRows,
-                agentName: agentName, incognito: session.isIncognito, activate: session.activateSuggestionRow)
+                incognito: session.isIncognito, activate: session.activateSuggestionRow)
             MatchCardSeam()
             InputFooter(
                 content: .make(
-                    session.footerState, agentName: agentName, modelName: "", recallsMessages: false,
+                    session.footerState, modelName: "", recallsMessages: false,
                     queuesWhileRunning: session.queuesWhileRunning, statusLine: true),
                 drawsFill: false)
         }

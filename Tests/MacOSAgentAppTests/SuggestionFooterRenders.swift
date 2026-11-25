@@ -79,14 +79,14 @@ struct SuggestionFooterRenders {
     private func panel(session: AgentSession, field: NSImage, overlay: Bool) -> some View {
         let rows = session.suggestionRows
         let list = SuggestionListView(
-            rows: rows, highlight: session.highlightedRowIndex, agentName: "Iris", incognito: session.isIncognito)
+            rows: rows, highlight: session.highlightedRowIndex, incognito: session.isIncognito)
         let growth = overlay ? 0 : SuggestionListView.height(rowCount: SuggestionListView.visibleRows(rows.count))
         let off = !session.suggestionsInFooter
         return VStack(spacing: 0) {
             // The top bar's controls are AppKit views, which are not drawn offscreen.
             HStack {
                 Spacer()
-                Text(verbatim: session.isIncognito ? "Iris  Incognito" : "Iris").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(verbatim: session.isIncognito ? PanelTopBar.titleText + "  Incognito" : PanelTopBar.titleText).font(.system(size: 12)).foregroundStyle(.secondary)
                 Spacer()
             }
             .frame(height: PanelTopBar.height)
@@ -131,7 +131,7 @@ struct SuggestionFooterRenders {
             }
             if !off {
                 InputFooter(content: .make(
-                    session.footerState, agentName: "Iris", modelName: "GPT-6 Luna",
+                    session.footerState, modelName: "GPT-6 Luna",
                     recallsMessages: true, queuesWhileRunning: false))
             }
         }

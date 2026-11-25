@@ -60,10 +60,10 @@ final class PanelPlacement {
 /// controls, and a double click on it puts the panel back in its layout's default frame. The
 /// pointer stays the arrow over it. It has three areas:
 ///
-/// - `title`, in the middle of the bar: the agent's name from Settings, General. It is
-///   centered on the whole bar, not on the room between the other two areas, and it is cut
-///   short before it would reach them. In the incognito window the incognito label follows
-///   the name. Its font and weight never change.
+/// - `title`, in the middle of the bar: the app's name, mac-os-agent. The agent has no name
+///   of its own. It is centered on the whole bar, not on the room between the other two
+///   areas, and it is cut short before it would reach them. In the incognito window the
+///   incognito label follows it. Its font and weight never change.
 /// - `leading`: the close button, then, in the incognito window, the Clear control. The close
 ///   button is hidden at rest and fades in while the pointer is anywhere over the bar. Its
 ///   room is kept while it is hidden, so the bar never shifts, and it is a button there
@@ -82,7 +82,7 @@ final class PanelPlacement {
 struct PanelTopBar: View {
     /// What the bar names.
     enum Style {
-        /// The agent's name in the middle, as the panel has always been.
+        /// The app's name, `mac-os-agent`, in the middle.
         case named
         /// The panel with bars: "MacOS Agent" in the middle and the model's name at the left.
         case titled
@@ -107,7 +107,6 @@ struct PanelTopBar: View {
     var incognito: Incognito?
     var style: Style = .named
     @Environment(PanelPlacement.self) private var placement: PanelPlacement?
-    @AgentName private var agentName
     @AppStorage(ModelSetting.key) private var modelID = OpenAIModel.defaultID
 
     /// The title in the middle of the bar with `Style.titled`.
@@ -148,11 +147,14 @@ struct PanelTopBar: View {
         .background(PanelBarFill())
     }
 
-    /// The agent's name, or "MacOS Agent" in the titled bar, and in the incognito window the
+    /// What the middle of the bar says: the app's name, not a name for the agent.
+    static let titleText = "mac-os-agent"
+
+    /// The app's name, or "MacOS Agent" in the titled bar, and in the incognito window the
     /// incognito label after it.
     private var title: some View {
         HStack(spacing: 6) {
-            Text(style == .titled ? Self.appTitle : agentName)
+            Text(verbatim: style == .titled ? Self.appTitle : Self.titleText)
                 .font(style == .titled ? Self.titledFont : Self.titleFont)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

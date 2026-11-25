@@ -63,7 +63,7 @@ final class SummonPanel: NSPanel {
     /// the keys above, and removed.
     static let legacyDockKey = "SummonPanelDock"
     static let legacyUndockedFrameKey = "SummonPanelUndockedFrame"
-    /// The preferences previews and tests read, such as the agent's name, so they never read
+    /// The preferences previews and tests read, such as the model and the experiments, so they never read
     /// the owner's.
     static let previewPreferences = UserDefaults(suiteName: "dev.lubelski.mac-os-agent.preview") ?? .standard
 
@@ -207,7 +207,7 @@ final class SummonPanel: NSPanel {
         // Remembering where the incognito window was would be a trace of it.
         let remembersFrame = remembersFrame && role == .main
         defaults = role == .incognito ? nil : placementDefaults ?? (remembersFrame ? .standard : nil)
-        // A preview reads the agent's name from the preview preferences, never the owner's.
+        // A preview reads its settings from the preview preferences, never the owner's.
         contentPreferences = remembersFrameArgument ? UserDefaults.standard : Self.previewPreferences
         hostingController = NSHostingController(rootView: AnyView(EmptyView()))
         // The window's size is the owner's to choose, not the content's.

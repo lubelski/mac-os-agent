@@ -172,11 +172,10 @@ final class MemorySettingsModel {
 /// at what the agent keeps, not for managing it.
 struct MemorySettingsView: View {
     @Bindable var model: MemorySettingsModel
-    @AgentName private var agentName
 
     var body: some View {
         VStack(spacing: 0) {
-            Text("\(agentName) manages its memory itself. This section is for inspecting and debugging it.")
+            Text("The agent manages its memory itself. This section is for inspecting and debugging it.")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
@@ -297,14 +296,13 @@ struct MemoryListRow: View {
 /// The block exactly as the agent has it at the end of its instructions in this episode.
 struct MemoryBlockDetail: View {
     let model: MemorySettingsModel
-    @AgentName private var agentName
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Memory Block").font(.title2)
                 if let block = model.block {
-                    Text(Self.caption(block, agentName: agentName))
+                    Text(Self.caption(block))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -318,7 +316,7 @@ struct MemoryBlockDetail: View {
         }
     }
 
-    static func caption(_ block: (contents: MemoryBlock.Contents, taken: Date?), agentName: String) -> String {
+    static func caption(_ block: (contents: MemoryBlock.Contents, taken: Date?)) -> String {
         let size = "\(block.contents.characters.formatted()) of \(MemoryLayout.blockCap.formatted()) characters."
         let cut = block.contents.isCut ? " It is over the cap, so part is left out, and a line in it says so." : ""
         guard let taken = block.taken else {
@@ -326,7 +324,7 @@ struct MemoryBlockDetail: View {
         }
         return """
             Frozen at \(taken.formatted(date: .abbreviated, time: .shortened)), when the current episode's first \
-            request was made. \(agentName) has exactly this at the end of its instructions until the next \
+            request was made. The agent has exactly this at the end of its instructions until the next \
             episode. \(size)\(cut)
             """
     }

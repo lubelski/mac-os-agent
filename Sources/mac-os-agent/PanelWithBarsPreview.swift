@@ -121,7 +121,7 @@ enum PanelWithBarsPreview {
             ThreadEntry(date: now.addingTimeInterval(-300), item: .userMessage(text: "try paper")),
             ThreadEntry(date: now.addingTimeInterval(-295), item: reply("Done. Paper is on.")),
             ThreadEntry(date: now.addingTimeInterval(-120), item: .userMessage(text: "light mode")),
-            ThreadEntry(date: now.addingTimeInterval(-115), item: reply("For the whole Mac or just the Iris panel?")),
+            ThreadEntry(date: now.addingTimeInterval(-115), item: reply("For the whole Mac or just this panel?")),
             ThreadEntry(date: now.addingTimeInterval(-60), item: .userMessage(text: "dark mode")),
             ThreadEntry(date: now.addingTimeInterval(-55), item: reply("Done. The panel is dark now.")),
         ]

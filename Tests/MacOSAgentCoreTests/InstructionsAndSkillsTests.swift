@@ -30,10 +30,9 @@ private func library(_ root: URL) -> SkillLibrary {
         #expect(!store.isCustomized)
     }
 
-    @Test func theDefaultNamesTheAgentIris() {
+    @Test func theDefaultGivesTheAgentNoName() {
         #expect(AgentInstructions.defaultEditable.hasPrefix(
-            "You are Iris, the agent in the mac-os-agent app, and you live in the menu bar of the person's Mac."))
-        #expect(!AgentInstructions.defaultEditable.contains("You are mac-os-agent"))
+            "You are the agent in the mac-os-agent app, and you live in the menu bar of the person's Mac."))
     }
 
     @Test func editsAreKeptByteForByte() throws {
@@ -63,71 +62,15 @@ private func library(_ root: URL) -> SkillLibrary {
     }
 }
 
-/// The agent's name: a setting, Iris by default, that the default instructions use.
-@Suite struct AgentNameTests {
-    private func emptyDefaults() throws -> (UserDefaults, String) {
-        let name = "mac-os-agent-tests-\(UUID().uuidString)"
-        return (try #require(UserDefaults(suiteName: name)), name)
-    }
-
-    @Test func theNameIsIrisUntilItIsSet() throws {
-        let (defaults, suite) = try emptyDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
-        #expect(AgentNameSetting.defaultName == "Iris")
-        #expect(AgentNameSetting.current(defaults) == "Iris")
-        AgentNameSetting.set("Juno", defaults)
-        #expect(AgentNameSetting.current(defaults) == "Juno")
-        #expect(defaults.string(forKey: AgentNameSetting.key) == "Juno")
-    }
-
-    @Test(arguments: ["", "   ", "\n\t "])
-    func aBlankNameIsIris(_ blank: String) throws {
-        let (defaults, suite) = try emptyDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
-        AgentNameSetting.set(blank, defaults)
-        #expect(AgentNameSetting.current(defaults) == "Iris")
-        #expect(AgentInstructions.defaultEditable(named: blank) == AgentInstructions.defaultEditable)
-    }
-
-    @Test func theNameIsKeptOnOneLineWithoutSpacesAround() {
-        #expect(AgentNameSetting.resolve("  Juno  ") == "Juno")
-        #expect(AgentNameSetting.resolve("Mister\n  Juno") == "Mister Juno")
-        #expect(AgentNameSetting.resolve(nil) == "Iris")
-    }
-
-    @Test func theDefaultInstructionsUseTheName() {
-        let text = AgentInstructions.defaultEditable(named: "Juno")
-        #expect(text.hasPrefix("You are Juno, the agent in the mac-os-agent app, and you live in the menu bar of the person's Mac."))
-        #expect(!text.contains("Iris"))
-        // Only the name changes.
-        #expect(text.replacingOccurrences(of: "Juno", with: "Iris") == AgentInstructions.defaultEditable)
-    }
-
-    @Test func theStoreAndThePromptUseTheNameUntilTheOwnerEdits() throws {
-        let root = temporaryFolder()
-        let store = InstructionsStore(fileURL: root.appending(path: "instructions.md"), agentName: { "Juno" })
-        let prompt = AgentPrompt(instructions: store, skills: library(root))
-        #expect(store.load() == AgentInstructions.defaultEditable(named: "Juno"))
-        #expect(prompt.current().hasPrefix("You are Juno, the agent"))
-        #expect(prompt.currentIncognito().hasPrefix("You are Juno, the agent"))
-        // Saving the default with this name is the same as restoring it.
-        try store.save(store.defaultText)
-        #expect(!store.isCustomized)
-        // Saved instructions are the owner's text: a new name does not touch them.
-        try store.save(AgentInstructions.defaultEditable)
-        #expect(store.isCustomized)
-        let renamed = InstructionsStore(fileURL: store.fileURL, agentName: { "Vesta" })
-        #expect(renamed.load() == AgentInstructions.defaultEditable)
-        try renamed.restoreDefault()
-        #expect(renamed.load().hasPrefix("You are Vesta, the agent"))
-    }
-
-    /// The name is read once for a request, and the same name gives the same bytes, so the
-    /// prompt cache holds until the name changes.
-    @Test func theSameNameGivesTheSameInstructions() {
+/// The default instructions are fixed text, so every request starts with the same bytes and
+/// the prompt cache holds.
+@Suite struct DefaultInstructionsTests {
+    @Test func theMainPanelAndIncognitoStartWithTheDefault() {
         let root = temporaryFolder()
         let prompt = AgentPrompt(
-            instructions: InstructionsStore(fileURL: root.appending(path: "i.md"), agentName: { "Juno" }), skills: library(root))
+            instructions: InstructionsStore(fileURL: root.appending(path: "i.md")), skills: library(root))
+        #expect(prompt.current().hasPrefix(AgentInstructions.defaultEditable))
+        #expect(prompt.currentIncognito().hasPrefix(AgentInstructions.defaultEditable))
         #expect(Data(prompt.current().utf8) == Data(prompt.current().utf8))
     }
 }

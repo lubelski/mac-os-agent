@@ -48,7 +48,7 @@ import Testing
     /// typing a message reads "↵ send". The footer of the suggestions experiment is as it was.
     @Test func theStatusLineSaysSendAndLeavesOutTheModel() {
         func make(_ state: InputFooterContent.State, statusLine: Bool) -> InputFooterContent {
-            .make(state, agentName: "Iris", modelName: "GPT-6 Luna", recallsMessages: true, queuesWhileRunning: false,
+            .make(state, modelName: "GPT-6 Luna", recallsMessages: true, queuesWhileRunning: false,
                   statusLine: statusLine)
         }
         let typing = make(.typing, statusLine: true)
@@ -58,10 +58,10 @@ import Testing
         #expect(make(.idle, statusLine: true).trailing == nil)
         #expect(make(.running(queuedCount: 0), statusLine: true).leading.map(\.text) == ["⌘. stop"])
         #expect(make(.running(queuedCount: 0), statusLine: true).trailing == nil)
-        #expect(make(.list(nil), statusLine: true).trailing?.text == "⌘↵ ask Iris")
+        #expect(make(.list(nil), statusLine: true).trailing?.text == "⌘↵ ask the agent")
 
         let footer = make(.typing, statusLine: false)
-        #expect(footer.leading.map(\.text) == ["↵ ask Iris", "⇧↵ new line"])
+        #expect(footer.leading.map(\.text) == ["↵ ask the agent", "⇧↵ new line"])
         #expect(footer.trailing?.text == "GPT-6 Luna")
     }
 
@@ -180,7 +180,7 @@ import Testing
     /// right when the queue experiment is on. There is no hint for steering.
     @Test func theStatusLineWhileATaskRuns() {
         func make(queued: Int, queues: Bool, statusLine: Bool = true) -> InputFooterContent {
-            .make(.running(queuedCount: queued), agentName: "Iris", modelName: "GPT-6 Luna", recallsMessages: true,
+            .make(.running(queuedCount: queued), modelName: "GPT-6 Luna", recallsMessages: true,
                   queuesWhileRunning: queues, statusLine: statusLine)
         }
         #expect(make(queued: 0, queues: false).leading.map(\.text) == ["⌘. stop"])

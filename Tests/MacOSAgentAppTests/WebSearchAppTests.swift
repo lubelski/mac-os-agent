@@ -11,7 +11,7 @@ import Testing
         let folder = FileManager.default.temporaryDirectory
             .appending(path: "mac-os-agent-web-search-app-\(UUID().uuidString)", directoryHint: .isDirectory)
         let prompt = AgentPrompt(
-            instructions: InstructionsStore(fileURL: folder.appending(path: "instructions.md"), agentName: { "Iris" }),
+            instructions: InstructionsStore(fileURL: folder.appending(path: "instructions.md")),
             skills: SkillLibrary(folder: folder.appending(path: "skills"), settingsFile: folder.appending(path: "skill-settings.json")))
         let loop = IncognitoWindowController.makeLoop(provider: StandInProvider(), prompt: prompt, usageLog: nil)
         #expect(!loop.webSearch)

@@ -6,7 +6,7 @@ An agent for this Mac that lives in the menu bar. You summon it with a hotkey, t
 
 It is like Siri in shape, without being slow or locked down, and it keeps a visible conversation like an agent chat. It is not a coding tool.
 
-The agent is called Iris unless you name it otherwise in Settings, General. The app, the repo, the bundle, and its folders are still `mac-os-agent`.
+The agent has no name of its own. The app, the repo, the bundle, and its folders are `mac-os-agent`.
 
 ## Running it
 
