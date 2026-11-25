@@ -228,6 +228,8 @@ public struct DiagnosticsReport: Sendable, Equatable {
     public var dataFolder: String
     public var model: String
     public var signIn: SignInStatus?
+    /// Whether this run signs in itself or reaches its models through inference-gateway.
+    public var modelAccess: ModelAccess
     /// Where this run keeps the sign-in, the Keychain or the file, and why.
     public var secretStorage: SecretStorage.Status?
     /// The web search this run launched with, and whether a Brave key is set. Never the key.
@@ -243,12 +245,16 @@ public struct DiagnosticsReport: Sendable, Equatable {
 
     public static let recentRequestLimit = 20
 
+    /// How a development build reaches its models, in a sentence.
+    public static let gatewayText =
+        "Through inference-gateway at \(InferenceGateway.address()). This build has no sign-in of its own."
+
     public init(
         date: Date = Date(), build: BuildInfo, system: String = ProcessInfo.processInfo.operatingSystemVersionString,
         dataFolder: URL, model: String, signIn: SignInStatus?, instructions: String, tools: [ToolDefinition],
         skills: [Skill], memories: MemoryCounts = MemoryCounts(), threadFile: URL, usageLog: UsageLog,
         problems: [DiagnosticProblem], secretStorage: SecretStorage.Status? = nil, webSearch: WebSearchStatus? = nil,
-        calendar: Calendar = .current
+        modelAccess: ModelAccess = .signIn, calendar: Calendar = .current
     ) {
         self.date = date
         self.build = build
@@ -256,6 +262,7 @@ public struct DiagnosticsReport: Sendable, Equatable {
         self.dataFolder = dataFolder.plainPath
         self.model = model
         self.signIn = signIn
+        self.modelAccess = modelAccess
         self.secretStorage = secretStorage
         let records = usageLog.records()
         self.webSearch = webSearch
@@ -290,21 +297,29 @@ public struct DiagnosticsReport: Sendable, Equatable {
         lines.append("- System: \(system)")
         lines.append("- Data folder: \(dataFolder)")
         lines.append("")
-        lines.append("Sign-in")
-        if let signIn {
-            lines.append("- Signed in: \(signIn.isSignedIn ? "yes" : "no")")
-            lines.append("- Access token expires: \(time(signIn.accessTokenExpires))")
-            lines.append("- Last token received: \(time(signIn.lastTokenDate))")
-            if let error = signIn.lastError {
-                lines.append("- Last error, \(time(signIn.lastErrorDate)): \(error)")
-            } else {
-                lines.append("- Last error: none")
+        if modelAccess == .gateway {
+            lines.append("Models")
+            lines.append("- \(Self.gatewayText)")
+            if let secretStorage {
+                lines.append("- Other secrets, such as a Brave Search key, kept in: \(secretStorage.place)")
             }
         } else {
-            lines.append("- Not available")
-        }
-        if let secretStorage {
-            lines.append("- Kept in: \(secretStorage.place). \(secretStorage.explanation)")
+            lines.append("Sign-in")
+            if let signIn {
+                lines.append("- Signed in: \(signIn.isSignedIn ? "yes" : "no")")
+                lines.append("- Access token expires: \(time(signIn.accessTokenExpires))")
+                lines.append("- Last token received: \(time(signIn.lastTokenDate))")
+                if let error = signIn.lastError {
+                    lines.append("- Last error, \(time(signIn.lastErrorDate)): \(error)")
+                } else {
+                    lines.append("- Last error: none")
+                }
+            } else {
+                lines.append("- Not available")
+            }
+            if let secretStorage {
+                lines.append("- Kept in: \(secretStorage.place). \(secretStorage.explanation)")
+            }
         }
         lines.append("")
         lines.append("Prompt")
