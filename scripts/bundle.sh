@@ -23,6 +23,10 @@ APP="build/mac-os-agent.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks"
 cp "$BIN" "$APP/Contents/MacOS/mac-os-agent"
+# The helper that runs run_script's scripts, beside the app's executable, where
+# `ScriptRunner.bundledHelper` looks for it. It is signed below with its own entitlements.
+RUNNER="$APP/Contents/MacOS/mac-os-agent-script-runner"
+cp "$(dirname "$BIN")/mac-os-agent-script-runner" "$RUNNER"
 
 # Sparkle, the updater. SwiftPM builds it next to the binary but does not know about app
 # bundles, so copy it in and tell the binary where to find it.
@@ -36,6 +40,7 @@ MIN_OS=27.0
 SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
 xcrun vtool -set-build-version macos "$MIN_OS" "$SDK_VERSION" -replace \
   -output "$APP/Contents/MacOS/mac-os-agent" "$APP/Contents/MacOS/mac-os-agent"
+xcrun vtool -set-build-version macos "$MIN_OS" "$SDK_VERSION" -replace -output "$RUNNER" "$RUNNER"
 STAMPED="$(xcrun vtool -show-build "$APP/Contents/MacOS/mac-os-agent" | awk '$1 == "sdk" { print $2 }')"
 if [[ "$STAMPED" != "$SDK_VERSION" ]]; then
   echo "error: the binary is stamped with SDK '$STAMPED', expected '$SDK_VERSION'" >&2
@@ -146,6 +151,10 @@ SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
 "${SIGN[@]}" "$SPARKLE/Versions/B/Autoupdate"
 "${SIGN[@]}" "$SPARKLE/Versions/B/Updater.app"
 "${SIGN[@]}" "$SPARKLE"
+# The script runner is sandboxed, with no other entitlement. A sandboxed tool needs an
+# identifier of its own, which names its container.
+"${SIGN[@]}" --identifier dev.lubelski.mac-os-agent.script-runner \
+  --entitlements Resources/mac-os-agent-script-runner.entitlements "$RUNNER"
 # The entitlements let the hardened runtime allow Apple events, Calendar, and Reminders.
 # Without the hardened runtime they change nothing.
 "${SIGN[@]}" --entitlements Resources/mac-os-agent.entitlements "$APP"

@@ -408,7 +408,10 @@ enum SettingsPreview {
                     // `--preview-item set_links` shows the tool as a run with the panel with bars
                     // experiment on has it, without reading or writing its preference.
                     taskLinks: section == .tools && item == SetLinksTool.name ? SetLinksTool(store: TaskLinkStore(fileURL: URL(filePath: "/dev/null"))) : nil),
-                additional: mcp.makeTools()),
+                additional: mcp.makeTools()
+                // `--preview-item run_script` shows the tool as a run with the scripts
+                // experiment on has it, without reading or writing its preference.
+            ).addingRunScript(section == .tools && item == RunScriptTool.name),
             history: history,
             problems: problems,
             signInStatus: {

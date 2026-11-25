@@ -759,7 +759,8 @@ final class AgentSession {
         guard let confirmation else { return }
         self.confirmation = nil
         if let request = pendingConfirmation {
-            let status: TranscriptRow.ToolStatus = approved ? .running : .finished
+            // A script runs on after a call it made is declined.
+            let status: TranscriptRow.ToolStatus = approved || request.fromScript ? .running : .finished
             transcript.setToolStatus(request.callID, status)
         }
         pendingConfirmation = nil

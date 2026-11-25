@@ -69,7 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 skills: prompt.skills, history: thread, memories: prompt.memories ?? MemoryLibrary(),
                 webSearch: webSearch.launched == .brave ? SearchWebTool(key: webSearch.key) : nil,
                 taskLinks: prompt.taskLinks ? SetLinksTool(isOn: { Experiment.panelWithBarsAndInputPill.isOn() }) : nil),
-            additional: mcp.makeTools())
+            additional: mcp.makeTools()
+        // Read once, like web search, since it changes the tool list.
+        ).addingRunScript(Experiment.scripts.isOn())
         if let thread {
             let provider = OpenAIResponsesProvider(
                 authenticator: authenticator,
