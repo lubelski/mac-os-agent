@@ -33,6 +33,8 @@ public enum ModelStreamEvent: Sendable, Equatable {
     case item(ThreadItem)
     /// The token counts for the request, reported once it is complete.
     case usage(TokenUsage, provider: String, model: String)
+    /// Digests of what the request sent, reported before the reply. See `RequestDigest`.
+    case requestSent(items: [String])
 }
 
 /// The seam between the loop and a model API. The loop knows nothing about any one API.

@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// What the loop reports to the panel while it works.
 public enum AgentEvent: Sendable, Equatable {
@@ -56,6 +57,9 @@ public final class AgentLoop: Sendable {
     /// Whether requests offer the provider's hosted web search. Fixed for the loop's life, as
     /// the tool list is, so the prompt cache holds.
     public let webSearch: Bool
+    /// The model and request digests of the last request this loop sent, to say where the next
+    /// one stopped starting with it. Kept in memory only, so a launch starts with none.
+    private let lastSent = Mutex<(model: String, items: [String])?>(nil)
 
     public convenience init(
         provider: any ModelProvider,
@@ -166,6 +170,7 @@ public final class AgentLoop: Sendable {
                 instructions: instructions, entries: await thread.contents.currentEpisodeEntries, tools: definitions,
                 webSearch: webSearch)
             var calls: [ThreadItem.ToolCall] = []
+            var sentItems: [String]?
             let started = ContinuousClock.now
             for try await event in provider.streamReply(to: request) {
                 switch event {
@@ -178,12 +183,23 @@ public final class AgentLoop: Sendable {
                     // finished call arrives as a provider item, which fills the row in.
                     await onEvent(.toolCallStarted(callID: call.callID, name: call.name))
                     await onEvent(.toolRunning(callID: call.callID, summary: call.summary))
+                case .requestSent(let items):
+                    sentItems = items
                 case .usage(let usage, let providerName, let model):
                     let elapsed = ContinuousClock.now - started
                     let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-                    usageLog?.append(UsageRecord(
+                    var record = UsageRecord(
                         date: Date(), provider: providerName, model: model, usage: usage,
-                        seconds: (seconds * 10).rounded() / 10, prompt: fingerprint))
+                        seconds: (seconds * 10).rounded() / 10, prompt: fingerprint)
+                    if let sentItems {
+                        record.items = sentItems
+                        record.diverged = lastSent.withLock { last in
+                            defer { last = (model, sentItems) }
+                            guard let last, last.model == model else { return nil }
+                            return RequestDigest.firstDifference(previous: last.items, current: sentItems)
+                        }
+                    }
+                    usageLog?.append(record)
                 case .item(let item):
                     if case .toolCall(let call) = item { calls.append(call) }
                     await onEvent(.entryAdded(try await thread.append(item)))
