@@ -40,10 +40,11 @@ struct ToolsPaneStackView: View {
                 Color.clear
             }
         }
-        .onAppear {
-            // A group of MCP tools can go away between launches of the window's content.
-            let valid = model.groups.validPrefix(of: model.stack.path)
-            if valid != model.stack.path { model.stack.path = valid }
+        .onChange(of: model.stack.path, initial: true) { _, path in
+            // A path that names a group or tool that is not here, such as one a preview asked
+            // for, falls back to the part that is.
+            let valid = model.groups.validPrefix(of: path)
+            if valid != path { model.stack.path = valid }
         }
     }
 }

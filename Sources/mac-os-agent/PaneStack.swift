@@ -79,9 +79,6 @@ extension EnvironmentValues {
 
 /// Panes that slide over each other from the right. See the top of this file.
 struct PaneStackView<Pane: View>: View {
-    /// How far each pane sits below the one under it.
-    static var paneDrop: CGFloat { 10 }
-
     @Bindable var state: PaneStackState
     let stripWidth: (PaneStrip) -> CGFloat
     let title: (PaneLevel) -> String
@@ -97,11 +94,12 @@ struct PaneStackView<Pane: View>: View {
                 preferred: (0..<topDepth).map { stripWidth(PaneStrip(depth: $0, topDepth: topDepth)) },
                 available: proxy.size.width)
             let edges = PaneStackLayout.leadingEdges(stripWidths: widths)
+            let tops = PaneStackLayout.topEdges(stripWidths: widths)
             ZStack(alignment: .topLeading) {
                 ForEach(levels) { level in
                     paneView(level)
                         .padding(.leading, edges[level.depth])
-                        .padding(.top, CGFloat(level.depth) * Self.paneDrop)
+                        .padding(.top, tops[level.depth])
                         .transition(level.depth == 0 ? .identity : paneTransition)
                         .zIndex(Double(level.depth))
                 }

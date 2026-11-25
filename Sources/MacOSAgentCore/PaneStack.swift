@@ -94,10 +94,10 @@ public struct PaneStackPath: Sendable, Equatable, Hashable, CustomStringConverti
 /// cover. A section asks for a width per strip. When those widths leave the top pane less than
 /// its minimum, strips give way oldest first:
 ///
-/// 1. Each strip narrows to a sliver (`collapsedWidth`), starting with the base's.
-/// 2. If that is not enough, slivers go away entirely, again oldest first. The strip just
-///    under the top pane is kept as long as any strip is, since it is the usual way back.
-/// 3. If even that strip alone is too wide, it shrinks to what is left, down to nothing.
+/// 1. Each older strip narrows to a sliver (`collapsedWidth`), starting with the base's.
+/// 2. If that is not enough, slivers go away entirely, again oldest first.
+/// 3. Only then does the strip just under the top pane give way, shrinking to what is left.
+///    It is the usual way back, so it keeps its full width longest.
 ///
 /// Escape still closes one pane at a time, so a strip that went away is still reachable.
 public enum PaneStackLayout {
@@ -120,7 +120,7 @@ public enum PaneStackLayout {
         func fits() -> Bool { widths.reduce(0, +) <= budget }
         guard !fits() else { return widths }
 
-        for index in widths.indices where !fits() {
+        for index in widths.indices.dropLast() where !fits() {
             widths[index] = min(widths[index], collapsedWidth)
         }
         for index in widths.indices.dropLast() where !fits() {
@@ -130,6 +130,16 @@ public enum PaneStackLayout {
             widths[last] = max(0, budget - widths.dropLast().reduce(0, +))
         }
         return widths
+    }
+
+    /// How far each pane sits below the one under it.
+    public static let drop: CGFloat = 10
+
+    /// Where each pane's top edge sits, from the base (at 0) to the top pane. A pane drops below
+    /// the one under it only when that one's strip shows, so panes whose strips went away sit
+    /// exactly on each other and a deep stack does not eat the window's height.
+    public static func topEdges(stripWidths: [CGFloat], drop: CGFloat = drop) -> [CGFloat] {
+        stripWidths.reduce(into: [0]) { edges, width in edges.append(edges.last! + (width > 0 ? drop : 0)) }
     }
 
     /// Where each pane's leading edge sits, from the base (at 0) to the top pane.
