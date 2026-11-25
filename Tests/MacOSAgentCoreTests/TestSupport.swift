@@ -119,3 +119,67 @@ func toolCall(_ callID: String, name: String, arguments: JSONValue, model: Strin
 func assistant(_ text: String) -> ThreadItem {
     .assistantMessage(.init(text: text, provider: "test", model: "test-model"))
 }
+
+/// A transport that answers each request from a handler, and records every request.
+final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var sent: [URLRequest] = []
+    private let handler: @Sendable (URLRequest, Int) throws -> (Int, Data)
+
+    /// - Parameter handler: Gets the request and how many requests came before it. Throwing
+    ///   stands in for a network failure.
+    init(_ handler: @escaping @Sendable (URLRequest, Int) throws -> (Int, Data)) {
+        self.handler = handler
+    }
+
+    var requests: [URLRequest] { lock.withLock { sent } }
+
+    func requests(to url: URL) -> [URLRequest] { requests.filter { $0.url == url } }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let index = lock.withLock {
+            sent.append(request)
+            return sent.count - 1
+        }
+        let (status, body) = try handler(request, index)
+        return (body, HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+    }
+}
+
+extension JSONValue {
+    var data: Data { Data(encodedString().utf8) }
+}
+
+/// Stands in for the browser and the loopback listener: each sign-in attempt's callback carries
+/// the query its script gives, with the attempt's real state.
+final class FakeCallback: OAuthCallbackReceiving, @unchecked Sendable {
+    let state: String
+    let savedClientID: String?
+    let query: String
+
+    init(state: String, savedClientID: String?, query: String) {
+        self.state = state
+        self.savedClientID = savedClientID
+        self.query = query
+    }
+
+    func start() async throws {}
+
+    func result() async throws -> ChatGPTSignIn.AuthorizationResult {
+        let url = URL(string: "http://127.0.0.1:1455/auth/callback?\(query)&state=\(state)")!
+        return try ChatGPTSignIn.authorizationResult(callback: url, expectedState: state, savedClientID: savedClientID)
+    }
+
+    func stop() {}
+}
+
+/// An unsigned ID token with the given claims. The app reads the claims and does not check
+/// the signature.
+func idToken(_ claims: JSONValue) -> String {
+    func encode(_ value: JSONValue) -> String {
+        Data(value.encodedString().utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+    return "\(encode(["alg": "RS256", "typ": "JWT"])).\(encode(claims)).signature"
+}

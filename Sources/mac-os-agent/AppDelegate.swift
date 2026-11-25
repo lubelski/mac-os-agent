@@ -328,13 +328,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let modelItem = NSMenuItem(title: "Model", action: nil, keyEquivalent: "")
         let models = NSMenu()
         let current = ModelSetting.effective()
-        for model in OpenAIModel.all {
+        let choices = session.modelChoices(current: current)
+        for model in choices.models where model.id != current || !choices.currentIsUnlisted {
             let entry = item(model.name, #selector(chooseModel(_:)))
             entry.representedObject = model.id
             entry.state = model.id == current ? .on : .off
             models.addItem(entry)
         }
-        var listed = OpenAIModel.all.map(\.id)
+        if choices.currentIsUnlisted {
+            let custom = disabledItem("\(choices.models.last?.name ?? current), not in your account's list")
+            custom.state = .on
+            models.addItem(custom)
+        }
+        var listed = choices.models.map(\.id)
         if Experiment.localModelsThroughOllama.isOn() {
             models.addItem(.separator())
             let local = localModels.models

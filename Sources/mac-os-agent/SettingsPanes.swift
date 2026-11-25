@@ -19,8 +19,12 @@ struct GeneralSettingsView: View {
     @AppStorage(EpisodeTimeoutSetting.key) private var episodeTimeout = EpisodeTimeoutSetting.defaultMinutes
     @AppStorage(AgentNameSetting.key) private var agentName = ""
 
+    private var modelChoices: (models: [OpenAIModel], currentIsUnlisted: Bool) {
+        session.modelChoices(current: model)
+    }
+
     private var listedModels: [String] {
-        OpenAIModel.all.map(\.id) + (localModelsOn ? localModels.map(Ollama.modelID) : [])
+        modelChoices.models.map(\.id) + (localModelsOn ? localModels.map(Ollama.modelID) : [])
     }
 
     var body: some View {
@@ -51,12 +55,19 @@ struct GeneralSettingsView: View {
                                 Button("Cancel") { session.cancelSignIn() }
                             }
                         case .signedOut:
-                            Button("Sign in with ChatGPT…") { session.signIn() }
+                            HStack {
+                                Button("Sign in with ChatGPT…") { session.signIn() }
+                                // A sign-in reuses this Mac's registration, which belongs to one
+                                // account. Another account needs a registration of its own.
+                                if session.hasRegistration {
+                                    Button("Use a Different Account…") { session.signIn(differentAccount: true) }
+                                }
+                            }
                         }
                     }
                 }
                 Picker("Model", selection: $model) {
-                    ForEach(OpenAIModel.all) { model in
+                    ForEach(modelChoices.models) { model in
                         Text(model.name).tag(model.id)
                     }
                     if localModelsOn {
@@ -73,13 +84,19 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("ChatGPT")
             } footer: {
-                Text((localModelsOn
-                    ? "A new model applies from the next reply. The model is also in the menu bar menu. Models marked Ollama run on this Mac, through Ollama at localhost:11434, and need no sign-in.\(localModels.isEmpty ? " Ollama has no models, or is not running." : "")"
-                    : "A new model applies from the next reply. The model is also in the menu bar menu.")
-                    + (session.modelAccess == .gateway
-                        ? " This development build has no sign-in of its own. It sends every model request through inference-gateway at \(InferenceGateway.address())."
-                        : ""))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    if modelChoices.currentIsUnlisted {
+                        Text("\(model) is not in your ChatGPT account's model list. It stays selected until you choose another, and requests may fail with it.")
+                    }
+                    Text((session.accountModels == nil ? "" : "These are the models your ChatGPT account lists. ")
+                        + (localModelsOn
+                            ? "A new model applies from the next reply. The model is also in the menu bar menu. Models marked Ollama run on this Mac, through Ollama at localhost:11434, and need no sign-in.\(localModels.isEmpty ? " Ollama has no models, or is not running." : "")"
+                            : "A new model applies from the next reply. The model is also in the menu bar menu.")
+                        + (session.modelAccess == .gateway
+                            ? " This development build has no sign-in of its own. It sends every model request through inference-gateway at \(InferenceGateway.address())."
+                            : ""))
+                }
+                .foregroundStyle(.secondary)
             }
             .task(id: localModelsOn) {
                 localModels = localModelsOn ? await Ollama.installedModels() : []
