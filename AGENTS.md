@@ -55,6 +55,7 @@ There is one Linear user, the owner, so the assignee cannot say who is doing the
 ## Tests
 
 - `PromptCacheWireTests` checks the prompt cache in the bytes the provider sends, against `StubResponsesServer`, a stand-in for the Responses API with a fake cache. A change to the request shows as a diff in `Tests/MacOSAgentCoreTests/Fixtures/openai-wire-episode.json`. When the change is meant, run `MAC_OS_AGENT_UPDATE_GOLDEN=1 swift test --filter PromptCacheWireTests` and commit the file, and say in the pull request why the requests changed and what it does to the cache.
+- `OllamaLiveTests` runs one warmed, tool-calling episode against the Ollama on this Mac and prints its timings and cache counts. It is skipped unless `MAC_OS_AGENT_LIVE_OLLAMA` names an installed model, as in `MAC_OS_AGENT_LIVE_OLLAMA=inkling-2-mini:latest swift test --filter OllamaLiveTests`. It takes about a minute, most of it the cold read.
 
 ## Previews and captures
 

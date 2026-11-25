@@ -37,6 +37,7 @@ final class StubResponsesServer: Sendable {
 
     /// A request as it arrived.
     struct Received: Sendable {
+        var url: URL?
         var headers: [String: String]
         var body: JSONValue
         var data: Data
@@ -94,14 +95,14 @@ final class StubResponsesServer: Sendable {
 
     // MARK: Answering a request
 
-    func respond(to data: Data, headers: [String: String]) -> Data {
+    func respond(to data: Data, headers: [String: String], url: URL? = nil) -> Data {
         let body = JSONValue.parse(String(decoding: data, as: UTF8.self)) ?? .null
         let model = body["model"]?.stringValue ?? ""
         let tools = body["tools"] ?? .array([])
         let input = body["input"]?.arrayValue ?? []
 
         return state.withLock { state in
-            state.received.append(Received(headers: headers, body: body, data: data))
+            state.received.append(Received(url: url, headers: headers, body: body, data: data))
 
             // Reasoning whose earlier input changed is withheld, as GPT-6.2 does.
             var removed: [String] = []
@@ -281,7 +282,7 @@ final class StubResponsesProtocol: URLProtocol, @unchecked Sendable {
         }
         var headers = request.allHTTPHeaderFields ?? [:]
         headers.removeValue(forKey: StubResponsesServer.routingHeader)
-        let reply = server.respond(to: Self.body(of: request), headers: headers)
+        let reply = server.respond(to: Self.body(of: request), headers: headers, url: request.url)
         let response = HTTPURLResponse(
             url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "text/event-stream"])!

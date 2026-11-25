@@ -240,6 +240,11 @@ final class AgentSession {
     }
 
     func panelDidAppear() {
+        // A local model reads the prefix of the next request while the owner types. Other
+        // providers ignore it.
+        if let loop, kind == .kept, !isRunning {
+            Task { await loop.warm() }
+        }
         followPanelWithBarsSwitch()
         focusRequest += 1
         instantActions.refresh()

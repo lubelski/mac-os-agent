@@ -285,6 +285,12 @@ public struct AgentPrompt: Sendable {
         return memorySnapshot.contents(for: episodeID) { MemoryBlock.contents(memories) }
     }
 
+    /// The instructions a new episode's first request would send, with the memory folder as it
+    /// is now, without taking a snapshot. For warming a local model's cache ahead of it.
+    public func forNewEpisode() -> String {
+        assemble(memoryBlock: memories.map { MemoryBlock.contents($0) }?.text)
+    }
+
     /// The block the next request in the current episode would send, without taking a
     /// snapshot: the one already taken, or the folder as it is now before any request.
     public func latestMemoryContents() -> MemoryBlock.Contents? {

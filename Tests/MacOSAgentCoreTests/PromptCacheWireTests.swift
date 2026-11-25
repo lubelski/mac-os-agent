@@ -197,7 +197,8 @@ enum WireEpisode {
 
     static func loop(
         server: StubResponsesServer, thread: ThreadStore, usageLog: UsageLog,
-        model: ModelSwitch = ModelSwitch(), timeZone: TimeZone = utc
+        model: ModelSwitch = ModelSwitch(), timeZone: TimeZone = utc,
+        instructionsForNewEpisode: (@Sendable () async -> String)? = nil
     ) throws -> AgentLoop {
         let secrets = MemorySecrets([ChatGPTAuthenticator.refreshTokenKey: "r", ChatGPTAuthenticator.clientIDKey: "c"])
         let transport = FakeTransport(body: [
@@ -210,7 +211,8 @@ enum WireEpisode {
             session: server.session(), timeZone: timeZone)
         return AgentLoop(
             provider: provider, thread: thread, tools: [RecordingTool()],
-            instructionsForEpisode: { _ in instructions }, usageLog: usageLog)
+            instructionsForEpisode: { _ in instructions }, usageLog: usageLog,
+            instructionsForNewEpisode: instructionsForNewEpisode)
     }
 
     static func send(
@@ -241,7 +243,8 @@ enum WireEpisode {
 
     /// The model setting, which the provider reads at the start of each reply.
     final class ModelSwitch: Sendable {
-        private let value = Mutex("gpt-6.2-astra")
+        private let value: Mutex<String>
+        init(_ model: String = "gpt-6.2-astra") { value = Mutex(model) }
         var current: String { value.withLock { $0 } }
         func set(_ model: String) { value.withLock { $0 = model } }
     }

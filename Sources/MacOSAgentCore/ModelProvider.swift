@@ -41,4 +41,13 @@ public enum ModelStreamEvent: Sendable, Equatable {
 public protocol ModelProvider: Sendable {
     /// Streams one reply. The stream ends when the reply is complete and throws when it fails.
     func streamReply(to request: ModelRequest) -> AsyncThrowingStream<ModelStreamEvent, Error>
+
+    /// Gets ready for a request that will start with this one, such as by reading its prefix
+    /// into a cache. Best effort: it reports nothing and never fails a request. Most providers
+    /// do nothing.
+    func prepare(_ request: ModelRequest) async
+}
+
+extension ModelProvider {
+    public func prepare(_ request: ModelRequest) async {}
 }

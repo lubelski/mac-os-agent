@@ -62,6 +62,9 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
     /// `run_script`, a tool that runs JavaScript calling the agent's other tools, at the end of
     /// the tool list. Read at launch, since it changes the tool list. See `RunScriptTool`.
     case scripts
+    /// Models served by Ollama on this Mac join the model pickers, and choosing one sends the
+    /// agent's requests to it instead of OpenAI. See `Ollama`.
+    case localModelsThroughOllama
 
     public var id: String { rawValue }
 
@@ -73,6 +76,7 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
         case .mcpServers: "MCP servers"
         case .panelWithBarsAndInputPill: "Panel with bars and an input pill"
         case .scripts: "Scripts that call tools"
+        case .localModelsThroughOllama: "Local models through Ollama"
         }
     }
 
@@ -86,6 +90,7 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
         case .mcpServers: "ExperimentMCPServers"
         case .panelWithBarsAndInputPill: "ExperimentPanelWithBarsAndInputPill"
         case .scripts: "ExperimentScripts"
+        case .localModelsThroughOllama: "ExperimentLocalModelsThroughOllama"
         }
     }
 
