@@ -94,6 +94,8 @@ enum PanelPreview {
                 previewEntries: thread.entries,
                 pendingConfirmation: ConfirmationRequest(callID: waiting, command: command, reason: "scripts an app to delete or quit"),
                 isRunning: true)
+        case "script-running", "script-confirmation", "script-finished":
+            return scriptSession(named: name)
         case "confirmation-reminders", "confirmation-events", "confirmation-quit", "confirmation-theme", "confirmation-mcp":
             return goAheadSession(named: name)
         case "draft", "multiline-draft":
@@ -370,6 +372,44 @@ enum PanelPreview {
     }
 
     /// Builds stand-in thread entries with send times relative to now.
+    /// `run_script`, the scripts experiment: a script that reads the reminders, then deletes
+    /// the finished ones. `script-running` while it runs, `script-confirmation` with the delete
+    /// waiting for a go-ahead the script asked for, and `script-finished` with its result.
+    static func scriptSession(named name: String) -> AgentSession {
+        var thread = StandInThread(now: Date())
+        thread.earlierExchanges()
+        thread.user("clear out the reminders I've finished in Errands", minutesAgo: 1)
+        let code = """
+            const list = await tools.read_reminders({list: "Errands", include_completed: true})
+            const done = list.split("\n").filter((line) => line.startsWith("[x]"))
+            text(`${done.length} finished`)
+            return await tools.change_reminders({changes: done.map((line) => ({action: "delete", id: line.slice(4, 12)}))})
+            """
+        let finished = name == "script-finished"
+        thread.call(
+            "call_script", name: RunScriptTool.name, arguments: ["code": .string(code)],
+            output: finished ? "Script completed in 6.2 seconds.\n3 finished\nDeleted 3 reminders from Errands." : nil,
+            details: finished ? ToolRunDetails(source: RunScriptTool.scripts.title) : nil)
+        switch name {
+        case "script-finished":
+            thread.reply("Done. I deleted the 3 finished reminders in Errands: Return library books, Pick up dry cleaning, and Buy stamps.")
+            return AgentSession(previewEntries: thread.entries)
+        case "script-confirmation":
+            var request = ConfirmationRequest(
+                callID: "call_script", kind: .reminderChanges,
+                body: .changes([
+                    .init(.delete, "\"Return library books\" from Errands"),
+                    .init(.delete, "\"Pick up dry cleaning\" from Errands"),
+                    .init(.delete, "\"Buy stamps\" from Errands"),
+                ]),
+                reason: "deletes 3 reminders")
+            request.fromScript = true
+            return AgentSession(previewEntries: thread.entries, pendingConfirmation: request, isRunning: true)
+        default:
+            return AgentSession(previewEntries: thread.entries, isRunning: true, runningCallIDs: ["call_script"])
+        }
+    }
+
     struct StandInThread {
         let now: Date
         var entries: [ThreadEntry] = []
