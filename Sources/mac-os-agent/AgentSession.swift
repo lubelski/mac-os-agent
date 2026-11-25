@@ -106,7 +106,7 @@ final class AgentSession {
     @ObservationIgnored private let makeLoop: (() -> AgentLoop)?
     @ObservationIgnored private let authenticator: ChatGPTAuthenticator?
     @ObservationIgnored private var task: Task<Void, Never>?
-    @ObservationIgnored private var confirmation: CheckedContinuation<Bool, Never>?
+    @ObservationIgnored private var confirmation: CheckedContinuation<ConfirmationAnswer, Never>?
     @ObservationIgnored private let episodeTimeout: () -> TimeInterval
     @ObservationIgnored var clock: () -> Date = { Date() }
     /// For a preview of the scrollback: the history opens at its top instead of its end.
@@ -720,7 +720,7 @@ final class AgentSession {
                     skill: skill,
                     startsNewEpisode: startsNew,
                     onEvent: { event in await self.handle(event, in: conversation) },
-                    confirm: { request in await self.requestConfirmation(request, in: conversation) })
+                    answer: { request in await self.requestConfirmation(request, in: conversation) })
             } catch is CancellationError {
                 ending = .stopped
                 update(conversation) {
@@ -761,20 +761,26 @@ final class AgentSession {
     }
 
     func resolveConfirmation(_ approved: Bool) {
+        resolveConfirmation(approved ? .approved : .declined)
+    }
+
+    /// Answers the waiting go-ahead. `.approvedAlways` comes only from a card that offers it,
+    /// and the tool that asked saves the setting before it runs.
+    func resolveConfirmation(_ answer: ConfirmationAnswer) {
         guard let confirmation else { return }
         self.confirmation = nil
         if let request = pendingConfirmation {
             // A script runs on after a call it made is declined.
-            let status: TranscriptRow.ToolStatus = approved || request.fromScript ? .running : .finished
+            let status: TranscriptRow.ToolStatus = answer.isApproved || request.fromScript ? .running : .finished
             transcript.setToolStatus(request.callID, status)
         }
         pendingConfirmation = nil
         onStatusChange?()
-        confirmation.resume(returning: approved)
+        confirmation.resume(returning: answer)
     }
 
-    private func requestConfirmation(_ request: ConfirmationRequest, in conversation: Int) async -> Bool {
-        if Task.isCancelled || conversation != self.conversation { return false }
+    private func requestConfirmation(_ request: ConfirmationRequest, in conversation: Int) async -> ConfirmationAnswer {
+        if Task.isCancelled || conversation != self.conversation { return .declined }
         resolveConfirmation(false)
         pendingConfirmation = request
         transcript.setToolStatus(request.callID, .waitingForConfirmation)

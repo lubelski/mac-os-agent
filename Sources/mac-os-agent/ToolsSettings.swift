@@ -20,6 +20,7 @@ final class ToolsSettingsModel {
     @ObservationIgnored let mcpSettings: MCPSettingsStore?
     /// Changes when an MCP tool's go-ahead does, so the views read the store again.
     private(set) var goAheadRevision = 0
+    @ObservationIgnored private var goAheadObserver: (any NSObjectProtocol)?
     var errorMessage: String?
 
     init(registry: ToolRegistry, access gate: any PrivacyAccessGate, mcpSettings: MCPSettingsStore? = nil) {
@@ -28,6 +29,18 @@ final class ToolsSettingsModel {
         self.gate = gate
         self.mcpSettings = mcpSettings
         reloadAccess()
+        if let mcpSettings {
+            // Always Call on a go-ahead card changes a tool's go-ahead while this pane may be open.
+            goAheadObserver = NotificationCenter.default.addObserver(
+                forName: MCPSettingsStore.goAheadDidChange, object: mcpSettings, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.goAheadRevision += 1 }
+            }
+        }
+    }
+
+    isolated deinit {
+        if let goAheadObserver { NotificationCenter.default.removeObserver(goAheadObserver) }
     }
 
     /// The tool's go-ahead as it is now. An MCP tool's can change while the app runs.

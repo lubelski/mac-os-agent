@@ -454,10 +454,20 @@ struct ConfirmationCard: View {
                 .foregroundStyle(.primary)
             requestBody
             HStack {
+                if let note = request.alwaysApproveNote {
+                    Text(verbatim: note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Spacer()
                 Button(request.declineTitle) { session.resolveConfirmation(false) }
                     .buttonStyle(.glass)
                     .keyboardShortcut(.cancelAction)
+                if let title = request.alwaysApproveTitle {
+                    Button(title) { session.resolveConfirmation(.approvedAlways) }
+                        .buttonStyle(.glass)
+                }
                 Button(request.approveTitle) { session.resolveConfirmation(true) }
                     .buttonStyle(.glassProminent)
                     .keyboardShortcut(.defaultAction)
