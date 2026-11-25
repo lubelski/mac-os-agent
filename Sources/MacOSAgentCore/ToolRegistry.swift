@@ -56,7 +56,10 @@ public struct ToolCallSummaries: Sendable {
 
     /// Built-in tools whose rows read by their summary even in a run whose list leaves them
     /// out, such as `search_web` after web search was turned off.
-    static let conditional: [any AgentTool] = [SearchWebTool(key: nil), SetLinksTool(), RunScriptTool(tools: [], helper: nil)]
+    static let conditional: [any AgentTool] = [
+        SearchWebTool(key: nil), SetLinksTool(), RunScriptTool(tools: [], helper: nil),
+        FindToolsTool(groups: []), UseToolTool(groups: []),
+    ]
 
     /// Built-in tools that were renamed, by their old name. A call in the thread made under an
     /// old name still reads as the tool's summary. The model is sent it as it was made.
@@ -109,9 +112,11 @@ public enum BuiltInTools {
     ]
 
     /// The names in order for a run, with `search_web` after the memory tools when Brave Search
-    /// was chosen at launch, and `set_links` last when the panel with bars experiment was on.
-    public static func names(webSearch: Bool, taskLinks: Bool = false) -> [String] {
+    /// was chosen at launch, `set_links` after it when the panel with bars experiment was on,
+    /// and `find_tools` and `use_tool` last when the run has tools in groups.
+    public static func names(webSearch: Bool, taskLinks: Bool = false, onDemand: Bool = false) -> [String] {
         (webSearch ? names + [SearchWebTool.name] : names) + (taskLinks ? [SetLinksTool.name] : [])
+            + (onDemand ? [FindToolsTool.name, UseToolTool.name] : [])
     }
 
     /// - Parameters:
@@ -127,7 +132,11 @@ public enum BuiltInTools {
     ///     It goes at the very end, after the memory tools, so every tool before it keeps its
     ///     place. It is not a step a quick action can take.
     ///   - taskLinks: `set_links`, when the panel with bars experiment was on at launch. It goes
-    ///     last, after `search_web`, so every other tool keeps its place with the switch off or on.
+    ///     after `search_web`, so every other tool keeps its place with the switch off or on.
+    ///   - onDemandGroups: Tools kept in groups, out of the list, when the settings tools
+    ///     experiment was on at launch. With any, `find_tools` and `use_tool` go last, so every
+    ///     other tool keeps its place with the switch off or on. A script can call `use_tool`,
+    ///     since `run_script` comes after every tool.
     public static func make(
         applicationWorkspace: any ApplicationWorkspace = SystemApplicationWorkspace(),
         skills: SkillLibrary = SkillLibrary(),
@@ -140,7 +149,8 @@ public enum BuiltInTools {
         actions: QuickActionLibrary = QuickActionLibrary(),
         memories: MemoryLibrary = MemoryLibrary(),
         webSearch: SearchWebTool? = nil,
-        taskLinks: SetLinksTool? = nil
+        taskLinks: SetLinksTool? = nil,
+        onDemandGroups: [OnDemandToolGroup] = []
     ) -> [any AgentTool] {
         let reminderIDs = ShortIdentifierTable()
         let eventIDs = ShortIdentifierTable()
@@ -176,7 +186,10 @@ public enum BuiltInTools {
         ]
         if let webSearch { tools.append(webSearch) }
         if let taskLinks { tools.append(taskLinks) }
-        assert(tools.map(\.definition.name) == names(webSearch: webSearch != nil, taskLinks: taskLinks != nil))
+        if !onDemandGroups.isEmpty {
+            tools += [FindToolsTool(groups: onDemandGroups), UseToolTool(groups: onDemandGroups)]
+        }
+        assert(tools.map(\.definition.name) == names(webSearch: webSearch != nil, taskLinks: taskLinks != nil, onDemand: !onDemandGroups.isEmpty))
         return tools
     }
 

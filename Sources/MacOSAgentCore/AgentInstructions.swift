@@ -64,9 +64,38 @@ public enum AgentInstructions {
         list each time, and clear links that stop being relevant.
         """
 
+    /// A group of tools behind `find_tools` and `use_tool`, as the instructions list it.
+    public struct ToolGroupSummary: Sendable, Equatable {
+        public var name: String
+        public var summary: String
+
+        public init(name: String, summary: String) {
+            self.name = name
+            self.summary = summary
+        }
+    }
+
+    /// The rules for tools kept in groups, in the fixed part only when the run's tool list has
+    /// `find_tools` and `use_tool`, which the settings tools experiment decides at launch. So
+    /// they change only with the switch and a relaunch, and the prompt cache holds. The app's
+    /// names are here too, since the owner calls it MOA and the settings group is its setup.
+    public static func toolGroupsRules(_ groups: [ToolGroupSummary]) -> String {
+        """
+        - This app is MacOS Agent, also called MOA or mac-os-agent.
+        - More tools are kept in groups, out of your tool list. Call \(FindToolsTool.name) with a \
+        group's name to see its tools, then \(UseToolTool.name) to call one with the arguments its \
+        parameters describe. Do not answer from this list alone what a group's tools can read. Groups:
+        """ + groups.map { "\n  - \($0.name): \(singleLine($0.summary))" }.joined()
+    }
+
     /// The part the app always sends after the editable part, in the main panel.
-    /// - Parameter taskLinks: True when the run has `set_links`, which adds `taskLinksRule`.
-    public static func fixed(skills: [SkillSummary], skillsFolder: URL, taskLinks: Bool = false) -> String {
+    /// - Parameters:
+    ///   - taskLinks: True when the run has `set_links`, which adds `taskLinksRule`.
+    ///   - toolGroups: The groups behind `find_tools` and `use_tool` in this run, which add
+    ///     `toolGroupsRules`. Empty for a run without them.
+    public static func fixed(
+        skills: [SkillSummary], skillsFolder: URL, taskLinks: Bool = false, toolGroups: [ToolGroupSummary] = []
+    ) -> String {
         let folder = skillsFolder.plainPath
         let list = skills.isEmpty
             ? "There are no skills yet."
@@ -132,7 +161,7 @@ public enum AgentInstructions {
             - Never store passwords, card numbers, or other secrets, even when asked, and say why: \
             memory is a plain file sent with every request.
             - When the person says to forget something, remove it. Say briefly in your reply what you \
-            remembered, changed, or forgot.\(taskLinks ? "\n" + taskLinksRule : "")
+            remembered, changed, or forgot.\(taskLinks ? "\n" + taskLinksRule : "")\(toolGroups.isEmpty ? "" : "\n" + toolGroupsRules(toolGroups))
 
             \(list)
             """
@@ -164,9 +193,12 @@ public enum AgentInstructions {
     /// memory block when there is one. The block is last so that everything before it stays a
     /// cached prefix when only memory changes.
     public static func assemble(
-        editable: String, skills: [SkillSummary], skillsFolder: URL, memoryBlock: String? = nil, taskLinks: Bool = false
+        editable: String, skills: [SkillSummary], skillsFolder: URL, memoryBlock: String? = nil, taskLinks: Bool = false,
+        toolGroups: [ToolGroupSummary] = []
     ) -> String {
-        let text = join(editable: editable, fixed: fixed(skills: skills, skillsFolder: skillsFolder, taskLinks: taskLinks))
+        let text = join(
+            editable: editable,
+            fixed: fixed(skills: skills, skillsFolder: skillsFolder, taskLinks: taskLinks, toolGroups: toolGroups))
         guard let memoryBlock else { return text }
         return text + "\n\n" + memoryBlock
     }
@@ -254,16 +286,22 @@ public struct AgentPrompt: Sendable {
     /// True when the run's tool list has `set_links`, so the fixed part says what the links row
     /// is for. Set once at launch with the tool list, never changed while the app runs.
     public var taskLinks: Bool
+    /// The groups behind `find_tools` and `use_tool` in the run's tool list, which the fixed
+    /// part lists one line each. Set once at launch with the tool list, never changed while the
+    /// app runs. Empty without them.
+    public var toolGroups: [AgentInstructions.ToolGroupSummary]
 
     public init(
         instructions: InstructionsStore = InstructionsStore(), skills: SkillLibrary = SkillLibrary(),
-        memories: MemoryLibrary? = nil, memorySnapshot: MemorySnapshot = MemorySnapshot(), taskLinks: Bool = false
+        memories: MemoryLibrary? = nil, memorySnapshot: MemorySnapshot = MemorySnapshot(), taskLinks: Bool = false,
+        toolGroups: [AgentInstructions.ToolGroupSummary] = []
     ) {
         self.instructions = instructions
         self.skills = skills
         self.memories = memories
         self.memorySnapshot = memorySnapshot
         self.taskLinks = taskLinks
+        self.toolGroups = toolGroups
     }
 
     /// The instructions without the memory block, as they stand now.
@@ -316,7 +354,8 @@ public struct AgentPrompt: Sendable {
             skills: skills.skills().filter(\.isAvailable).map { .init(name: $0.name, description: $0.description) },
             skillsFolder: skills.folder,
             memoryBlock: memoryBlock,
-            taskLinks: taskLinks)
+            taskLinks: taskLinks,
+            toolGroups: toolGroups)
     }
 
     /// The instructions for an incognito window as they stand now. The window reads them once

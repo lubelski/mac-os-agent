@@ -437,6 +437,14 @@ struct ConfirmationCard: View {
                     scrollsWhenLong(selectable(arguments))
                 }
             }
+        case .setting(let change, let notes):
+            VStack(alignment: .leading, spacing: 4) {
+                Text(verbatim: change).foregroundStyle(.primary)
+                ForEach(Array(notes.enumerated()), id: \.offset) { _, note in
+                    selectable(note)
+                }
+            }
+            .font(.callout)
         }
     }
 

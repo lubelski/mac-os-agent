@@ -14,8 +14,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var summonTrigger: SummonTriggerController!
     private var settings: SettingsWindowController!
     /// Read once at launch, with the panel with bars experiment's switch, which decides whether
-    /// the tool list has `set_links` and the instructions say what the links row is for.
-    private let prompt = AgentPrompt(memories: MemoryLibrary(), taskLinks: Experiment.panelWithBarsAndInputPill.isOn())
+    /// the tool list has `set_links` and the instructions say what the links row is for, and the
+    /// settings tools experiment's, which decides whether it has the settings group behind
+    /// `find_tools` and `use_tool` and the instructions list it.
+    private let prompt = AgentPrompt(
+        memories: MemoryLibrary(), taskLinks: Experiment.panelWithBarsAndInputPill.isOn(),
+        toolGroups: Experiment.settingsTools.isOn() ? [SettingsToolGroup.listing] : [])
     /// Each line says which Mac and build wrote it, read at the first request, after launch has
     /// set the data folder.
     private let usageLog = UsageLog(device: { UsageDevice.thisMac })
@@ -69,13 +73,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         // Read once, since it changes the tool list or the request, which stay fixed for the run.
         let webSearch = WebSearchContext(launched: WebSearchSetting.current(), key: BraveSearchKey(secrets: secretStorage.store))
+        let mcpTools = mcp.makeTools()
+        // The settings group reads this run's servers and the experiments as they were at launch.
+        let onDemandGroups = prompt.toolGroups.isEmpty ? [] : [
+            SettingsToolGroup.make(access: AppSettingsAccess(
+                mcp: mcp,
+                toolsInThisRun: Dictionary(mcpTools.compactMap { ($0 as? MCPTool).map { ($0.server, 1) } }, uniquingKeysWith: +),
+                experimentsOnAtLaunch: Set(Experiment.allCases.filter { $0.isOn() }))),
+        ]
         // Built once, so the tool list stays the same for the whole run, and shared with Settings.
         let tools = ToolRegistry(
             builtIn: BuiltInTools.make(
                 skills: prompt.skills, history: thread, memories: prompt.memories ?? MemoryLibrary(),
                 webSearch: webSearch.launched == .brave ? SearchWebTool(key: webSearch.key) : nil,
-                taskLinks: prompt.taskLinks ? SetLinksTool(isOn: { Experiment.panelWithBarsAndInputPill.isOn() }) : nil),
-            additional: mcp.makeTools()
+                taskLinks: prompt.taskLinks ? SetLinksTool(isOn: { Experiment.panelWithBarsAndInputPill.isOn() }) : nil,
+                onDemandGroups: onDemandGroups),
+            additional: mcpTools
         // Read once, like web search, since it changes the tool list.
         ).addingRunScript(Experiment.scripts.isOn())
         if let thread {
