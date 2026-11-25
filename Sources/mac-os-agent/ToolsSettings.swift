@@ -12,7 +12,14 @@ import SwiftUI
 @Observable
 final class ToolsSettingsModel {
     let groups: [ToolGroup]
+    /// The selected tool in the list beside a detail pane, the layout without the pane stack
+    /// experiment.
     var selection: ToolSummary.ID?
+    /// Where the pane stack is, with the experiment on: `[group]` or `[group, tool]`. Kept here
+    /// so the stack and its scroll places last while the window is open.
+    let stack = PaneStackState()
+    /// Set by a preview that asks for the pane stack, which shows it whatever the preference says.
+    var paneStackOverride: Bool?
     /// The app's access to each kind of personal data the tools use, read again whenever the
     /// window comes forward, since the owner changes it in System Settings.
     private(set) var access: [PrivacyAccessKind: PrivacyAccessStatus] = [:]
@@ -86,9 +93,36 @@ final class ToolsSettingsModel {
     var selectedTool: ToolSummary? {
         groups.lazy.flatMap(\.tools).first { $0.id == selection }
     }
+
+    /// Opens a tool's details, or a group's tools, in the pane stack, as `--preview-item` asks.
+    /// An item that is not here changes nothing.
+    func showInStack(_ item: String) {
+        if let path = groups.path(showing: item) { stack.path = path }
+    }
+
+    /// Whether any tool in the group can ask for a go-ahead now.
+    func asksForGoAhead(_ group: ToolGroup) -> Bool {
+        group.asksForGoAhead { goAhead(of: $0) }
+    }
 }
 
+/// Settings, Tools: the pane stack with its experiment on, and a list beside a detail pane
+/// without it.
 struct ToolsSettingsView: View {
+    @Bindable var model: ToolsSettingsModel
+    @AppStorage(Experiment.settingsPaneStack.key) private var paneStack = false
+
+    var body: some View {
+        if model.paneStackOverride ?? paneStack {
+            ToolsPaneStackView(model: model)
+        } else {
+            ToolsListAndDetailView(model: model)
+        }
+    }
+}
+
+/// Every tool in one list beside the selected tool's detail.
+struct ToolsListAndDetailView: View {
     @Bindable var model: ToolsSettingsModel
 
     var body: some View {
@@ -167,7 +201,6 @@ extension ToolRow {
 struct ToolDetailView: View {
     let tool: ToolSummary
     let model: ToolsSettingsModel
-    @State private var showingSchema = false
 
     var body: some View {
         ScrollView {
@@ -178,57 +211,7 @@ struct ToolDetailView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                if let kind = tool.source.privacyAccess {
-                    PrivacyAccessView(kind: kind, status: model.access[kind] ?? .notDetermined) {
-                        model.requestAccess(kind)
-                    }
-                }
-                if let mcp = tool.mcp {
-                    MCPGoAheadControl(tool: tool, mcp: mcp, model: model)
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Asks for a go-ahead").font(.headline)
-                        Text("\(tool.goAhead.label). \(tool.goAhead.explanation)")
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("In the incognito window").font(.headline)
-                    Text(incognitoText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Description sent to the model").font(.headline)
-                    Text(tool.description)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.background.secondary, in: .rect(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Parameters").font(.headline)
-                    if tool.parameters.isEmpty {
-                        Text("None.").foregroundStyle(.secondary)
-                    } else {
-                        ForEach(tool.parameters) { parameter in
-                            ParameterRow(parameter: parameter)
-                            if parameter.id != tool.parameters.last?.id { Divider() }
-                        }
-                    }
-                }
-
-                DisclosureGroup("JSON Schema as sent", isExpanded: $showingSchema) {
-                    Text(tool.schemaText)
-                        .font(.callout.monospaced())
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 6)
-                }
+                ToolDetailSections(tool: tool, model: model)
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -236,7 +219,71 @@ struct ToolDetailView: View {
     }
 }
 
-extension ToolDetailView {
+/// Everything about a tool under its name: its go-ahead, the incognito window, its description
+/// and parameters as sent, and its schema.
+struct ToolDetailSections: View {
+    let tool: ToolSummary
+    let model: ToolsSettingsModel
+    @State private var showingSchema = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let kind = tool.source.privacyAccess {
+                PrivacyAccessView(kind: kind, status: model.access[kind] ?? .notDetermined) {
+                    model.requestAccess(kind)
+                }
+            }
+            if let mcp = tool.mcp {
+                MCPGoAheadControl(tool: tool, mcp: mcp, model: model)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Asks for a go-ahead").font(.headline)
+                    Text("\(tool.goAhead.label). \(tool.goAhead.explanation)")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("In the incognito window").font(.headline)
+                Text(incognitoText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Description sent to the model").font(.headline)
+                Text(tool.description)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.background.secondary, in: .rect(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Parameters").font(.headline)
+                if tool.parameters.isEmpty {
+                    Text("None.").foregroundStyle(.secondary)
+                } else {
+                    ForEach(tool.parameters) { parameter in
+                        ParameterRow(parameter: parameter)
+                        if parameter.id != tool.parameters.last?.id { Divider() }
+                    }
+                }
+            }
+
+            DisclosureGroup("JSON Schema as sent", isExpanded: $showingSchema) {
+                Text(tool.schemaText)
+                    .font(.callout.monospaced())
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 6)
+            }
+        }
+    }
+}
+
+extension ToolDetailSections {
     private var incognitoText: String {
         if tool.mcp != nil {
             return "Not available. The incognito window has no tools from MCP servers."

@@ -401,6 +401,8 @@ enum SettingsPreview {
         // A preview of MCP Servers, or of an MCP tool, asks for MCP, so it shows as if the
         // experiment were on without reading or writing its preference. Other previews follow
         // the preview's own preferences, where it is off.
+        // A Tools item names one tool, or a pane stack state whose words may name one.
+        let toolWords = section == .tools ? Set((item ?? "").split(separator: ".").map(String.init)) : []
         let showsMCP = section == .mcpServers || (section == .tools && item?.contains(MCPToolNaming.separator) == true)
         let mcp = showsMCP ? standInMCPServers() : .empty
         let controller = SettingsWindowController(
@@ -410,11 +412,11 @@ enum SettingsPreview {
                     skills: prompt.skills, history: history,
                     // `--preview-item set_links` shows the tool as a run with the panel with bars
                     // experiment on has it, without reading or writing its preference.
-                    taskLinks: section == .tools && item == SetLinksTool.name ? SetLinksTool(store: TaskLinkStore(fileURL: URL(filePath: "/dev/null"))) : nil,
+                    taskLinks: toolWords.contains(SetLinksTool.name) ? SetLinksTool(store: TaskLinkStore(fileURL: URL(filePath: "/dev/null"))) : nil,
                     // `--preview-item` with a tool of the settings tools experiment, such as
                     // `use_tool` or `change_settings`, shows the tools as a run with it on has
                     // them, without reading or writing its preference.
-                    onDemandGroups: section == .tools && SettingsPreview.settingsToolNames.contains(item ?? "")
+                    onDemandGroups: !toolWords.isDisjoint(with: SettingsPreview.settingsToolNames)
                         ? [SettingsToolGroup.make(access: AppSettingsAccess(
                             serversFile: URL(filePath: "/dev/null"), mcp: mcp, toolsInThisRun: [:], defaults: defaults,
                             experimentsOnAtLaunch: []))]
@@ -422,7 +424,7 @@ enum SettingsPreview {
                 additional: mcp.makeTools()
                 // `--preview-item run_script` shows the tool as a run with the scripts
                 // experiment on has it, without reading or writing its preference.
-            ).addingRunScript(section == .tools && item == RunScriptTool.name),
+            ).addingRunScript(toolWords.contains(RunScriptTool.name)),
             history: history,
             problems: problems,
             signInStatus: {
@@ -442,7 +444,11 @@ enum SettingsPreview {
             controller.models.history.query = section == .history ? item : ""
             controller.models.skills.selection = item
             if section == .quickActions { controller.models.quickActions.selection = item }
-            controller.models.tools.selection = item
+            if section == .tools, item.hasPrefix(SettingsPreview.paneStackItem) {
+                showPaneStack(item, in: controller)
+            } else {
+                controller.models.tools.selection = item
+            }
             if section == .mcpServers { controller.models.mcpServers.selection = item }
             controller.models.debugging.scrollTarget = item
         }
@@ -457,6 +463,26 @@ enum SettingsPreview {
         controller.show(section, takeFocus: false)
         // Quits on its own, so a failed capture script cannot leave it on screen.
         Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { _ in exit(0) }
+    }
+
+    /// The first word of a Tools `--preview-item` that shows the pane stack, as if its
+    /// experiment were on, without reading or writing its preference.
+    static let paneStackItem = "stack"
+
+    /// Tools as a pane stack. The item is `stack`, then dot-separated words: a group's id or a
+    /// tool's name opens it (a tool opens its group too), `end` scrolls the top pane to its end,
+    /// and `narrow` shrinks the window to its minimum size. `stack.system.narrow` opens System at
+    /// the minimum width, and `stack.find_files.end` opens find_files scrolled to its end.
+    private static func showPaneStack(_ item: String, in controller: SettingsWindowController) {
+        let tools = controller.models.tools
+        tools.paneStackOverride = true
+        for word in item.split(separator: ".").dropFirst().map(String.init) {
+            switch word {
+            case "end": tools.stack.topStartsAtEnd = true
+            case "narrow": controller.window?.setContentSize(SettingsWindowController.minimumSize)
+            default: tools.showInStack(word)
+            }
+        }
     }
 
     /// The summon shortcut in a preview. `--preview-item` picks a state for General:
