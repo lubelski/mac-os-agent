@@ -84,12 +84,16 @@ public struct MCPTool: AgentTool {
             return "The MCP server \(server) is not available, so \(info.name) did not run: \(MCPServerPool.describe(error))"
         }
         if currentGoAhead == .ask {
-            let approved = await context.confirm(ConfirmationRequest(
+            let answer = await context.answer(ConfirmationRequest(
                 callID: context.callID, kind: .mcpToolCall,
                 body: .toolCall(server: server, tool: info.name, arguments: arguments.prettyEncodedString()),
                 reason: "comes from an MCP server and is set to ask before each call"))
             if Task.isCancelled { return Self.stoppedOutput }
-            if !approved { return Self.declinedOutput }
+            if !answer.isApproved { return Self.declinedOutput }
+            if answer == .approvedAlways {
+                // The same setting Tools changes. The call goes ahead even if it cannot be saved.
+                try? pool.settings.setGoAhead(.dontAsk, server: server, tool: info.name, readOnly: info.readOnly)
+            }
         }
         let timeout = pool.callTimeout
         let tool = info.name

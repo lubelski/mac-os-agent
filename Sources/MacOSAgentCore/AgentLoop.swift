@@ -147,6 +147,7 @@ public final class AgentLoop: Sendable {
     ///     place of the typed text. Nil for a plain message.
     ///   - startsNewEpisode: True when the owner asked for a fresh start, such as with `/new`.
     ///     A new episode also starts on its own when the current one has timed out.
+    ///   - confirm: Asks the owner for a go-ahead, yes or no.
     public func run(
         _ userText: String,
         skill: ThreadItem.SkillInvocation? = nil,
@@ -154,6 +155,21 @@ public final class AgentLoop: Sendable {
         now: Date = Date(),
         onEvent: @escaping @Sendable (AgentEvent) async -> Void,
         confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
+    ) async throws {
+        try await run(
+            userText, skill: skill, startsNewEpisode: startsNewEpisode, now: now, onEvent: onEvent,
+            answer: { request in await confirm(request) ? .approved : .declined })
+    }
+
+    /// Handles one instruction from the person, as `run(_:skill:startsNewEpisode:now:onEvent:confirm:)`
+    /// does, with the owner's full answer to a go-ahead, which can also stop a tool asking.
+    public func run(
+        _ userText: String,
+        skill: ThreadItem.SkillInvocation? = nil,
+        startsNewEpisode: Bool = false,
+        now: Date = Date(),
+        onEvent: @escaping @Sendable (AgentEvent) async -> Void,
+        answer confirm: @escaping @Sendable (ConfirmationRequest) async -> ConfirmationAnswer
     ) async throws {
         try await prepareForOwnerEntry(startsNewEpisode: startsNewEpisode, now: now, onEvent: onEvent)
         await onEvent(.entryAdded(try await thread.append(.userMessage(text: userText, skill: skill), date: now)))
@@ -187,7 +203,7 @@ public final class AgentLoop: Sendable {
     private func replyAndRunTools(
         instructions: String, definitions: [ToolDefinition], fingerprint: String, episodeID: UUID?,
         onEvent: @escaping @Sendable (AgentEvent) async -> Void,
-        confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
+        confirm: @escaping @Sendable (ConfirmationRequest) async -> ConfirmationAnswer
     ) async throws {
         for _ in 0..<maximumModelReplies {
             try Task.checkCancellation()
@@ -272,7 +288,7 @@ public final class AgentLoop: Sendable {
         _ call: ThreadItem.ToolCall,
         episodeID: UUID?,
         onEvent: @Sendable (AgentEvent) async -> Void,
-        confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
+        confirm: @escaping @Sendable (ConfirmationRequest) async -> ConfirmationAnswer
     ) async -> (String, ToolRunDetails?) {
         guard let tool = tools.first(where: { $0.definition.name == call.name }) else {
             return ("Error: there is no tool named \(call.name).", nil)
@@ -286,9 +302,10 @@ public final class AgentLoop: Sendable {
         let startDate = Date()
         let started = ContinuousClock.now
         // The go-ahead is timed and its answer noted here, so every tool that asks gets the same record.
-        let timedConfirm: @Sendable (ConfirmationRequest) async -> Bool = { request in
+        let timedConfirm: @Sendable (ConfirmationRequest) async -> ConfirmationAnswer = { request in
             let asked = ContinuousClock.now
-            let approved = await confirm(request)
+            let answer = await confirm(request)
+            let approved = answer.isApproved
             let waited = Self.seconds(ContinuousClock.now - asked)
             // Stopping the task ends the wait with no answer from the owner, so none is noted.
             let stopped = !approved && Task.isCancelled
@@ -296,9 +313,9 @@ public final class AgentLoop: Sendable {
                 if !stopped { details.goAhead = approved ? .approved : .declined }
                 details.waitedSeconds = (details.waitedSeconds ?? 0) + waited
             }
-            return approved
+            return answer
         }
-        let context = ToolRunContext(callID: call.callID, episodeID: episodeID, report: report, confirm: timedConfirm)
+        let context = ToolRunContext(callID: call.callID, episodeID: episodeID, report: report, answer: timedConfirm)
         let output = await tool.run(arguments: arguments, context: context)
         let elapsed = Self.seconds(ContinuousClock.now - started)
         report.note { details in

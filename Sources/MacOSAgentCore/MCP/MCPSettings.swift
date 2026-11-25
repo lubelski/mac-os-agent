@@ -68,9 +68,15 @@ public final class MCPSettingsStore: Sendable {
         goAheadOverride(server: server, tool: tool) ?? .defaultValue(readOnly: readOnly)
     }
 
+    /// Posted with the store as its object after a tool's go-ahead changes, from any thread, so
+    /// Settings can show a change made from the go-ahead card.
+    public static let goAheadDidChange = Notification.Name("MCPSettingsStore.goAheadDidChange")
+
     /// Sets a tool's go-ahead. Setting it to its default removes the override, so a later
     /// change in the server's read-only mark is followed.
     public func setGoAhead(_ value: MCPGoAhead, server: String, tool: String, readOnly: Bool) throws {
+        // Posted even when the file could not be written, since the change holds in memory.
+        defer { NotificationCenter.default.post(name: Self.goAheadDidChange, object: self) }
         try change { settings in
             var tools = settings.goAhead[server] ?? [:]
             tools[tool] = value == .defaultValue(readOnly: readOnly) ? nil : value

@@ -138,6 +138,18 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         }
     }
 
+    /// A third button that goes ahead and stops this tool asking from now on, or nil for a card
+    /// with only two. Only an MCP tool's card has it, since its go-ahead is a setting per tool.
+    public var alwaysApproveTitle: String? {
+        kind == .mcpToolCall ? "Always Call" : nil
+    }
+
+    /// The line under the buttons that says where to turn asking back on, for a card with the
+    /// third button.
+    public var alwaysApproveNote: String? {
+        kind == .mcpToolCall ? "Always Call stops asking for this tool. Settings > Tools turns asking back on." : nil
+    }
+
     /// The button that declines.
     public var declineTitle: String {
         switch kind {
@@ -187,26 +199,53 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
     }
 }
 
+/// The owner's answer to a go-ahead card.
+public enum ConfirmationAnswer: Sendable, Equatable {
+    case declined
+    case approved
+    /// Go ahead, and stop asking before this tool from now on. Only a card with
+    /// `alwaysApproveTitle` offers it. The tool that asked records the setting.
+    case approvedAlways
+
+    public var isApproved: Bool { self != .declined }
+}
+
 /// What a tool can reach while it runs.
 public struct ToolRunContext: Sendable {
     public var callID: String
     /// The episode the call was made in. History search leaves it out, since the model already
     /// sees it.
     public var episodeID: UUID?
-    /// Asks the person whether to go ahead. Waits as long as it takes.
-    public var confirm: @Sendable (ConfirmationRequest) async -> Bool
+    /// Asks the person whether to go ahead, and returns their full answer. Waits as long as it
+    /// takes.
+    public var answer: @Sendable (ConfirmationRequest) async -> ConfirmationAnswer
     /// Where the tool notes facts about its run for the inspector, such as an exit status.
     /// What it notes is stored beside the result and never reaches the model.
     public var report: ToolRunReport
 
     public init(
         callID: String, episodeID: UUID? = nil, report: ToolRunReport = ToolRunReport(),
-        confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
+        answer: @escaping @Sendable (ConfirmationRequest) async -> ConfirmationAnswer
     ) {
         self.callID = callID
         self.episodeID = episodeID
         self.report = report
-        self.confirm = confirm
+        self.answer = answer
+    }
+
+    /// A context whose go-ahead is yes or no, as most callers and tests need.
+    public init(
+        callID: String, episodeID: UUID? = nil, report: ToolRunReport = ToolRunReport(),
+        confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
+    ) {
+        self.init(callID: callID, episodeID: episodeID, report: report) { request in
+            await confirm(request) ? .approved : .declined
+        }
+    }
+
+    /// Asks the person whether to go ahead. Either way of going ahead counts as yes.
+    public func confirm(_ request: ConfirmationRequest) async -> Bool {
+        await answer(request).isApproved
     }
 }
 

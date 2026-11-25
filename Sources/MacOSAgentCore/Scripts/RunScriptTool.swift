@@ -139,14 +139,16 @@ public struct RunScriptTool: AgentTool {
         let declined = Flag()
         let nested = ToolRunContext(
             callID: context.callID, episodeID: context.episodeID, report: ToolRunReport()
-        ) { request in
+        ) { (request: ConfirmationRequest) -> ConfirmationAnswer in
             var request = request
             request.fromScript = true
             waiting.begin()
-            let approved = await context.confirm(request)
+            // The full answer passes through, so Always Call on a script's card stops that
+            // tool asking just as it does for a direct call.
+            let answer = await context.answer(request)
             waiting.end()
-            if !approved, !Task.isCancelled { declined.set() }
-            return approved
+            if !answer.isApproved, !Task.isCancelled { declined.set() }
+            return answer
         }
         let output = await tool.run(arguments: arguments, context: nested)
         if declined.isSet { return (false, output) }

@@ -177,7 +177,7 @@ extension AgentLoop {
             let asked = Mutex<String?>(nil)
             var (output, details) = await runTool(call, episodeID: episodeID, onEvent: onEvent, confirm: { request in
                 asked.withLock { $0 = request.reason }
-                return true
+                return .approved
             })
             let reason = asked.withLock { $0 }
             if reason != nil {
