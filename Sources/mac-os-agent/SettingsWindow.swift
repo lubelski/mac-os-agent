@@ -419,7 +419,7 @@ enum SettingsPreview {
             controller.models.history.query = section == .history ? item : ""
             controller.models.skills.selection = item
             if section == .quickActions { controller.models.quickActions.selection = item }
-            controller.models.tools.selection = item
+            if section == .tools { controller.models.tools.show(item) }
             if section == .mcpServers { controller.models.mcpServers.selection = item }
             controller.models.debugging.scrollTarget = item
         }

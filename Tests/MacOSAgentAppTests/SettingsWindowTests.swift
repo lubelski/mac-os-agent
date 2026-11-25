@@ -13,7 +13,11 @@ struct SettingsWindowHarness {
     let suiteName = "mac-os-agent-settings-tests-\(UUID().uuidString)"
     let controller: SettingsWindowController
 
-    init(section: SettingsSection) throws {
+    /// - Parameters:
+    ///   - additionalTools: More tools after the built-in ones, such as stand-in MCP tools.
+    ///   - privacyAccess: Access to personal data as Tools shows it. Nil reads the real status,
+    ///     which never asks.
+    init(section: SettingsSection, additionalTools: [any AgentTool] = [], privacyAccess: (any PrivacyAccessGate)? = nil) throws {
         _ = NSApplication.shared
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         for (name, description) in [
@@ -37,9 +41,10 @@ struct SettingsWindowHarness {
         controller = SettingsWindowController(
             session: AgentSession(previewEntries: []), prompt: prompt,
             usageLog: UsageLog(fileURL: folder.appending(path: "usage.jsonl")),
-            tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: history)),
+            tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: history), additional: additionalTools),
             history: history, problems: ProblemLog(), signInStatus: { nil },
-            summonTrigger: summonTrigger, defaults: defaults, remembersFrame: false)
+            summonTrigger: summonTrigger, defaults: defaults, remembersFrame: false,
+            privacyAccess: privacyAccess ?? EventKitStore.shared)
     }
 
     var window: NSWindow { controller.window! }
