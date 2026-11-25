@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 560" width="1120" height="560" font-family="-apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif" role="img" aria-labelledby="title desc">
+  <title id="title">What Return does</title>
+  <desc id="desc">The session first asks whether the draft matches an app or a quick action, then whether it is one of the app's own slash commands. Otherwise the agent loop appends the message to the thread, builds the request, streams the reply, and runs tools until a reply asks for none.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .bg { fill: #ffffff; }
+      .app { fill: #ddf4ff; stroke: #54aeff; }
+      .core { fill: #dafbe1; stroke: #4ac26b; }
+      .region { fill: #f6fdf7; stroke: #4ac26b; stroke-dasharray: 6 4; }
+      .end { fill: #f6f8fa; stroke: #8c959f; }
+      .box { stroke-width: 1.5; }
+      .t { font-size: 15px; font-weight: 600; fill: #1f2328; }
+      .s { font-size: 12px; fill: #1f2328; }
+      .l { font-size: 11px; fill: #57606a; font-style: italic; }
+      .line { stroke: #57606a; stroke-width: 1.5; fill: none; }
+    </style>
+  </defs>
+  <rect class="bg" width="1120" height="560" rx="12"/>
+
+  <!-- start -->
+  <rect class="end box" x="40" y="24" width="300" height="40" rx="20"/>
+  <text class="s" x="190" y="49" text-anchor="middle" font-weight="600">The owner presses Return</text>
+  <path class="line" d="M190 64 V94" marker-end="url(#arrow)"/>
+
+  <!-- question 1 -->
+  <rect class="app box" x="40" y="96" width="300" height="60" rx="8"/>
+  <text class="s" x="56" y="121">Session: does the draft confidently match</text>
+  <text class="s" x="56" y="138">an app or a quick action?</text>
+  <path class="line" d="M340 126 H418" marker-end="url(#arrow)"/>
+  <text class="l" x="368" y="118">yes</text>
+
+  <rect class="core box" x="420" y="96" width="340" height="60" rx="8"/>
+  <text class="s" x="436" y="121">Instant path: open the app, or run the quick</text>
+  <text class="s" x="436" y="138">action's steps through the loop's tool runner.</text>
+  <path class="line" d="M760 126 H818" marker-end="url(#arrow)"/>
+
+  <rect class="end box" x="820" y="96" width="260" height="60" rx="8"/>
+  <text class="s" x="836" y="121" font-weight="600">Done. No model request.</text>
+  <text class="s" x="836" y="138">A quick action's run joins the thread.</text>
+
+  <path class="line" d="M190 156 V186" marker-end="url(#arrow)"/>
+  <text class="l" x="200" y="176">no</text>
+
+  <!-- question 2 -->
+  <rect class="app box" x="40" y="188" width="300" height="60" rx="8"/>
+  <text class="s" x="56" y="213">Session: is it one of the app's own</text>
+  <text class="s" x="56" y="230">slash commands?</text>
+  <path class="line" d="M340 218 H418" marker-end="url(#arrow)"/>
+  <text class="l" x="368" y="210">yes</text>
+
+  <rect class="app box" x="420" y="188" width="340" height="60" rx="8"/>
+  <text class="s" x="436" y="213">The session handles it itself, as with /new</text>
+  <text class="s" x="436" y="230">and /incognito.</text>
+  <path class="line" d="M760 218 H818" marker-end="url(#arrow)"/>
+
+  <rect class="end box" x="820" y="188" width="260" height="60" rx="8"/>
+  <text class="s" x="836" y="213" font-weight="600">Done. Never sent to the model</text>
+  <text class="s" x="836" y="230" font-weight="600">or written to the thread.</text>
+
+  <!-- loop region -->
+  <rect class="region" x="40" y="284" width="1040" height="252" rx="10" stroke-width="1.5"/>
+  <text class="t" x="320" y="310">Agent loop</text>
+  <path class="line" d="M190 248 V326" marker-end="url(#arrow)"/>
+  <text class="l" x="200" y="270">no</text>
+
+  <rect class="core box" x="60" y="328" width="230" height="72" rx="8"/>
+  <text class="s" x="74" y="350">1. Append the message to the</text>
+  <text class="s" x="74" y="367">thread. A new episode starts if</text>
+  <text class="s" x="74" y="384">asked for, or after a timeout.</text>
+  <path class="line" d="M290 364 H318" marker-end="url(#arrow)"/>
+
+  <rect class="core box" x="320" y="328" width="230" height="72" rx="8"/>
+  <text class="s" x="334" y="350">2. Build the request: the</text>
+  <text class="s" x="334" y="367">instructions, the tool list, and</text>
+  <text class="s" x="334" y="384">the current episode.</text>
+  <path class="line" d="M550 364 H578" marker-end="url(#arrow)"/>
+
+  <rect class="core box" x="580" y="328" width="230" height="72" rx="8"/>
+  <text class="s" x="594" y="350">3. The provider streams the</text>
+  <text class="s" x="594" y="367">reply. Text shows as it arrives.</text>
+  <text class="s" x="594" y="384">Finished items join the thread.</text>
+  <path class="line" d="M810 364 H838" marker-end="url(#arrow)"/>
+
+  <rect class="core box" x="840" y="328" width="220" height="72" rx="8"/>
+  <text class="s" x="854" y="359">4. Did the reply ask</text>
+  <text class="s" x="854" y="376">for tools?</text>
+
+  <!-- no: done -->
+  <path class="line" d="M990 400 V448" marker-end="url(#arrow)"/>
+  <text class="l" x="1000" y="428">no</text>
+  <rect class="end box" x="900" y="450" width="160" height="60" rx="8"/>
+  <text class="s" x="916" y="485" font-weight="600">Done.</text>
+
+  <!-- yes: run tools -->
+  <path class="line" d="M866 400 V480 H812" marker-end="url(#arrow)"/>
+  <text class="l" x="838" y="428">yes</text>
+  <rect class="core box" x="320" y="450" width="490" height="60" rx="8"/>
+  <text class="s" x="334" y="475">5. Run each tool in turn. A tool may wait for the owner's go-ahead.</text>
+  <text class="s" x="334" y="492">Each result joins the thread.</text>
+
+  <!-- repeat -->
+  <path class="line" d="M435 450 V402" marker-end="url(#arrow)"/>
+  <text class="l" x="445" y="430">back to step 2</text>
+</svg>

@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 820" width="1120" height="820" font-family="-apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif" role="img" aria-labelledby="title desc">
+  <title id="title">The parts of mac-os-agent and how they connect</title>
+  <desc id="desc">The app shell builds three windows: the panel, the incognito window, and Settings. Each conversation window has a session. The session sends Return to the instant path or to the agent loop. The loop uses the prompt, the model provider, and the tools. Tools, the prompt, and Settings read and change what the agent keeps on disk.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .bg { fill: #ffffff; }
+      .app { fill: #ddf4ff; stroke: #54aeff; }
+      .core { fill: #dafbe1; stroke: #4ac26b; }
+      .disk { fill: #fff8c5; stroke: #d4a72c; }
+      .box { stroke-width: 1.5; }
+      .pill { fill: #ffffff; stroke: #57606a; stroke-width: 1.2; stroke-dasharray: 4 3; }
+      .chip { fill: #ffffff; stroke: #d4a72c; stroke-width: 1.2; }
+      .t { font-size: 15px; font-weight: 600; fill: #1f2328; }
+      .s { font-size: 12px; fill: #424a53; }
+      .p { font-size: 11px; fill: #424a53; text-anchor: middle; }
+      .l { font-size: 11px; fill: #57606a; font-style: italic; }
+      .line { stroke: #57606a; stroke-width: 1.5; fill: none; }
+    </style>
+  </defs>
+  <rect class="bg" width="1120" height="820" rx="12"/>
+
+  <!-- Row 1: app shell -->
+  <rect class="app box" x="40" y="24" width="1040" height="64" rx="8"/>
+  <text class="t" x="56" y="50">App shell</text>
+  <text class="s" x="56" y="72">Launch, the menu bar icon, the summon shortcut, and updates. It builds every part below once, at launch, and hands each part what it needs.</text>
+
+  <path class="line" d="M205 88 V118" marker-end="url(#arrow)"/>
+  <path class="line" d="M560 88 V118" marker-end="url(#arrow)"/>
+  <path class="line" d="M915 88 V118" marker-end="url(#arrow)"/>
+
+  <!-- Row 2: windows -->
+  <rect class="app box" x="40" y="120" width="330" height="84" rx="8"/>
+  <text class="t" x="56" y="146">Panel</text>
+  <text class="s" x="56" y="168">The text field and the conversation,</text>
+  <text class="s" x="56" y="185">on the one kept thread.</text>
+
+  <rect class="app box" x="395" y="120" width="330" height="84" rx="8"/>
+  <text class="t" x="411" y="146">Incognito window</text>
+  <text class="s" x="411" y="168">The same panel over a conversation held</text>
+  <text class="s" x="411" y="185">in memory, with only the three app tools.</text>
+
+  <rect class="app box" x="750" y="120" width="330" height="84" rx="8"/>
+  <text class="t" x="766" y="146">Settings window</text>
+  <text class="s" x="766" y="168">Shows what the agent keeps and how this</text>
+  <text class="s" x="766" y="185">run is set up, and lets the owner change it.</text>
+
+  <path class="line" d="M205 204 V238" marker-end="url(#arrow)"/>
+  <path class="line" d="M560 204 V238" marker-end="url(#arrow)"/>
+
+  <!-- Row 3: session -->
+  <rect class="app box" x="40" y="240" width="685" height="84" rx="8"/>
+  <text class="t" x="56" y="266">Session, one per conversation window</text>
+  <text class="s" x="56" y="288">Decides what Return does. Owns the running task, the go-ahead card, and the queue of messages,</text>
+  <text class="s" x="56" y="305">so hiding the panel never stops a task.</text>
+
+  <path class="line" d="M205 324 V372" marker-end="url(#arrow)"/>
+  <text class="l" x="215" y="352">Return on a confident match</text>
+  <path class="line" d="M560 324 V372" marker-end="url(#arrow)"/>
+  <text class="l" x="570" y="352">anything else, or Command-Return</text>
+
+  <!-- Row 4: instant path, loop, provider -->
+  <rect class="core box" x="40" y="374" width="330" height="96" rx="8"/>
+  <text class="t" x="56" y="400">Instant path</text>
+  <text class="s" x="56" y="420">Matches the draft against apps and quick</text>
+  <text class="s" x="56" y="436">actions on every keystroke. No model request.</text>
+  <rect class="pill" x="56" y="444" width="62" height="20" rx="10"/>
+  <text class="p" x="87" y="458">macOS</text>
+
+  <path class="line" d="M370 422 H393" marker-end="url(#arrow)"/>
+
+  <rect class="core box" x="395" y="374" width="330" height="96" rx="8"/>
+  <text class="t" x="411" y="400">Agent loop</text>
+  <text class="s" x="411" y="420">Sends the current episode, streams the reply,</text>
+  <text class="s" x="411" y="436">runs the tools it asks for, and repeats.</text>
+  <text class="s" x="411" y="452">Writes every step to the thread.</text>
+
+  <path class="line" d="M725 422 H748" marker-end="url(#arrow)"/>
+
+  <rect class="core box" x="750" y="374" width="250" height="96" rx="8"/>
+  <text class="t" x="766" y="400">Model provider</text>
+  <text class="s" x="766" y="420">One seam. The loop knows no API.</text>
+  <rect class="pill" x="766" y="436" width="62" height="20" rx="10"/>
+  <text class="p" x="797" y="450">OpenAI</text>
+  <rect class="pill" x="834" y="436" width="62" height="20" rx="10"/>
+  <text class="p" x="865" y="450">Ollama</text>
+  <rect class="pill" x="902" y="436" width="84" height="20" rx="10"/>
+  <text class="p" x="944" y="450">local gateway</text>
+
+  <!-- loop to tools -->
+  <path class="line" d="M500 470 V518" marker-end="url(#arrow)"/>
+  <text class="l" x="510" y="508">tool calls</text>
+  <!-- prompt to loop -->
+  <path class="line" d="M875 520 V496 H640 V472" marker-end="url(#arrow)"/>
+  <text class="l" x="700" y="490">instructions</text>
+
+  <!-- Row 5: tools, prompt -->
+  <rect class="core box" x="40" y="520" width="685" height="100" rx="8"/>
+  <text class="t" x="56" y="546">Tools</text>
+  <text class="s" x="56" y="566">One protocol and one list, fixed at launch: built-in tools, groups found on demand, MCP servers' tools, and run_script.</text>
+  <text class="s" x="56" y="582">A tool reaches the owner only by asking for a go-ahead, and reaches the Mac through a seam a test can stand in for.</text>
+  <rect class="pill" x="56" y="592" width="62" height="20" rx="10"/>
+  <text class="p" x="87" y="606">macOS</text>
+  <rect class="pill" x="124" y="592" width="140" height="20" rx="10"/>
+  <text class="p" x="194" y="606">MCP server processes</text>
+  <rect class="pill" x="270" y="592" width="170" height="20" rx="10"/>
+  <text class="p" x="355" y="606">sandboxed script process</text>
+  <rect class="pill" x="446" y="592" width="84" height="20" rx="10"/>
+  <text class="p" x="488" y="606">Brave Search</text>
+
+  <rect class="core box" x="750" y="520" width="250" height="100" rx="8"/>
+  <text class="t" x="766" y="546">Prompt</text>
+  <text class="s" x="766" y="566">The instructions, the list of skills,</text>
+  <text class="s" x="766" y="582">and the memory block. The same</text>
+  <text class="s" x="766" y="598">bytes for a whole episode.</text>
+
+  <!-- tools to store -->
+  <path class="line" d="M360 622 V672" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text class="l" x="370" y="652">read and change</text>
+  <!-- store to prompt -->
+  <path class="line" d="M875 672 V622" marker-end="url(#arrow)"/>
+  <text class="l" x="885" y="652">read</text>
+  <!-- settings to store -->
+  <path class="line" d="M1040 206 V672" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text class="l" x="1056" y="440" transform="rotate(90 1056 440)" text-anchor="middle">show and change</text>
+
+  <!-- Row 6: what the agent keeps -->
+  <rect class="disk box" x="40" y="674" width="1040" height="92" rx="8"/>
+  <text class="t" x="56" y="700">What the agent keeps</text>
+  <rect class="chip" x="56" y="712" width="560" height="42" rx="6"/>
+  <text class="s" x="68" y="730" font-weight="600">Data folder</text>
+  <text class="s" x="68" y="746">The thread, memory, skills, quick actions, themes, MCP server files, the usage log.</text>
+  <rect class="chip" x="628" y="712" width="226" height="42" rx="6"/>
+  <text class="s" x="640" y="730" font-weight="600">Preferences</text>
+  <text class="s" x="640" y="746">Settings, behaviors, experiments.</text>
+  <rect class="chip" x="866" y="712" width="198" height="42" rx="6"/>
+  <text class="s" x="878" y="730" font-weight="600">Secrets</text>
+  <text class="s" x="878" y="746">Keychain, or a file in the folder.</text>
+
+  <!-- Legend -->
+  <rect class="app box" x="40" y="786" width="16" height="16" rx="3"/>
+  <text class="s" x="64" y="799">App target, Sources/mac-os-agent</text>
+  <rect class="core box" x="290" y="786" width="16" height="16" rx="3"/>
+  <text class="s" x="314" y="799">Core library, Sources/MacOSAgentCore</text>
+  <rect class="disk box" x="570" y="786" width="16" height="16" rx="3"/>
+  <text class="s" x="594" y="799">On disk</text>
+  <rect class="pill" x="670" y="786" width="30" height="16" rx="8"/>
+  <text class="s" x="708" y="799">Outside the app's process</text>
+</svg>
