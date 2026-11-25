@@ -73,6 +73,9 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
     public var body: Body
     /// Why it needs a go-ahead, in a few words that follow "It", such as "deletes a reminder".
     public var reason: String
+    /// A call made by a `run_script` script. The card says so, and declining does not end the
+    /// row, since the script runs on.
+    public var fromScript = false
 
     public init(callID: String, kind: Kind, body: Body, reason: String) {
         self.callID = callID
@@ -114,7 +117,7 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
     /// The card's first line: the question and the reason, such as
     /// "Run this command? It deletes files."
     public var prompt: String {
-        "\(question) It \(reason)."
+        "\(question) It \(reason)." + (fromScript ? " A script is asking." : "")
     }
 
     /// The button that goes ahead.

@@ -25,6 +25,14 @@ public struct ToolRegistry: Sendable {
 
     public var definitions: [ToolDefinition] { tools.map(\.definition) }
 
+    /// The list with `run_script` at the very end, after the MCP tools, when the scripts
+    /// experiment was on at launch. A script can call every tool before it. Off, the list is
+    /// unchanged.
+    public func addingRunScript(_ on: Bool, helper: URL? = ScriptRunner.bundledHelper) -> ToolRegistry {
+        guard on else { return self }
+        return ToolRegistry(builtIn: tools + [RunScriptTool(tools: tools, helper: helper)])
+    }
+
     /// The one-line summaries of calls to these tools.
     public var summaries: ToolCallSummaries { ToolCallSummaries(tools) }
 }
@@ -48,7 +56,7 @@ public struct ToolCallSummaries: Sendable {
 
     /// Built-in tools whose rows read by their summary even in a run whose list leaves them
     /// out, such as `search_web` after web search was turned off.
-    static let conditional: [any AgentTool] = [SearchWebTool(key: nil), SetLinksTool()]
+    static let conditional: [any AgentTool] = [SearchWebTool(key: nil), SetLinksTool(), RunScriptTool(tools: [], helper: nil)]
 
     /// Built-in tools that were renamed, by their old name. A call in the thread made under an
     /// old name still reads as the tool's summary. The model is sent it as it was made.

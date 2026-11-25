@@ -59,6 +59,9 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
     /// experiment's gray completion and status line whether or not that switch is on. See
     /// `PanelFrame`.
     case panelWithBarsAndInputPill
+    /// `run_script`, a tool that runs JavaScript calling the agent's other tools, at the end of
+    /// the tool list. Read at launch, since it changes the tool list. See `RunScriptTool`.
+    case scripts
 
     public var id: String { rawValue }
 
@@ -69,6 +72,7 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
         case .suggestionsInFieldAndFooter: "Suggestions in the field and a footer"
         case .mcpServers: "MCP servers"
         case .panelWithBarsAndInputPill: "Panel with bars and an input pill"
+        case .scripts: "Scripts that call tools"
         }
     }
 
@@ -81,6 +85,7 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
         case .suggestionsInFieldAndFooter: "ExperimentSuggestionsInFieldAndFooter"
         case .mcpServers: "ExperimentMCPServers"
         case .panelWithBarsAndInputPill: "ExperimentPanelWithBarsAndInputPill"
+        case .scripts: "ExperimentScripts"
         }
     }
 

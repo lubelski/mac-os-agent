@@ -47,6 +47,7 @@ struct ExperimentsSettingsView: View {
     @AppStorage(Experiment.suggestionsInFieldAndFooter.key) private var suggestionsInField = false
     @AppStorage(Experiment.mcpServers.key) private var mcpServers = false
     @AppStorage(Experiment.panelWithBarsAndInputPill.key) private var panelWithBars = false
+    @AppStorage(Experiment.scripts.key) private var scripts = false
 
     var body: some View {
         Form {
@@ -66,6 +67,10 @@ struct ExperimentsSettingsView: View {
                 Toggle(isOn: $mcpServers) {
                     Text("MCP servers")
                     Text("The agent gets the tools of the MCP servers listed in mcp-servers.json, and Settings gets an MCP Servers section. Turning it on starts the servers now, and their tools join at the next launch. Turning it off stops them, and their tools leave at the next launch.")
+                }
+                Toggle(isOn: $scripts) {
+                    Text(Experiment.scripts.title)
+                    Text("The agent gets run_script, which runs a short JavaScript script that calls its other tools, so it can chain them without writing a program in the shell. Each call asks for a go-ahead exactly when calling the tool directly would. Takes effect at the next launch.")
                 }
             } header: {
                 Text("Features being tried. They may change or go.")
