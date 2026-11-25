@@ -34,6 +34,9 @@ struct InputField: NSViewRepresentable {
     /// Tab while the field has text, before `onChoose`. Returns true when it used the key, to
     /// complete the command chosen in the list of slash commands.
     var onComplete: () -> Bool = { false }
+    /// Command and a digit from 1 to 9. Returns true when it used the key, to run that row of
+    /// the match card without moving to it. Otherwise the key goes on as a key equivalent.
+    var onCommandNumber: (Int) -> Bool = { _ in false }
     /// Up (-1) with the insertion point on the field's first line, or Down (1) on its last line,
     /// after the command list, the instant action row, and the inspector have passed on the
     /// key. Returns true when it put other text in the field, such as an earlier message.
@@ -46,14 +49,24 @@ struct InputField: NSViewRepresentable {
     /// and neither a key repeat. Returns true when it used the key, to start a new episode as
     /// `/new` does. Otherwise the key goes to the text view as before. See `DoubleDelete`.
     var onDoubleDelete: () -> Bool = { false }
+    /// Called with true when an input method starts composing in the field, and with false when
+    /// it stops. While it composes, the field's text holds what is being composed, such as the
+    /// Latin letters a pinyin or romaji input method shows, which are not yet what was typed.
+    var onComposingChange: (Bool) -> Void = { _ in }
+    /// Gray text after the insertion point, from the suggestions-in-the-field experiment. It is
+    /// drawn only, never part of the text. See `InputTextView.inlineCompletion`.
+    var inlineCompletion: InlineCompletion? = nil
+    /// The font and the height of one line's row: `.standard`, or `.pill` with the panel with
+    /// bars experiment on.
+    var metrics: InputFieldMetrics = .standard
 
-    static let font = NSFont.systemFont(ofSize: 15)
+    static let font = InputFieldMetrics.standard.font
     static let maximumLines = 8
     /// The height of one line of text, and so of the field when it holds one line.
-    static let lineHeight = ceil(font.ascender - font.descender + font.leading)
+    static let lineHeight = InputFieldMetrics.standard.lineHeight
     /// The space above and below the text, so a single line sits centered in a row this tall.
-    static let rowHeight: CGFloat = 28
-    static let verticalInset = (rowHeight - lineHeight) / 2
+    static let rowHeight = InputFieldMetrics.standard.rowHeight
+    static let verticalInset = InputFieldMetrics.standard.verticalInset
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -72,10 +85,10 @@ struct InputField: NSViewRepresentable {
         textView.allowsUndo = true
         textView.usesFindBar = false
         textView.drawsBackground = false
-        textView.font = Self.font
+        textView.font = metrics.font
         textView.textColor = .labelColor
-        textView.typingAttributes = [.font: Self.font, .foregroundColor: NSColor.labelColor]
-        textView.textContainerInset = NSSize(width: 0, height: Self.verticalInset)
+        textView.typingAttributes = [.font: metrics.font, .foregroundColor: NSColor.labelColor]
+        textView.textContainerInset = NSSize(width: 0, height: metrics.verticalInset)
         textView.textContainer?.lineFragmentPadding = 0
         // Spelling is checked as you type, as in Messages and Mail. The Edit menu and the
         // context menu turn it off. Text replacement, autocorrection, and smart quotes and
@@ -89,7 +102,9 @@ struct InputField: NSViewRepresentable {
         context.coordinator.observe(textView)
         textView.onCommandReturn = { [weak coordinator = context.coordinator] in coordinator?.parent.onSubmitToAgent() }
         textView.onControlC = { [weak coordinator = context.coordinator] in coordinator?.parent.onInterrupt() ?? false }
+        textView.onCommandNumber = { [weak coordinator = context.coordinator] in coordinator?.parent.onCommandNumber($0) ?? false }
         textView.onDoubleDelete = { [weak coordinator = context.coordinator] in coordinator?.parent.onDoubleDelete() ?? false }
+        textView.onComposingChange = { [weak coordinator = context.coordinator] in coordinator?.parent.onComposingChange($0) }
         return scrollView
     }
 
@@ -109,6 +124,12 @@ struct InputField: NSViewRepresentable {
             textView.undoManager?.removeAllActions()
         }
         textView.isEditable = isEnabled
+        // The panel with bars switch changes the font and the row while the field is up.
+        if textView.font != metrics.font {
+            textView.font = metrics.font
+            textView.typingAttributes[.font] = metrics.font
+            textView.textContainerInset = NSSize(width: 0, height: metrics.verticalInset)
+        }
         // The theme's text colors, and its accent for the cursor.
         let palette = context.environment.panelPalette
         let color = isEnabled ? palette.primaryNSColor : palette.secondaryNSColor
@@ -118,6 +139,10 @@ struct InputField: NSViewRepresentable {
         }
         if palette.accentOverride != nil {
             textView.insertionPointColor = palette.accentNSColor
+        }
+        textView.inlineCompletionColor = palette.tertiaryNSColor
+        if textView.inlineCompletion != inlineCompletion {
+            textView.inlineCompletion = inlineCompletion
         }
 
         if coordinator.focusRequest != focusRequest {
@@ -133,21 +158,12 @@ struct InputField: NSViewRepresentable {
         guard let textView = scrollView.documentView as? NSTextView, let width = proposal.width ?? Optional(scrollView.frame.width) else {
             return nil
         }
-        return CGSize(width: width, height: Self.height(of: textView, width: width))
+        return CGSize(width: width, height: metrics.height(of: textView, width: width))
     }
 
     /// The field's height for its text at this width: one line at least, `maximumLines` at most.
     static func height(of textView: NSTextView, width: CGFloat) -> CGFloat {
-        var textHeight = lineHeight
-        if let layout = textView.textLayoutManager, let container = layout.textContainer, width > 0 {
-            if container.size.width != width {
-                container.size = CGSize(width: width, height: .greatestFiniteMagnitude)
-            }
-            layout.ensureLayout(for: layout.documentRange)
-            textHeight = max(lineHeight, layout.usageBoundsForTextContainer.height)
-        }
-        let limit = lineHeight * CGFloat(maximumLines)
-        return ceil(min(textHeight, limit) + verticalInset * 2)
+        InputFieldMetrics.standard.height(of: textView, width: width)
     }
 
     @MainActor
@@ -349,8 +365,13 @@ final class InputTextView: NSTextView {
     var onCommandReturn: (() -> Void)?
     /// Control-C. Returns true when it used the key.
     var onControlC: (() -> Bool)?
+    /// Command and a digit from 1 to 9, with the number. Returns true when it used the key.
+    var onCommandNumber: ((Int) -> Bool)?
     /// The second of two quick presses of Delete in an empty field. Returns true when it used the key.
     var onDoubleDelete: (() -> Bool)?
+    /// An input method started (true) or stopped (false) composing.
+    var onComposingChange: ((Bool) -> Void)?
+    private var wasComposing = false
     /// How close two presses of Delete have to be. The system's double-click interval, read at
     /// each press so a change in System Settings applies at once.
     var doubleDeleteInterval: () -> TimeInterval = { NSEvent.doubleClickInterval }
@@ -422,9 +443,115 @@ final class InputTextView: NSTextView {
         super.viewWillMove(toWindow: newWindow)
     }
 
+    /// Gray text drawn after the insertion point, such as "ome" and "Google Chrome" after
+    /// "chr". It is never in the text storage, so it cannot be selected, copied, sent,
+    /// recalled, or read back as the field's value. It shows only while the insertion point is
+    /// at the end of a single line and no input method is composing.
+    ///
+    /// A view of its own draws it, over the text view. Overriding the text view's own drawing
+    /// would put it back on TextKit 1, which changes how the field measures its lines.
+    var inlineCompletion: InlineCompletion? {
+        didSet { if inlineCompletion != oldValue { updateInlineCompletion() } }
+    }
+    var inlineCompletionColor: NSColor = .tertiaryLabelColor {
+        didSet { if inlineCompletionColor != oldValue { updateInlineCompletion() } }
+    }
+    private lazy var inlineCompletionView: InlineCompletionView = {
+        let view = InlineCompletionView(frame: bounds)
+        view.autoresizingMask = [.width, .height]
+        addSubview(view)
+        return view
+    }()
+
+    /// Whether the gray text can show for this text and selection.
+    static func showsInlineCompletion(text: String, selection: NSRange, composing: Bool) -> Bool {
+        !composing && !text.isEmpty && selection.length == 0 && selection.location == (text as NSString).length
+            && !text.contains(where: \.isNewline)
+    }
+
+    var isShowingInlineCompletion: Bool {
+        guard let inlineCompletion, !inlineCompletion.isEmpty else { return false }
+        return Self.showsInlineCompletion(text: string, selection: selectedRange(), composing: hasMarkedText())
+    }
+
+    /// Where the gray text starts, in this view, while it shows.
+    var inlineCompletionOrigin: CGPoint? {
+        guard isShowingInlineCompletion else { return nil }
+        return CGPoint(x: insertionPointX(), y: textContainerOrigin.y)
+    }
+
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        updateInlineCompletion()
+    }
+
+    override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+        reportComposing()
+        updateInlineCompletion()
+    }
+
+    override func unmarkText() {
+        super.unmarkText()
+        reportComposing()
+        updateInlineCompletion()
+    }
+
+    override func insertText(_ string: Any, replacementRange: NSRange) {
+        super.insertText(string, replacementRange: replacementRange)
+        reportComposing()
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        reportComposing()
+        updateInlineCompletion()
+    }
+
+    /// Tells the field when composing starts or stops, once each time.
+    private func reportComposing() {
+        let composing = hasMarkedText()
+        guard composing != wasComposing else { return }
+        wasComposing = composing
+        onComposingChange?(composing)
+    }
+
+    private func updateInlineCompletion() {
+        guard inlineCompletion != nil || subviews.contains(where: { $0 is InlineCompletionView }) else { return }
+        let view = inlineCompletionView
+        view.frame = bounds
+        let origin = inlineCompletionOrigin
+        let content = origin == nil ? nil : inlineCompletion
+        guard view.completion != content || view.origin != origin || view.color != inlineCompletionColor else { return }
+        view.completion = content
+        view.origin = origin ?? .zero
+        view.font = font ?? InputField.font
+        view.color = inlineCompletionColor
+        view.needsDisplay = true
+    }
+
+    /// Where the insertion point is drawn at the end of the text, in this view. The text
+    /// system says, once the view is in a window. Before that, the text is measured.
+    func insertionPointX() -> CGFloat {
+        let end = NSRange(location: (string as NSString).length, length: 0)
+        if let window {
+            let onScreen = firstRect(forCharacterRange: end, actualRange: nil)
+            if onScreen != .zero {
+                return convert(window.convertFromScreen(onScreen), from: nil).minX
+            }
+        }
+        let width = (string as NSString).size(withAttributes: [.font: font ?? InputField.font]).width
+        return textContainerOrigin.x + (textContainer?.lineFragmentPadding ?? 0) + ceil(width)
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if isCommandReturn(event), window?.firstResponder === self, let onCommandReturn {
             onCommandReturn()
+            return true
+        }
+        if window?.firstResponder === self, let number = Self.commandNumber(event), !hasMarkedText(),
+           onCommandNumber?(number) == true
+        {
             return true
         }
         return super.performKeyEquivalent(with: event)
@@ -433,6 +560,14 @@ final class InputTextView: NSTextView {
     private func isCommandReturn(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function, .capsLock])
         return event.type == .keyDown && (event.keyCode == 36 || event.keyCode == 76) && flags == .command && !hasMarkedText()
+    }
+
+    /// The number of a Command-digit press, 1 to 9, by the character the key types.
+    static func commandNumber(_ event: NSEvent) -> Int? {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function, .capsLock])
+        guard event.type == .keyDown, flags == .command, let characters = event.charactersIgnoringModifiers,
+              characters.count == 1, let number = Int(characters), (1...9).contains(number) else { return nil }
+        return number
     }
 
     /// Control-C with no other modifier, by the character the key types, as a terminal reads it.
@@ -468,11 +603,90 @@ final class InputTextView: NSTextView {
             onCommandReturn()
             return
         }
+        // A Command-digit that no key equivalent took, likewise.
+        if let number = Self.commandNumber(event), !hasMarkedText(), onCommandNumber?(number) == true {
+            return
+        }
         if Self.isControlC(event), !hasMarkedText(), onControlC?() == true {
             return
         }
         currentKeyModifiers = event.modifierFlags
         defer { currentKeyModifiers = [] }
         super.keyDown(with: event)
+    }
+}
+
+/// Draws the field's gray completion text: the rest of the word, a gap, then the whole name,
+/// cut off with an ellipsis at the field's edge. It takes no clicks.
+final class InlineCompletionView: NSView {
+    var completion: InlineCompletion?
+    var origin: CGPoint = .zero
+    var font: NSFont = InputField.font
+    var color: NSColor = .tertiaryLabelColor
+    /// The room between the rest of the word and the whole name.
+    static let gap: CGFloat = 12
+
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func isAccessibilityElement() -> Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let completion else { return }
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+        var x = origin.x
+        let lineHeight = InputFieldMetrics.lineHeight(of: font)
+        if !completion.rest.isEmpty {
+            let rest = NSAttributedString(string: completion.rest, attributes: attributes)
+            rest.draw(with: NSRect(x: x, y: origin.y, width: max(0, bounds.maxX - x), height: lineHeight),
+                      options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+            x += ceil(rest.size().width)
+        }
+        if let name = completion.name {
+            x += Self.gap
+            let width = bounds.maxX - x
+            guard width > 20 else { return }
+            NSAttributedString(string: name, attributes: attributes).draw(
+                with: NSRect(x: x, y: origin.y, width: width, height: lineHeight),
+                options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        }
+    }
+}
+
+/// The field's font and the height of its row for one line. The text is centered in that row,
+/// and each further line adds a line's height, up to `InputField.maximumLines`.
+/// `@unchecked Sendable` because NSFont is immutable once made.
+struct InputFieldMetrics: Equatable, @unchecked Sendable {
+    let font: NSFont
+    /// The field's height with one line of text.
+    let rowHeight: CGFloat
+
+    /// The panel's field as it has always been: 15 point text in a 28 point row.
+    static let standard = InputFieldMetrics(font: .systemFont(ofSize: 15), rowHeight: 28)
+    /// The pill in the panel with bars: 14 point text, close to the 13 of a message, in a row
+    /// as tall as the pill.
+    static let pill = InputFieldMetrics(font: .systemFont(ofSize: 14), rowHeight: PanelFrame.pillHeight)
+
+    /// The height of one line of text.
+    var lineHeight: CGFloat { Self.lineHeight(of: font) }
+    /// The space above and below the text, so a single line sits centered in the row.
+    var verticalInset: CGFloat { (rowHeight - lineHeight) / 2 }
+
+    static func lineHeight(of font: NSFont) -> CGFloat {
+        ceil(font.ascender - font.descender + font.leading)
+    }
+
+    /// The field's height for its text at this width: one line at least, `maximumLines` at most.
+    @MainActor
+    func height(of textView: NSTextView, width: CGFloat) -> CGFloat {
+        var textHeight = lineHeight
+        if let layout = textView.textLayoutManager, let container = layout.textContainer, width > 0 {
+            if container.size.width != width {
+                container.size = CGSize(width: width, height: .greatestFiniteMagnitude)
+            }
+            layout.ensureLayout(for: layout.documentRange)
+            textHeight = max(lineHeight, layout.usageBoundsForTextContainer.height)
+        }
+        let limit = lineHeight * CGFloat(InputField.maximumLines)
+        return ceil(min(textHeight, limit) + verticalInset * 2)
     }
 }

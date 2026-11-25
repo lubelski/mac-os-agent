@@ -193,42 +193,59 @@ struct ThemeSample: View {
         let palette = PanelPalette(theme: theme, dark: dark, allowsGlass: allowsGlass)
         ZStack {
             SampleBackdrop(dark: palette.isDark)
-            VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    Spacer(minLength: 24)
-                    Text(verbatim: "turn on dark mode")
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(palette.ownerFill, in: .rect(cornerRadius: Self.messageCornerRadius))
-                        .overlay(RoundedRectangle(cornerRadius: Self.messageCornerRadius, style: .continuous).strokeBorder(palette.ownerEdge, lineWidth: 1))
+            VStack(spacing: 0) {
+                // The top bar, on the bars' fill, with its hairline.
+                Color.clear
+                    .frame(height: 9)
+                    .background(PanelBarFill())
+                Rectangle().fill(palette.divider).frame(height: 1)
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack {
+                        Spacer(minLength: 24)
+                        Text(verbatim: "turn on dark mode")
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(palette.ownerFill, in: .rect(cornerRadius: Self.messageCornerRadius))
+                            .overlay(RoundedRectangle(cornerRadius: Self.messageCornerRadius, style: .continuous).strokeBorder(palette.ownerEdge, lineWidth: 1))
+                    }
+                    HStack(spacing: 0) {
+                        Text(verbatim: "› ").foregroundStyle(.tertiary)
+                        Text(verbatim: "osascript").foregroundStyle(.secondary)
+                        Text(verbatim: " -e 'tell app…'").foregroundStyle(.tertiary)
+                    }
+                    .font(.system(size: 8.5, design: .monospaced))
+                    .lineLimit(1)
+                    .padding(.leading, 6)
+                    HStack {
+                        Text(verbatim: "Dark mode is on.")
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(palette.agentFill, in: .rect(cornerRadius: Self.messageCornerRadius))
+                            .overlay(RoundedRectangle(cornerRadius: Self.messageCornerRadius, style: .continuous).strokeBorder(palette.agentEdge, lineWidth: 1))
+                        Spacer(minLength: 24)
+                    }
                 }
-                HStack(spacing: 0) {
-                    Text(verbatim: "› ").foregroundStyle(.tertiary)
-                    Text(verbatim: "osascript").foregroundStyle(.secondary)
-                    Text(verbatim: " -e 'tell app…'").foregroundStyle(.tertiary)
-                }
-                .font(.system(size: 8.5, design: .monospaced))
-                .lineLimit(1)
-                .padding(.leading, 6)
-                HStack {
-                    Text(verbatim: "Dark mode is on.")
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(palette.agentFill, in: .rect(cornerRadius: Self.messageCornerRadius))
-                        .overlay(RoundedRectangle(cornerRadius: Self.messageCornerRadius, style: .continuous).strokeBorder(palette.agentEdge, lineWidth: 1))
-                    Spacer(minLength: 24)
-                }
-                Rectangle().fill(palette.divider).frame(height: 1).padding(.top, 2)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                // The band with the text field, on the same fill as the top bar.
+                Rectangle().fill(palette.divider).frame(height: 1)
                 HStack(spacing: 5) {
-                    Text(verbatim: "›").foregroundStyle(.secondary)
+                    PromptMark(size: 7)
                     Text(verbatim: "Tell your Mac what to do").foregroundStyle(.tertiary)
                 }
                 .font(.system(size: 9))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(PanelBarFill())
             }
             .font(.system(size: 10))
-            .padding(9)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .environment(\.panelPalette, palette)
             .panelText(palette)
+            // The bars' fill stays inside the small panel's rounded corners, as the window's
+            // clip keeps it inside the real one's.
+            .clipShape(.rect(cornerRadius: Self.panelCornerRadius, style: .continuous))
             .previewSurface(palette, cornerRadius: Self.panelCornerRadius)
             .padding(7)
         }

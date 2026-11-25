@@ -13,13 +13,13 @@ enum HistorySearchText {
     static func of(_ item: ThreadItem) -> (kind: Kind, text: String)? {
         switch item {
         case .userMessage(let text, _, let action):
-            // An action's name is searchable beside what was typed for it.
-            return (.owner, action.map { "\(text)\n[ran the action \($0.name)]" } ?? text)
+            // A quick action's name is searchable beside what was typed for it.
+            return (.owner, action.map { "\(text)\n[ran the quick action \($0.name)]" } ?? text)
         case .assistantMessage(let message):
             return message.text.isEmpty ? nil : (.agent, message.text)
         case .toolCall(let call):
             return (.command, command(of: call))
-        case .toolResult, .providerItem, .episodeStart:
+        case .toolResult, .providerItem, .episodeStart, .appOpened:
             return nil
         }
     }

@@ -13,14 +13,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var incognito: IncognitoWindowController!
     private var summonTrigger: SummonTriggerController!
     private var settings: SettingsWindowController!
-    private let prompt = AgentPrompt()
-    private let usageLog = UsageLog()
+    /// Read once at launch, with the panel with bars experiment's switch, which decides whether
+    /// the tool list has `set_links` and the instructions say what the links row is for, and the
+    /// settings tools experiment's, which decides whether it has the settings group behind
+    /// `find_tools` and `use_tool` and the instructions list it.
+    private let prompt = AgentPrompt(
+        memories: MemoryLibrary(), taskLinks: Experiment.panelWithBarsAndInputPill.isOn(),
+        toolGroups: Experiment.settingsTools.isOn() ? [SettingsToolGroup.listing] : [])
+    /// Each line says which Mac and build wrote it, read at the first request, after launch has
+    /// set the data folder.
+    private let usageLog = UsageLog(device: { UsageDevice.thisMac })
+    /// The models Ollama serves on this Mac, read at launch and each time the menu opens, with
+    /// the local models experiment on.
+    private let localModels = LocalModelList()
     /// Created at launch, so it checks on its own schedule. In a build with no feed it does nothing.
     private var updater: AppUpdater!
+    /// Journals a change made to the memory folder outside the app, such as in an editor.
+    private var memoryWatcher: FolderWatcher?
+    /// The MCP servers for this run, started in the background after launch. Behind the MCP
+    /// servers experiment: with it off, nothing is read or started.
+    private var mcp: MCPServerPool?
+    /// Follows the MCP servers experiment's switch while the app runs.
+    private var mcpExperimentObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything reads the quick actions folder, which used to be `actions/`.
+        let quickActionsMove = QuickActionLibrary.moveFolderFromOldName()
         let installationID = AgentPaths.installationID()
-        let authenticator = ChatGPTAuthenticator(secrets: AgentPaths.secretStore(), installationID: installationID)
+        if Experiment.localModelsThroughOllama.isOn() {
+            Task { [localModels] in await localModels.refresh() }
+        }
+        // A release build moves the sign-in from secrets.json to the Keychain here, once. A
+        // development build still keeps other secrets, such as a Brave Search key, in the file.
+        let secretStorage = SecretStorage.forThisRun()
+        // A development build reaches its models through inference-gateway and has no sign-in,
+        // so it never creates an authenticator or reads the sign-in.
+        let modelAccess = ModelAccess.forThisRun()
+        let authenticator: ChatGPTAuthenticator? = modelAccess == .signIn
+            ? ChatGPTAuthenticator(secrets: secretStorage.store, installationID: installationID)
+            : nil
+        let providerAccess: OpenAIResponsesProvider.Access = authenticator.map { .signIn($0) }
+            ?? .gateway(InferenceGateway.baseURL)
         var loop: AgentLoop?
         var startupError: Error?
         var thread: ThreadStore?
@@ -29,12 +62,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } catch {
             startupError = error
         }
+        // The MCP servers' tools come from their cached lists, so launch never waits for a server.
+        let problems = ProblemLog()
+        var mcpExperimentOn = Experiment.mcpServers.isOn()
+        let mcp = MCPServerPool.fromDataFolder(problems: problems, experimentOn: mcpExperimentOn)
+        self.mcp = mcp
+        // The tool list stays as it was built. Turning the experiment on starts the servers now,
+        // so their lists are cached for the next launch, and off stops them.
+        mcpExperimentObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: UserDefaults.standard, queue: .main
+        ) { _ in
+            let on = Experiment.mcpServers.isOn()
+            MainActor.assumeIsolated {
+                guard on != mcpExperimentOn else { return }
+                mcpExperimentOn = on
+                Task { await mcp.setActive(on) }
+            }
+        }
+        // Read once, since it changes the tool list or the request, which stay fixed for the run.
+        let webSearch = WebSearchContext(launched: WebSearchSetting.current(), key: BraveSearchKey(secrets: secretStorage.store))
+        let mcpTools = mcp.makeTools()
+        // The settings group reads this run's servers and the experiments as they were at launch.
+        let onDemandGroups = prompt.toolGroups.isEmpty ? [] : [
+            SettingsToolGroup.make(access: AppSettingsAccess(
+                mcp: mcp,
+                toolsInThisRun: Dictionary(mcpTools.compactMap { ($0 as? MCPTool).map { ($0.server, 1) } }, uniquingKeysWith: +),
+                experimentsOnAtLaunch: Set(Experiment.allCases.filter { $0.isOn() }))),
+        ]
         // Built once, so the tool list stays the same for the whole run, and shared with Settings.
-        let tools = ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: thread))
+        let tools = ToolRegistry(
+            builtIn: BuiltInTools.make(
+                skills: prompt.skills, history: thread, memories: prompt.memories ?? MemoryLibrary(),
+                webSearch: webSearch.launched == .brave ? SearchWebTool(key: webSearch.key) : nil,
+                taskLinks: prompt.taskLinks ? SetLinksTool(isOn: { Experiment.panelWithBarsAndInputPill.isOn() }) : nil,
+                onDemandGroups: onDemandGroups),
+            additional: mcpTools
+        // Read once, like web search, since it changes the tool list.
+        ).addingRunScript(Experiment.scripts.isOn())
         if let thread {
             let provider = OpenAIResponsesProvider(
-                authenticator: authenticator,
-                model: { ModelSetting.current() },
+                access: providerAccess,
+                model: { ModelSetting.effective() },
                 promptCacheKey: "mac-os-agent-\(installationID.uuidString.lowercased())")
             let prompt = prompt
             let usageLog = usageLog
@@ -42,27 +110,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             loop = AgentLoop(
                 provider: provider, thread: thread,
                 tools: tools.tools,
-                instructions: { prompt.current() },
+                instructionsForEpisode: { episodeID in prompt.current(episodeID: episodeID) },
                 usageLog: usageLog,
-                episodeTimeout: timeout)
+                episodeTimeout: timeout,
+                webSearch: webSearch.launched.usesHostedSearch,
+                instructionsForNewEpisode: { prompt.forNewEpisode() })
         }
         // The incognito window has a provider of its own with its own cache key, so its
         // requests, with their own instructions and tools, are a separate cached prefix.
         let incognitoProvider = OpenAIResponsesProvider(
-            authenticator: authenticator,
-            model: { ModelSetting.current() },
+            access: providerAccess,
+            model: { ModelSetting.effective() },
             promptCacheKey: "mac-os-agent-incognito-\(installationID.uuidString.lowercased())")
         let makeIncognitoLoop = { [prompt = self.prompt, usageLog = self.usageLog] in
             IncognitoWindowController.makeLoop(provider: incognitoProvider, prompt: prompt, usageLog: usageLog)
         }
 
-        session = AgentSession(loop: loop, authenticator: authenticator)
+        session = AgentSession(
+            loop: loop, authenticator: authenticator, signedIn: modelAccess == .gateway, problems: problems)
+        session.modelAccess = modelAccess
         session.onStatusChange = { [weak self] in self?.statusDidChange() }
         session.toolSources = tools.sourceTitles
         session.instantActions = .live(summaries: tools.summaries)
         // The skills the owner can invoke with a slash, kept live as the folder changes.
         session.skillCommands = SkillCommandsModel(library: prompt.skills)
+        session.memories = prompt.memories
+        // The links row reads what `set_links` kept, only when the tool is in this run's list.
+        if prompt.taskLinks { session.taskLinkStore = TaskLinkStore() }
         panel = SummonPanel(session: session)
+        // A change made while the app was not running, or while it runs, is journaled as made
+        // outside the app, so the history has no holes.
+        if let memories = prompt.memories {
+            memories.reconcile()
+            memoryWatcher = FolderWatcher(folder: memories.folder) { memories.reconcile() }
+        }
 
         incognito = IncognitoWindowController(makeSession: { [weak self] in
             let incognito = AgentSession(incognito: makeIncognitoLoop, signedIn: self?.session.signInState == .signedIn)
@@ -102,17 +183,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             session.problems.record("Shortcut", problem)
         }
         updateStatusIcon()
+        if quickActionsMove == .moved { log.notice("Renamed the actions folder to quick-actions") }
+        if let problem = quickActionsMove.problem {
+            log.notice("\(problem, privacy: .public)")
+            session.problems.record("Quick actions", problem)
+        }
+        if modelAccess == .gateway {
+            log.notice("Models through inference-gateway at \(InferenceGateway.address(), privacy: .public). No sign-in in this build.")
+        } else {
+            log.notice("Sign-in kept in \(secretStorage.status.place, privacy: .public). \(secretStorage.status.explanation, privacy: .public)")
+        }
+        if case .failed = secretStorage.status.migration {
+            session.problems.record("Sign-in", secretStorage.status.explanation)
+        }
         if let startupError {
             session.problems.record("Startup", "Could not open the thread: \(startupError.localizedDescription)")
         }
         updater = AppUpdater { [weak self] in self?.relaunchActivity() ?? .init() }
         settings = SettingsWindowController(
             session: session, prompt: prompt, usageLog: usageLog, tools: tools, history: thread, problems: session.problems,
-            signInStatus: { await authenticator.status() },
-            summonTrigger: summonTrigger, updater: updater)
+            signInStatus: { await authenticator?.status() },
+            secretStorage: secretStorage.status, modelAccess: modelAccess,
+            summonTrigger: summonTrigger, mcp: mcp, webSearch: webSearch, updater: updater)
         log.notice("Hotkey \(self.summonTrigger.displayName ?? "none", privacy: .public) registered: \(self.summonTrigger.isRegistered, privacy: .public). Status item button: \(self.statusItem.button != nil, privacy: .public)")
 
         Task { await session.start() }
+        Task { await mcp.start() }
 
         // For checking the panel without pressing the hotkey, such as from a script.
         if CommandLine.arguments.contains("--summon-at-launch") {
@@ -130,6 +226,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         summonTrigger?.stop()
+        // Waits up to a second for the servers to exit, then kills what is left, so none
+        // outlives the app.
+        MCPServerProcess.stopAll()
     }
 
     /// The main panel's session changed: the icon follows it, and the incognito window's
@@ -184,6 +283,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        // For the next time it opens. The menu draws with the list as last read.
+        if Experiment.localModelsThroughOllama.isOn() {
+            Task { [localModels] in await localModels.refresh() }
+        }
         menu.removeAllItems()
 
         // The panel's presented state, not whether its window is on screen, so during a slide
@@ -209,7 +312,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item(incognito.isOpen ? "Show Incognito Window" : "Open Incognito Window", #selector(openIncognito)))
         menu.addItem(.separator())
 
-        switch session.signInState {
+        switch session.modelAccess == .gateway ? nil : session.signInState {
+        case nil:
+            menu.addItem(disabledItem("Models through inference-gateway"))
         case .signedIn:
             menu.addItem(disabledItem("Signed in with ChatGPT"))
             menu.addItem(item("Sign Out", #selector(signOut)))
@@ -222,7 +327,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let modelItem = NSMenuItem(title: "Model", action: nil, keyEquivalent: "")
         let models = NSMenu()
-        let current = ModelSetting.current()
+        let current = ModelSetting.effective()
         let choices = session.modelChoices(current: current)
         for model in choices.models where model.id != current || !choices.currentIsUnlisted {
             let entry = item(model.name, #selector(chooseModel(_:)))
@@ -232,6 +337,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if choices.currentIsUnlisted {
             let custom = disabledItem("\(choices.models.last?.name ?? current), not in your account's list")
+            custom.state = .on
+            models.addItem(custom)
+        }
+        var listed = choices.models.map(\.id)
+        if Experiment.localModelsThroughOllama.isOn() {
+            models.addItem(.separator())
+            let local = localModels.models
+            if local.isEmpty { models.addItem(disabledItem("No models in Ollama")) }
+            for name in local {
+                let id = Ollama.modelID(name)
+                let entry = item(Ollama.displayName(name), #selector(chooseModel(_:)))
+                entry.representedObject = id
+                entry.state = id == current ? .on : .off
+                models.addItem(entry)
+                listed.append(id)
+            }
+        }
+        if !listed.contains(current) {
+            let custom = disabledItem(current)
             custom.state = .on
             models.addItem(custom)
         }

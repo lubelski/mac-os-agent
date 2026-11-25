@@ -3,10 +3,28 @@ import MacOSAgentCore
 
 MainActor.assumeIsolated {
     let app = NSApplication.shared
-    app.setActivationPolicy(.accessory)
+    // A render never shows anything: no Dock icon, no menu bar, no activation.
+    app.setActivationPolicy(PreviewRender.isRendering ? .prohibited : .accessory)
 
     MainMenu.install()
     let arguments = CommandLine.arguments
+    if arguments.contains(MCPServerCheck.argument) {
+        // Starts the MCP servers in the data folder, reports to standard output and to
+        // mcp-check.txt there, and quits. Only with --data-folder, so it never starts the
+        // owner's own servers.
+        guard arguments.contains(AgentPaths.dataFolderArgument) else {
+            print("\(MCPServerCheck.argument) needs \(AgentPaths.dataFolderArgument) <folder>.")
+            exit(2)
+        }
+        Task.detached {
+            let report = await MCPServerCheck.run()
+            print(report)
+            try? report.write(to: AgentPaths.applicationSupport.appending(path: "mcp-check.txt"), atomically: true, encoding: .utf8)
+            exit(0)
+        }
+        app.run()
+        return
+    }
     if arguments.contains("--preview-settings") || arguments.contains("--preview-panel") {
         // Previews keep their theme choices in preferences of their own, never the owner's.
         // `--preview-theme <id>` shows a theme without saving it, and `--preview-glass off`
@@ -53,6 +71,13 @@ MainActor.assumeIsolated {
             app.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         }
         let name = arguments[index + 1]
+        // A render draws one window, so states made of two windows are captured instead.
+        if PreviewRender.isRendering, name == "incognito-beside" || PanelPreview.inspectedCall(named: name) != nil
+            || arguments.contains("--backdrop") || arguments.contains("--preview-slide-cycle")
+        {
+            FileHandle.standardError.write(Data("render: \(name) needs two windows or motion. Use scripts/capture-panel-previews.sh.\n".utf8))
+            exit(2)
+        }
         let panel = SummonPanel(session: session, role: PanelPreview.role(named: name), remembersFrame: false)
         // `incognito-beside` shows the main panel as well, with the incognito window placed
         // beside it the way it opens.
@@ -97,7 +122,15 @@ MainActor.assumeIsolated {
             panel.inspector.open(callID)
         }
         if arguments.contains("--backdrop") {
-            PanelPreview.showBackdrop(behind: panel, dark: dark)
+            if PanelWithBarsPreview.opensBelow(name) {
+                // The match card's window is placed once the panel has laid out the pill, so
+                // the backdrop waits for it, to cover both windows.
+                Timer.scheduledTimer(withTimeInterval: 0.6, repeats: false) { _ in
+                    MainActor.assumeIsolated { PanelPreview.showBackdrop(behind: panel, dark: dark) }
+                }
+            } else {
+                PanelPreview.showBackdrop(behind: panel, dark: dark)
+            }
         }
         if let mainPanel {
             // The capture covers both windows.

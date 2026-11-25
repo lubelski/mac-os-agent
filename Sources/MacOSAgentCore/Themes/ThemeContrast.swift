@@ -2,9 +2,10 @@ import Foundation
 
 /// Checks that a theme's primary and secondary text can be read, by the WCAG 2 contrast ratio.
 ///
-/// Each appearance is checked where its text sits: on the surface, in the owner's message box,
-/// in the agent's reply box, in the go-ahead card, and on the incognito line over the incognito
-/// tint. A box's fill is drawn over the surface first.
+/// Each appearance is checked where its text sits: on the surface, on the bars (the top bar and
+/// the band with the text field), in the text field drawn as a pill on the bars, in the owner's message box, in the agent's reply box, in the
+/// go-ahead card, and on the incognito line over the incognito tint. A box's or a bar's fill is
+/// drawn over the surface first, and the pill's over the bars' fill.
 ///
 /// The surface is the backdrop:
 /// - A solid surface is its fill.
@@ -88,12 +89,15 @@ public enum ThemeContrast {
         }
         if surface.kind == .solid { backdrops[0].label = "on the solid fill" }
 
-        let places: [(label: String, fill: ThemeColor?, levels: [Level], incognito: Bool)] = [
-            ("on the surface", nil, [.primary, .secondary], false),
-            ("in the owner's message box", appearance.ownerMessage.fill, [.primary], false),
-            ("in the agent's reply box", appearance.agentReply.fill, [.primary, .secondary], false),
-            ("in the go-ahead card", appearance.goAhead.fill, [.primary, .secondary], false),
-            ("on the incognito line", appearance.incognito.badge, [.secondary], true),
+        // Each place's fills, from the surface up.
+        let places: [(label: String, fills: [ThemeColor], levels: [Level], incognito: Bool)] = [
+            ("on the surface", [], [.primary, .secondary], false),
+            ("on the bars", [appearance.barFill], [.primary, .secondary], false),
+            ("in the text field", [appearance.barFill, appearance.fieldBox.fill], [.primary, .secondary], false),
+            ("in the owner's message box", [appearance.ownerMessage.fill], [.primary], false),
+            ("in the agent's reply box", [appearance.agentReply.fill], [.primary, .secondary], false),
+            ("in the go-ahead card", [appearance.goAhead.fill], [.primary, .secondary], false),
+            ("on the incognito line", [appearance.incognito.badge], [.secondary], true),
         ]
 
         var checks: [Check] = []
@@ -104,7 +108,7 @@ public enum ThemeContrast {
                 for backdrop in backdrops where !vibrant || backdrop.isFallback {
                     var background = backdrop.color
                     if place.incognito { background = appearance.incognito.tint.resolved(dark: dark).over(background) }
-                    if let fill = place.fill { background = fill.resolved(dark: dark).over(background) }
+                    for fill in place.fills { background = fill.resolved(dark: dark).over(background) }
                     let ratio = text.resolved(dark: dark).contrast(over: background)
                     checks.append(Check(
                         appearance: kind, level: level, text: text, place: place.label, backdrop: backdrop.label,

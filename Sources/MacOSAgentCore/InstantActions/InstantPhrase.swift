@@ -16,6 +16,9 @@ public struct InstantPhrase: Sendable, Equatable {
     public var subject: String
     /// The subject's words, lowercased.
     public var words: [String]
+    /// True when the whole input, as typed, is one letter or digit, with nothing around it:
+    /// "s", but not " s" or "s ". `InstantActionRule.Mode.inField` suggests from it.
+    public var isSingleCharacterInput = false
 
     /// The longest subject that still reads as a name. App names run to three or four words,
     /// such as "Microsoft Remote Desktop".
@@ -58,7 +61,9 @@ public struct InstantPhrase: Sendable, Equatable {
             }
         }
         guard tokens.count <= maximumWords else { return nil }
-        return InstantPhrase(text: text, verb: nil, subject: text)
+        var phrase = InstantPhrase(text: text, verb: nil, subject: text)
+        phrase.isSingleCharacterInput = input.count == 1
+        return phrase
     }
 
     /// The subject as the learned-use history keys it: lowercased, single spaces.

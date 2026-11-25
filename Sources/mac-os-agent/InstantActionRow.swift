@@ -4,7 +4,7 @@ import SwiftUI
 /// The quiet line above the text field that says what Return will do without the model, such
 /// as "Safari  ↵ opens". It sits where the command hint does, and in its style. With several
 /// close matches it lists the few best on the same line, the chosen one set on a faint
-/// capsule, and the arrow keys or Tab choose. A saved action also says what it will do, in its
+/// capsule, and the arrow keys or Tab choose. A quick action also says what it will do, in its
 /// steps' own words, such as "Start Screensaver  Open ScreenSaverEngine  ↵ runs", since Return
 /// runs it with no go-ahead. It shows nothing when the draft goes to the agent.
 struct InstantActionRow: View {

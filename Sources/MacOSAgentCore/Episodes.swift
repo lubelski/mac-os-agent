@@ -111,7 +111,7 @@ public struct ThreadContents: Sendable, Equatable {
         case .toolCall:
             episode.commandCount += 1
             episode.activityCount += 1
-        case .toolResult, .providerItem:
+        case .toolResult, .providerItem, .appOpened:
             episode.activityCount += 1
         }
         episodes[episodes.count - 1] = episode

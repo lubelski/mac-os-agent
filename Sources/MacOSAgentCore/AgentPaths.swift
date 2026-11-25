@@ -33,6 +33,13 @@ public enum AgentPaths {
         applicationSupport.appending(path: "instructions.md")
     }
 
+    /// The agent's memory: `core.md`, topic files, `archive/`, and `journal.jsonl`. See
+    /// `MemoryLayout`. Missing until the first change. Private: never logged, and Debugging
+    /// shows only counts and sizes.
+    public static var memoryFolder: URL {
+        applicationSupport.appending(path: "memory", directoryHint: .isDirectory)
+    }
+
     /// One folder per skill, each with a `SKILL.md`.
     public static var skillsFolder: URL {
         applicationSupport.appending(path: "skills", directoryHint: .isDirectory)
@@ -43,10 +50,14 @@ public enum AgentPaths {
         applicationSupport.appending(path: "themes", directoryHint: .isDirectory)
     }
 
-    /// One JSON file per saved action: a stored tool call, or a few, that the instant row runs.
-    public static var actionsFolder: URL {
-        applicationSupport.appending(path: "actions", directoryHint: .isDirectory)
+    /// One JSON file per quick action: a stored tool call, or a few, that the instant row runs.
+    public static var quickActionsFolder: URL {
+        applicationSupport.appending(path: quickActionsFolderName, directoryHint: .isDirectory)
     }
+
+    public static let quickActionsFolderName = "quick-actions"
+    /// What the quick actions folder was called before. See `QuickActionLibrary.moveFolderFromOldName`.
+    public static let oldActionsFolderName = "actions"
 
     /// Token counts for each model request, one JSON line per request. No message content.
     public static var usageLogFile: URL {
@@ -58,10 +69,32 @@ public enum AgentPaths {
         applicationSupport.appending(path: "skill-settings.json")
     }
 
+    /// The MCP servers the owner listed, in the `mcpServers` shape. The owner edits it. It can
+    /// hold tokens, so the app keeps it readable only by the owner. See `MCPServerConfig`.
+    public static var mcpServersFile: URL {
+        applicationSupport.appending(path: "mcp-servers.json")
+    }
+
+    /// What the app decides about each MCP server: whether it is on, and each tool's go-ahead.
+    public static var mcpSettingsFile: URL {
+        applicationSupport.appending(path: "mcp-settings.json")
+    }
+
+    /// Each MCP server's last tool list, which the tool list is built from at launch.
+    public static var mcpToolsCacheFile: URL {
+        applicationSupport.appending(path: "mcp-tools-cache.json")
+    }
+
     /// What the owner has opened through instant actions, for ranking. Never written from an
     /// incognito window.
     public static var instantActionHistoryFile: URL {
         applicationSupport.appending(path: "instant-actions.json")
+    }
+
+    /// The task links the model set with `set_links`, with the id of the episode they belong
+    /// to. Only with the panel with bars experiment on. Missing when there are none.
+    public static var taskLinksFile: URL {
+        applicationSupport.appending(path: "task-links.json")
     }
 
     public static var installationIDFile: URL {

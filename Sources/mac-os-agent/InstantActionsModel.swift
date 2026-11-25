@@ -12,8 +12,8 @@ import Observation
 /// The list of apps is read off the main thread at launch and again each time the panel
 /// shows, and the catalog re-reads only folders that changed.
 ///
-/// The owner's saved actions are offered beside the apps, ranked by the same rule and learned
-/// use. They are read from the actions folder, which is watched, so an action the agent saves
+/// The owner's quick actions are offered beside the apps, ranked by the same rule and learned
+/// use. They are read from the quick actions folder, which is watched, so an action the agent saves
 /// or the owner edits shows at once. The incognito window offers none, as it has no skills.
 @MainActor
 @Observable
@@ -22,6 +22,10 @@ final class InstantActions {
     private(set) var suggestion: InstantActionSuggestion?
     /// Which of the suggestion's choices Return takes.
     private(set) var selection = 0
+    /// How eager the rule is: `.row` for the row above the field, `.inField` with the
+    /// suggestions-in-the-field experiment on, which suggests from the first character. The
+    /// session sets it from the switch on every change to the draft. See `InstantActionRule`.
+    private(set) var mode: InstantActionRule.Mode = .row
 
     @ObservationIgnored private var engine: InstantActionEngine
     @ObservationIgnored private var draft = ""
@@ -39,10 +43,10 @@ final class InstantActions {
     @ObservationIgnored var openApplication: @MainActor (InstalledApplication) async throws -> Void
     @ObservationIgnored var clock: () -> Date = { Date() }
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
-    /// Where saved actions are read from. Nil offers none, as in the incognito window.
-    @ObservationIgnored let actionLibrary: SavedActionLibrary?
-    /// The saved actions that are on, as last read.
-    @ObservationIgnored private(set) var actions: [SavedAction] = []
+    /// Where quick actions are read from. Nil offers none, as in the incognito window.
+    @ObservationIgnored let quickActionLibrary: QuickActionLibrary?
+    /// The quick actions that are on, as last read.
+    @ObservationIgnored private(set) var actions: [QuickAction] = []
     @ObservationIgnored private var actionWatcher: FolderWatcher?
     @ObservationIgnored private var actionObserver: NSObjectProtocol?
     @ObservationIgnored private let summaries: ToolCallSummaries
@@ -55,7 +59,7 @@ final class InstantActions {
     ///   - open: opens an app and brings it to the front.
     ///   - learns: false to learn nothing, for the incognito window.
     ///   - history: what was learned before, for a copy that ranks the same without a store.
-    ///   - actionLibrary: where saved actions are read from. Nil offers none.
+    ///   - quickActionLibrary: where quick actions are read from. Nil offers none.
     ///   - watchesActions: false to read the actions only when asked, for previews and tests.
     init(
         applications: [InstalledApplication] = [],
@@ -65,12 +69,12 @@ final class InstantActions {
         open: @escaping @MainActor (InstalledApplication) async throws -> Void = { _ in },
         learns: Bool = true,
         history: InstantActionHistory = InstantActionHistory(),
-        actionLibrary: SavedActionLibrary? = nil,
+        quickActionLibrary: QuickActionLibrary? = nil,
         watchesActions: Bool = false,
         summaries: ToolCallSummaries = .builtIn
     ) {
         engine = InstantActionEngine(providers: [ApplicationInstantActions(applications: applications)])
-        self.actionLibrary = actionLibrary
+        self.quickActionLibrary = quickActionLibrary
         self.summaries = summaries
         self.catalog = catalog
         self.store = store
@@ -79,13 +83,13 @@ final class InstantActions {
         self.learns = learns
         memoryHistory = history
         self.applications = applications
-        guard let actionLibrary else { return }
-        actions = actionLibrary.availableActions()
+        guard let quickActionLibrary else { return }
+        actions = quickActionLibrary.availableActions()
         rebuildEngine()
         guard watchesActions else { return }
-        actionWatcher = FolderWatcher(folder: actionLibrary.folder) { [weak self] in self?.reloadActions() }
+        actionWatcher = FolderWatcher(folder: quickActionLibrary.folder) { [weak self] in self?.reloadActions() }
         actionObserver = NotificationCenter.default.addObserver(
-            forName: SavedActionLibrary.didChangeNotification, object: nil, queue: .main
+            forName: QuickActionLibrary.didChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.reloadActions() }
         }
@@ -95,20 +99,20 @@ final class InstantActions {
         if let actionObserver { NotificationCenter.default.removeObserver(actionObserver) }
     }
 
-    /// Reads the saved actions again. The suggestion follows at once.
+    /// Reads the quick actions again. The suggestion follows at once.
     func reloadActions() {
-        guard let actionLibrary else { return }
+        guard let quickActionLibrary else { return }
         // The folder may have been made since the last look, by the agent or in Settings.
         if actionWatcher?.isWatching == false { actionWatcher?.rearm() }
-        let fresh = actionLibrary.availableActions()
+        let fresh = quickActionLibrary.availableActions()
         guard fresh != actions else { return }
         actions = fresh
         rebuildEngine()
         evaluate()
     }
 
-    /// A fixed list of saved actions, for previews and tests, read from no folder.
-    func setActions(_ actions: [SavedAction]) {
+    /// A fixed list of quick actions, for previews and tests, read from no folder.
+    func setActions(_ actions: [QuickAction]) {
         offersFixedActions = true
         self.actions = actions
         rebuildEngine()
@@ -117,10 +121,10 @@ final class InstantActions {
 
     @ObservationIgnored private var offersFixedActions = false
 
-    /// Saved actions first, so an action the owner made wins a tie with an app.
+    /// Quick actions first, so an action the owner made wins a tie with an app.
     private func rebuildEngine() {
         var providers: [any InstantActionProvider] = []
-        if actionLibrary != nil || offersFixedActions { providers.append(ActionInstantActions(actions: actions, summaries: summaries)) }
+        if quickActionLibrary != nil || offersFixedActions { providers.append(QuickActionInstantActions(actions: actions, summaries: summaries)) }
         providers.append(ApplicationInstantActions(applications: applications, runningPaths: runningPaths()))
         engine = InstantActionEngine(providers: providers)
     }
@@ -134,6 +138,7 @@ final class InstantActions {
             applications: applications, catalog: catalog, store: nil, runningPaths: runningPaths,
             open: openApplication, learns: false, history: history)
         copy.clock = clock
+        copy.mode = mode
         copy.refresh()
         return copy
     }
@@ -150,14 +155,14 @@ final class InstantActions {
                     .map { $0.hasSuffix("/") ? String($0.dropLast()) : $0 })
             },
             open: { application in _ = try await workspace.openApplication(at: application.url) },
-            actionLibrary: SavedActionLibrary(), watchesActions: true, summaries: summaries)
+            quickActionLibrary: QuickActionLibrary(), watchesActions: true, summaries: summaries)
         actions.refresh()
         return actions
     }
 
     var history: InstantActionHistory { store?.history ?? memoryHistory }
 
-    /// Reads the installed apps again, off the main thread, and the saved actions. The catalog
+    /// Reads the installed apps again, off the main thread, and the quick actions. The catalog
     /// keeps each folder until it changes, so this is cheap after the first time.
     func refresh() {
         reloadActions()
@@ -181,6 +186,13 @@ final class InstantActions {
         evaluate()
     }
 
+    /// Sets how eager the rule is. The suggestion follows at once when it changes.
+    func setMode(_ mode: InstantActionRule.Mode) {
+        guard mode != self.mode else { return }
+        self.mode = mode
+        evaluate()
+    }
+
     /// Called on every change to the draft.
     func draftChanged(_ draft: String) {
         self.draft = draft
@@ -191,7 +203,7 @@ final class InstantActions {
     }
 
     private func evaluate() {
-        let next = dismissedDraft == nil ? engine.suggestion(for: draft, history: history, now: clock()) : nil
+        let next = dismissedDraft == nil ? engine.suggestion(for: draft, history: history, now: clock(), mode: mode) : nil
         if next?.choices.map(\.id) != suggestion?.choices.map(\.id) { selection = 0 }
         if next != suggestion { suggestion = next }
     }
@@ -231,22 +243,35 @@ final class InstantActions {
         if draft != self.draft { draftChanged(draft) }
         guard let suggestion, suggestion.input == draft else { return nil }
         let candidate = suggestion.choices[min(selection, suggestion.choices.count - 1)]
-        if learns {
-            if let store {
-                store.record(candidate.id, subject: suggestion.phrase.key, at: clock())
-            } else {
-                memoryHistory.record(candidate.id, subject: suggestion.phrase.key, at: clock())
-            }
-        }
+        learn(candidate, subject: suggestion.phrase.key)
         return candidate
     }
 
-    /// Opens an app. A saved action is run by the session, which keeps its record in the thread.
+    /// Return on a row of the list under the text field: that match for this exact draft, or
+    /// nil when it is no longer one. Its use is learned as `take(for:)` learns it.
+    func take(_ candidate: InstantActionCandidate, for draft: String) -> InstantActionCandidate? {
+        if draft != self.draft { draftChanged(draft) }
+        guard let suggestion, suggestion.input == draft,
+              let match = suggestion.matches.first(where: { $0.id == candidate.id }) else { return nil }
+        learn(match, subject: suggestion.phrase.key)
+        return match
+    }
+
+    private func learn(_ candidate: InstantActionCandidate, subject: String) {
+        guard learns else { return }
+        if let store {
+            store.record(candidate.id, subject: subject, at: clock())
+        } else {
+            memoryHistory.record(candidate.id, subject: subject, at: clock())
+        }
+    }
+
+    /// Opens an app. A quick action is run by the session, which keeps its record in the thread.
     func perform(_ candidate: InstantActionCandidate) async throws {
         switch candidate.target {
         case .application(let application):
             try await openApplication(application)
-        case .action:
+        case .quickAction:
             break
         }
     }

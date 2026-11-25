@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// What the loop reports to the panel while it works.
 public enum AgentEvent: Sendable, Equatable {
@@ -12,10 +13,10 @@ public enum AgentEvent: Sendable, Equatable {
     case toolRunning(callID: String, summary: String)
     /// A tool finished. Its result also arrives as an entry.
     case toolFinished(callID: String)
-    /// The owner ran a saved action. Its steps follow as `toolCallStarted`, `toolRunning`, and
+    /// The owner ran a quick action. Its steps follow as `toolCallStarted`, `toolRunning`, and
     /// `toolFinished` under the call ids given here, and the record of the run arrives as an
     /// entry with the same id when it ends.
-    case actionStarted(ActionRunStart)
+    case quickActionStarted(QuickActionRunStart)
 }
 
 public enum AgentLoopError: Error, Equatable, LocalizedError {
@@ -45,29 +46,63 @@ public final class AgentLoop: Sendable {
     public let tools: [any AgentTool]
     /// Read once at the start of each instruction from the person, so an edit in Settings or a
     /// new skill applies from the next instruction and the text stays the same while one runs.
-    public let instructions: @Sendable () async -> String
+    /// It is given the id of the episode the instruction is in, so a part that has to stay the
+    /// same for a whole episode, such as the memory block, can be kept per episode.
+    public let instructions: @Sendable (UUID?) async -> String
     public let maximumModelReplies: Int
     /// Where each request's token counts go. Nil keeps no record.
     public let usageLog: UsageLog?
     /// How long an episode can sit idle before the owner's next message starts a new one.
     public let episodeTimeout: @Sendable () -> TimeInterval
+    /// Whether requests offer the provider's hosted web search. Fixed for the loop's life, as
+    /// the tool list is, so the prompt cache holds.
+    public let webSearch: Bool
+    /// The model and request digests of the last request this loop sent, to say where the next
+    /// one stopped starting with it. Kept in memory only, so a launch starts with none.
+    private let lastSent = Mutex<(model: String, items: [String])?>(nil)
+    /// The instructions a new episode's first request would send, read without taking the
+    /// episode's memory snapshot, so warming never changes what the real request sends. Nil
+    /// leaves a timed-out episode unwarmed.
+    public let instructionsForNewEpisode: (@Sendable () async -> String)?
 
-    public init(
+    public convenience init(
         provider: any ModelProvider,
         thread: any ThreadStorage,
         tools: [any AgentTool],
         instructions: @escaping @Sendable () async -> String = { AgentInstructions.defaultPrompt },
         maximumModelReplies: Int = 40,
         usageLog: UsageLog? = nil,
-        episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) }
+        episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) },
+        webSearch: Bool = false
     ) {
+        self.init(
+            provider: provider, thread: thread, tools: tools, instructionsForEpisode: { _ in await instructions() },
+            maximumModelReplies: maximumModelReplies, usageLog: usageLog, episodeTimeout: episodeTimeout,
+            webSearch: webSearch)
+    }
+
+    /// - Parameter instructionsForEpisode: The instructions for a request in the episode with
+    ///   this id.
+    public init(
+        provider: any ModelProvider,
+        thread: any ThreadStorage,
+        tools: [any AgentTool],
+        instructionsForEpisode: @escaping @Sendable (UUID?) async -> String,
+        maximumModelReplies: Int = 40,
+        usageLog: UsageLog? = nil,
+        episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) },
+        webSearch: Bool = false,
+        instructionsForNewEpisode: (@Sendable () async -> String)? = nil
+    ) {
+        self.instructionsForNewEpisode = instructionsForNewEpisode
         self.provider = provider
         self.thread = thread
         self.tools = tools
-        self.instructions = instructions
+        self.instructions = instructionsForEpisode
         self.maximumModelReplies = maximumModelReplies
         self.usageLog = usageLog
         self.episodeTimeout = episodeTimeout
+        self.webSearch = webSearch
     }
 
     public convenience init(
@@ -77,6 +112,27 @@ public final class AgentLoop: Sendable {
         self.init(
             provider: provider, thread: thread, tools: tools, instructions: { instructions },
             maximumModelReplies: maximumModelReplies)
+    }
+
+    /// Asks the provider to get ready for the owner's next message, with the request that
+    /// message would start with: the current episode, or the instructions alone when the next
+    /// message starts a new one. Nothing is written to the thread. The provider decides whether
+    /// it does anything; only a local model does.
+    public func warm(now: Date = Date()) async {
+        let episode = await thread.currentEpisode
+        let startsNew = episode.map { $0.hasActivity && $0.hasTimedOut(now: now, timeout: episodeTimeout()) } ?? true
+        let instructions: String
+        let entries: [ThreadEntry]
+        if startsNew {
+            guard let instructionsForNewEpisode else { return }
+            instructions = await instructionsForNewEpisode()
+            entries = []
+        } else {
+            instructions = await self.instructions(episode?.id)
+            entries = await thread.contents.currentEpisodeEntries
+        }
+        await provider.prepare(ModelRequest(
+            instructions: instructions, entries: entries, tools: tools.map(\.definition), webSearch: webSearch))
     }
 
     /// Handles one instruction from the person. Returns when the model has finished, and
@@ -91,6 +147,7 @@ public final class AgentLoop: Sendable {
     ///     place of the typed text. Nil for a plain message.
     ///   - startsNewEpisode: True when the owner asked for a fresh start, such as with `/new`.
     ///     A new episode also starts on its own when the current one has timed out.
+    ///   - confirm: Asks the owner for a go-ahead, yes or no.
     public func run(
         _ userText: String,
         skill: ThreadItem.SkillInvocation? = nil,
@@ -99,12 +156,27 @@ public final class AgentLoop: Sendable {
         onEvent: @escaping @Sendable (AgentEvent) async -> Void,
         confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
     ) async throws {
+        try await run(
+            userText, skill: skill, startsNewEpisode: startsNewEpisode, now: now, onEvent: onEvent,
+            answer: { request in await confirm(request) ? .allowOnce : .deny })
+    }
+
+    /// Handles one instruction from the person, as `run(_:skill:startsNewEpisode:now:onEvent:confirm:)`
+    /// does, with the owner's full answer to a go-ahead, which can also stop a tool asking.
+    public func run(
+        _ userText: String,
+        skill: ThreadItem.SkillInvocation? = nil,
+        startsNewEpisode: Bool = false,
+        now: Date = Date(),
+        onEvent: @escaping @Sendable (AgentEvent) async -> Void,
+        answer confirm: @escaping @Sendable (ConfirmationRequest) async -> ConfirmationAnswer
+    ) async throws {
         try await prepareForOwnerEntry(startsNewEpisode: startsNewEpisode, now: now, onEvent: onEvent)
         await onEvent(.entryAdded(try await thread.append(.userMessage(text: userText, skill: skill), date: now)))
         let definitions = tools.map(\.definition)
-        let instructions = await self.instructions()
-        let fingerprint = PromptFingerprint.make(instructions: instructions, tools: definitions)
         let episodeID = await thread.currentEpisode?.id
+        let instructions = await self.instructions(episodeID)
+        let fingerprint = PromptFingerprint.make(instructions: instructions, tools: definitions, webSearch: webSearch)
 
         do {
             try await replyAndRunTools(
@@ -131,15 +203,17 @@ public final class AgentLoop: Sendable {
     private func replyAndRunTools(
         instructions: String, definitions: [ToolDefinition], fingerprint: String, episodeID: UUID?,
         onEvent: @escaping @Sendable (AgentEvent) async -> Void,
-        confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
+        confirm: @escaping @Sendable (ConfirmationRequest) async -> ConfirmationAnswer
     ) async throws {
         for _ in 0..<maximumModelReplies {
             try Task.checkCancellation()
             // Only the current episode goes to the model. Within it the request only grows at
             // the end, so the prompt cache holds from one request to the next.
             let request = ModelRequest(
-                instructions: instructions, entries: await thread.contents.currentEpisodeEntries, tools: definitions)
+                instructions: instructions, entries: await thread.contents.currentEpisodeEntries, tools: definitions,
+                webSearch: webSearch)
             var calls: [ThreadItem.ToolCall] = []
+            var sentItems: [String]?
             let started = ContinuousClock.now
             for try await event in provider.streamReply(to: request) {
                 switch event {
@@ -147,12 +221,28 @@ public final class AgentLoop: Sendable {
                     await onEvent(.textDelta(text))
                 case .toolCallStarted(let callID, let name):
                     await onEvent(.toolCallStarted(callID: callID, name: name))
+                case .hostedToolStarted(let call):
+                    // It shows as a running row. It never asks and nothing runs here: the
+                    // finished call arrives as a provider item, which fills the row in.
+                    await onEvent(.toolCallStarted(callID: call.callID, name: call.name))
+                    await onEvent(.toolRunning(callID: call.callID, summary: call.summary))
+                case .requestSent(let items):
+                    sentItems = items
                 case .usage(let usage, let providerName, let model):
                     let elapsed = ContinuousClock.now - started
                     let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-                    usageLog?.append(UsageRecord(
+                    var record = UsageRecord(
                         date: Date(), provider: providerName, model: model, usage: usage,
-                        seconds: (seconds * 10).rounded() / 10, prompt: fingerprint))
+                        seconds: (seconds * 10).rounded() / 10, prompt: fingerprint)
+                    if let sentItems {
+                        record.items = sentItems
+                        record.diverged = lastSent.withLock { last in
+                            defer { last = (model, sentItems) }
+                            guard let last, last.model == model else { return nil }
+                            return RequestDigest.firstDifference(previous: last.items, current: sentItems)
+                        }
+                    }
+                    usageLog?.append(record)
                 case .item(let item):
                     if case .toolCall(let call) = item { calls.append(call) }
                     await onEvent(.entryAdded(try await thread.append(item)))
@@ -198,7 +288,7 @@ public final class AgentLoop: Sendable {
         _ call: ThreadItem.ToolCall,
         episodeID: UUID?,
         onEvent: @Sendable (AgentEvent) async -> Void,
-        confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
+        confirm: @escaping @Sendable (ConfirmationRequest) async -> ConfirmationAnswer
     ) async -> (String, ToolRunDetails?) {
         guard let tool = tools.first(where: { $0.definition.name == call.name }) else {
             return ("Error: there is no tool named \(call.name).", nil)
@@ -212,9 +302,10 @@ public final class AgentLoop: Sendable {
         let startDate = Date()
         let started = ContinuousClock.now
         // The go-ahead is timed and its answer noted here, so every tool that asks gets the same record.
-        let timedConfirm: @Sendable (ConfirmationRequest) async -> Bool = { request in
+        let timedConfirm: @Sendable (ConfirmationRequest) async -> ConfirmationAnswer = { request in
             let asked = ContinuousClock.now
-            let approved = await confirm(request)
+            let answer = await confirm(request)
+            let approved = answer.allows
             let waited = Self.seconds(ContinuousClock.now - asked)
             // Stopping the task ends the wait with no answer from the owner, so none is noted.
             let stopped = !approved && Task.isCancelled
@@ -222,9 +313,9 @@ public final class AgentLoop: Sendable {
                 if !stopped { details.goAhead = approved ? .approved : .declined }
                 details.waitedSeconds = (details.waitedSeconds ?? 0) + waited
             }
-            return approved
+            return answer
         }
-        let context = ToolRunContext(callID: call.callID, episodeID: episodeID, report: report, confirm: timedConfirm)
+        let context = ToolRunContext(callID: call.callID, episodeID: episodeID, report: report, answer: timedConfirm)
         let output = await tool.run(arguments: arguments, context: context)
         let elapsed = Self.seconds(ContinuousClock.now - started)
         report.note { details in

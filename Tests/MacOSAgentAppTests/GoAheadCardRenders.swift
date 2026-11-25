@@ -93,8 +93,9 @@ struct RebuiltRowRenders {
 }
 
 /// Renders the top bar offscreen with Keep on Top off and on, in the main panel and the
-/// incognito window, and with another agent name, for a pull request when screen capture is not available. Run with
-/// MAC_OS_AGENT_RENDER_TOP_BAR set to a folder. The glass is drawn as its fallback fill.
+/// incognito window, at rest and with the pointer over the bar, which shows the close button,
+/// and with another agent name, for a pull request when screen capture is not available. Run
+/// with MAC_OS_AGENT_RENDER_TOP_BAR set to a folder. The glass is drawn as its fallback fill.
 @MainActor
 @Suite(.enabled(if: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_TOP_BAR"] != nil))
 struct TopBarRenders {
@@ -116,9 +117,10 @@ struct TopBarRenders {
                 preferences.removePersistentDomain(forName: suite)
                 named.removePersistentDomain(forName: namedSuite)
             }
-            func bar(keepsOnTop: Bool, incognito: Bool, renamed: Bool = false, width: CGFloat = 480) -> some View {
+            func bar(keepsOnTop: Bool, incognito: Bool, hovered: Bool = false, renamed: Bool = false, width: CGFloat = 480) -> some View {
                 let placement = PanelPlacement()
                 placement.keepsOnTop = keepsOnTop
+                placement.barIsHovered = hovered
                 placement.offersLayouts = !incognito
                 if !incognito { placement.setKeepsOnTop = { _ in } }
                 return PanelTopBar(incognito: incognito ? .init(canClear: true, clear: {}) : nil)
@@ -129,8 +131,10 @@ struct TopBarRenders {
             }
             let view = VStack(spacing: 8) {
                 bar(keepsOnTop: false, incognito: false)
+                bar(keepsOnTop: false, incognito: false, hovered: true)
                 bar(keepsOnTop: true, incognito: false)
                 bar(keepsOnTop: true, incognito: true)
+                bar(keepsOnTop: true, incognito: true, hovered: true)
                 bar(keepsOnTop: false, incognito: false, renamed: true, width: 640)
             }
             .padding(8)

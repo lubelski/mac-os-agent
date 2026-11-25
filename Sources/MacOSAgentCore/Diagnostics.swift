@@ -6,11 +6,14 @@ import Synchronization
 /// A short fingerprint of what forms the cached prefix of every request: the instructions and
 /// the tool list. When it changes between requests, the prompt cache starts over.
 public enum PromptFingerprint {
-    public static func make(instructions: String, tools: [ToolDefinition]) -> String {
+    /// - Parameter webSearch: Whether the request offers the provider's hosted web search. Off
+    ///   leaves the fingerprint as it was before web search existed.
+    public static func make(instructions: String, tools: [ToolDefinition], webSearch: Bool = false) -> String {
         var text = instructions + "\n"
         for tool in tools {
             text += tool.name + "\n" + tool.description + "\n" + tool.parameters.encodedString() + "\n"
         }
+        if webSearch { text += "hosted:\(HostedWebSearch.toolName)\n" }
         let digest = SHA256.hash(data: Data(text.utf8))
         return digest.prefix(6).map { String(format: "%02x", $0) }.joined()
     }
@@ -27,9 +30,9 @@ public struct PromptInfo: Sendable, Equatable {
     /// When the most recent requests' fingerprint was first seen in an unbroken run of requests.
     public var unchangedSince: Date?
 
-    public init(instructions: String, tools: [ToolDefinition], records: [UsageRecord]) {
+    public init(instructions: String, tools: [ToolDefinition], records: [UsageRecord], webSearch: Bool = false) {
         characters = instructions.count
-        fingerprint = PromptFingerprint.make(instructions: instructions, tools: tools)
+        fingerprint = PromptFingerprint.make(instructions: instructions, tools: tools, webSearch: webSearch)
         let withPrompt = records.filter { $0.prompt != nil }
         lastSentFingerprint = withPrompt.last?.prompt
         unchangedSince = nil
@@ -181,6 +184,33 @@ public final class ProblemLog: Sendable {
     }
 }
 
+/// How big memory is: the sizes of core and the block, and how many topic files there are.
+/// Never what any of it says.
+public struct MemoryCounts: Sendable, Equatable {
+    public var coreCharacters: Int
+    public var topicFiles: Int
+    public var archivedFiles: Int
+    /// The block at the end of the instructions, in characters.
+    public var blockCharacters: Int
+    public var journalEntries: Int
+
+    public init(coreCharacters: Int = 0, topicFiles: Int = 0, archivedFiles: Int = 0, blockCharacters: Int = 0, journalEntries: Int = 0) {
+        self.coreCharacters = coreCharacters
+        self.topicFiles = topicFiles
+        self.archivedFiles = archivedFiles
+        self.blockCharacters = blockCharacters
+        self.journalEntries = journalEntries
+    }
+
+    /// The counts for this memory folder, with the block as the next request sends it.
+    public init(_ library: MemoryLibrary, block: MemoryBlock.Contents?) {
+        self.init(
+            coreCharacters: library.core().characters, topicFiles: library.topics().count,
+            archivedFiles: library.archived().count, blockCharacters: block?.characters ?? 0,
+            journalEntries: library.journal.entries().count)
+    }
+}
+
 public struct SkillCounts: Sendable, Equatable {
     public var total: Int
     /// On and without problems, so listed in the instructions.
@@ -198,9 +228,16 @@ public struct DiagnosticsReport: Sendable, Equatable {
     public var dataFolder: String
     public var model: String
     public var signIn: SignInStatus?
+    /// Whether this run signs in itself or reaches its models through inference-gateway.
+    public var modelAccess: ModelAccess
+    /// Where this run keeps the sign-in, the Keychain or the file, and why.
+    public var secretStorage: SecretStorage.Status?
+    /// The web search this run launched with, and whether a Brave key is set. Never the key.
+    public var webSearch: WebSearchStatus?
     public var prompt: PromptInfo
     public var tools: Int
     public var skills: SkillCounts
+    public var memories: MemoryCounts
     public var thread: ThreadFileInfo
     public var recentRequests: [UsageRecord]
     public var today: UsageTotals
@@ -208,11 +245,16 @@ public struct DiagnosticsReport: Sendable, Equatable {
 
     public static let recentRequestLimit = 20
 
+    /// How a development build reaches its models, in a sentence.
+    public static let gatewayText =
+        "Through inference-gateway at \(InferenceGateway.address()). This build has no sign-in of its own."
+
     public init(
         date: Date = Date(), build: BuildInfo, system: String = ProcessInfo.processInfo.operatingSystemVersionString,
         dataFolder: URL, model: String, signIn: SignInStatus?, instructions: String, tools: [ToolDefinition],
-        skills: [Skill], threadFile: URL, usageLog: UsageLog, problems: [DiagnosticProblem],
-        calendar: Calendar = .current
+        skills: [Skill], memories: MemoryCounts = MemoryCounts(), threadFile: URL, usageLog: UsageLog,
+        problems: [DiagnosticProblem], secretStorage: SecretStorage.Status? = nil, webSearch: WebSearchStatus? = nil,
+        modelAccess: ModelAccess = .signIn, calendar: Calendar = .current
     ) {
         self.date = date
         self.build = build
@@ -220,12 +262,18 @@ public struct DiagnosticsReport: Sendable, Equatable {
         self.dataFolder = dataFolder.plainPath
         self.model = model
         self.signIn = signIn
+        self.modelAccess = modelAccess
+        self.secretStorage = secretStorage
         let records = usageLog.records()
-        prompt = PromptInfo(instructions: instructions, tools: tools, records: records)
+        self.webSearch = webSearch
+        prompt = PromptInfo(
+            instructions: instructions, tools: tools, records: records,
+            webSearch: webSearch?.launched.usesHostedSearch ?? false)
         self.tools = tools.count
         self.skills = SkillCounts(
             total: skills.count, on: skills.filter(\.isAvailable).count,
             withProblems: skills.filter { $0.problem != nil }.count)
+        self.memories = memories
         thread = ThreadFileInfo.read(threadFile)
         recentRequests = Array(records.suffix(Self.recentRequestLimit).reversed())
         var today = UsageTotals()
@@ -249,18 +297,29 @@ public struct DiagnosticsReport: Sendable, Equatable {
         lines.append("- System: \(system)")
         lines.append("- Data folder: \(dataFolder)")
         lines.append("")
-        lines.append("Sign-in")
-        if let signIn {
-            lines.append("- Signed in: \(signIn.isSignedIn ? "yes" : "no")")
-            lines.append("- Access token expires: \(time(signIn.accessTokenExpires))")
-            lines.append("- Last token received: \(time(signIn.lastTokenDate))")
-            if let error = signIn.lastError {
-                lines.append("- Last error, \(time(signIn.lastErrorDate)): \(error)")
-            } else {
-                lines.append("- Last error: none")
+        if modelAccess == .gateway {
+            lines.append("Models")
+            lines.append("- \(Self.gatewayText)")
+            if let secretStorage {
+                lines.append("- Other secrets, such as a Brave Search key, kept in: \(secretStorage.place)")
             }
         } else {
-            lines.append("- Not available")
+            lines.append("Sign-in")
+            if let signIn {
+                lines.append("- Signed in: \(signIn.isSignedIn ? "yes" : "no")")
+                lines.append("- Access token expires: \(time(signIn.accessTokenExpires))")
+                lines.append("- Last token received: \(time(signIn.lastTokenDate))")
+                if let error = signIn.lastError {
+                    lines.append("- Last error, \(time(signIn.lastErrorDate)): \(error)")
+                } else {
+                    lines.append("- Last error: none")
+                }
+            } else {
+                lines.append("- Not available")
+            }
+            if let secretStorage {
+                lines.append("- Kept in: \(secretStorage.place). \(secretStorage.explanation)")
+            }
         }
         lines.append("")
         lines.append("Prompt")
@@ -269,7 +328,9 @@ public struct DiagnosticsReport: Sendable, Equatable {
         lines.append("- Last request's fingerprint: \(prompt.lastSentFingerprint ?? "not recorded"), unchanged since \(time(prompt.unchangedSince))")
         lines.append("- Changed since the last request: \(prompt.changedSinceLastRequest ? "yes" : "no")")
         lines.append("- Tools: \(tools)")
+        if let webSearch { lines.append("- Web search: \(webSearch.text)") }
         lines.append("- Skills: \(skills.total), \(skills.on) on, \(skills.withProblems) with problems")
+        lines.append("- Memory: core \(memories.coreCharacters) characters, \(memories.topicFiles) topic files, \(memories.archivedFiles) archived, block \(memories.blockCharacters) characters, \(memories.journalEntries) journal entries")
         lines.append("")
         lines.append("Thread")
         lines.append("- File: \(thread.path)")
@@ -293,5 +354,36 @@ public struct DiagnosticsReport: Sendable, Equatable {
             lines.append("- \(time(problem.date)) \(problem.area): \(problem.message)")
         }
         return lines.joined(separator: "\n") + "\n"
+    }
+}
+
+/// Which web search a run has, for Debugging. It says whether a Brave Search key is set and
+/// never holds the key.
+public struct WebSearchStatus: Sendable, Equatable {
+    /// What the run launched with, which is what it uses.
+    public var launched: WebSearchSetting
+    /// What Settings has now, which the next launch uses.
+    public var stored: WebSearchSetting
+    public var braveKeySet: Bool
+
+    public init(launched: WebSearchSetting, stored: WebSearchSetting, braveKeySet: Bool) {
+        self.launched = launched
+        self.stored = stored
+        self.braveKeySet = braveKeySet
+    }
+
+    /// Such as `Brave, key set` or `off, OpenAI from the next launch`.
+    public var text: String {
+        var text: String
+        switch launched {
+        case .off: text = "off"
+        case .openAI: text = "OpenAI"
+        case .brave: text = "Brave, key \(braveKeySet ? "set" : "not set")"
+        }
+        if stored != launched {
+            let next = stored == .off ? "off" : stored == .openAI ? "OpenAI" : "Brave"
+            text += ", \(next) from the next launch"
+        }
+        return text
     }
 }

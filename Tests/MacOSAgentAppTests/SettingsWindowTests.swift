@@ -13,7 +13,15 @@ struct SettingsWindowHarness {
     let suiteName = "mac-os-agent-settings-tests-\(UUID().uuidString)"
     let controller: SettingsWindowController
 
-    init(section: SettingsSection) throws {
+    /// - Parameters:
+    ///   - additionalTools: More tools after the built-in ones, such as stand-in MCP tools.
+    ///   - privacyAccess: Access to personal data as Tools shows it. Nil reads the real status,
+    ///     which never asks.
+    ///   - experiments: Experiments to turn on in the harness's own preferences.
+    init(
+        section: SettingsSection, additionalTools: [any AgentTool] = [],
+        privacyAccess: (any PrivacyAccessGate)? = nil, experiments: [Experiment] = []
+    ) throws {
         _ = NSApplication.shared
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         for (name, description) in [
@@ -28,17 +36,20 @@ struct SettingsWindowHarness {
         }
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defaults.set(section.rawValue, forKey: SettingsNavigation.key)
+        for experiment in experiments { experiment.set(true, defaults) }
         let prompt = AgentPrompt(
             instructions: InstructionsStore(fileURL: folder.appending(path: "instructions.md")),
-            skills: SkillLibrary(folder: folder.appending(path: "skills"), settingsFile: folder.appending(path: "skill-settings.json")))
+            skills: SkillLibrary(folder: folder.appending(path: "skills"), settingsFile: folder.appending(path: "skill-settings.json")),
+            memories: MemoryLibrary(folder: folder.appending(path: "memory", directoryHint: .isDirectory)))
         let history = try ThreadStore(fileURL: folder.appending(path: "thread.jsonl"))
         let summonTrigger = SummonTriggerController(registrar: StandInHotKey(), defaults: defaults, systemShortcuts: { [] })
         controller = SettingsWindowController(
             session: AgentSession(previewEntries: []), prompt: prompt,
             usageLog: UsageLog(fileURL: folder.appending(path: "usage.jsonl")),
-            tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: history)),
+            tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: history), additional: additionalTools),
             history: history, problems: ProblemLog(), signInStatus: { nil },
-            summonTrigger: summonTrigger, defaults: defaults, remembersFrame: false)
+            summonTrigger: summonTrigger, defaults: defaults, remembersFrame: false,
+            privacyAccess: privacyAccess ?? EventKitStore.shared)
     }
 
     var window: NSWindow { controller.window! }
@@ -63,7 +74,7 @@ struct SettingsWindowHarness {
 @MainActor
 @Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_SETTINGS"] != nil))
 struct SettingsWindowRenders {
-    @Test(arguments: [SettingsSection.general, .instructions, .skills, .behaviors, .experiments])
+    @Test(arguments: [SettingsSection.general, .instructions, .memory, .skills, .behaviors, .experiments])
     func rendersTheWindow(section: SettingsSection) throws {
         let out = URL(filePath: ProcessInfo.processInfo.environment["MAC_OS_AGENT_RENDER_SETTINGS"]!, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)

@@ -8,15 +8,23 @@ import SwiftUI
 struct GeneralSettingsView: View {
     let session: AgentSession
     @Bindable var shortcut: ShortcutRecorderModel
+    let webSearch: WebSearchSettingsModel
     let updater: AppUpdater
     /// Read from Sparkle when the section appears. Sparkle keeps it in its own preferences.
     @State private var updatesAutomatically = false
     @AppStorage(ModelSetting.key) private var model = OpenAIModel.defaultID
+    @AppStorage(Experiment.localModelsThroughOllama.key) private var localModelsOn = false
+    /// Read from Ollama when the section appears, with the local models experiment on.
+    @State private var localModels: [String] = []
     @AppStorage(EpisodeTimeoutSetting.key) private var episodeTimeout = EpisodeTimeoutSetting.defaultMinutes
     @AppStorage(AgentNameSetting.key) private var agentName = ""
 
     private var modelChoices: (models: [OpenAIModel], currentIsUnlisted: Bool) {
         session.modelChoices(current: model)
+    }
+
+    private var listedModels: [String] {
+        modelChoices.models.map(\.id) + (localModelsOn ? localModels.map(Ollama.modelID) : [])
     }
 
     var body: some View {
@@ -30,26 +38,30 @@ struct GeneralSettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Section {
-                LabeledContent("Account") {
-                    switch session.signInState {
-                    case .signedIn:
-                        HStack {
-                            Text("Signed in")
-                            Button("Sign Out") { session.signOut() }
-                        }
-                    case .signingIn:
-                        HStack {
-                            ProgressView().controlSize(.small)
-                            Text("Waiting for the browser…")
-                            Button("Cancel") { session.cancelSignIn() }
-                        }
-                    case .signedOut:
-                        HStack {
-                            Button("Sign in with ChatGPT…") { session.signIn() }
-                            // A sign-in reuses this Mac's registration, which belongs to one
-                            // account. Another account needs a registration of its own.
-                            if session.hasRegistration {
-                                Button("Use a Different Account…") { session.signIn(differentAccount: true) }
+                if session.modelAccess == .gateway {
+                    LabeledContent("Account", value: "Through inference-gateway")
+                } else {
+                    LabeledContent("Account") {
+                        switch session.signInState {
+                        case .signedIn:
+                            HStack {
+                                Text("Signed in")
+                                Button("Sign Out") { session.signOut() }
+                            }
+                        case .signingIn:
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                Text("Waiting for the browser…")
+                                Button("Cancel") { session.cancelSignIn() }
+                            }
+                        case .signedOut:
+                            HStack {
+                                Button("Sign in with ChatGPT…") { session.signIn() }
+                                // A sign-in reuses this Mac's registration, which belongs to one
+                                // account. Another account needs a registration of its own.
+                                if session.hasRegistration {
+                                    Button("Use a Different Account…") { session.signIn(differentAccount: true) }
+                                }
                             }
                         }
                     }
@@ -57,6 +69,16 @@ struct GeneralSettingsView: View {
                 Picker("Model", selection: $model) {
                     ForEach(modelChoices.models) { model in
                         Text(model.name).tag(model.id)
+                    }
+                    if localModelsOn {
+                        Section("Ollama") {
+                            ForEach(localModels, id: \.self) { name in
+                                Text(Ollama.displayName(name)).tag(Ollama.modelID(name))
+                            }
+                        }
+                    }
+                    if !listedModels.contains(model) {
+                        Text(ModelSetting.displayName(id: model)).tag(model)
                     }
                 }
             } header: {
@@ -66,12 +88,20 @@ struct GeneralSettingsView: View {
                     if modelChoices.currentIsUnlisted {
                         Text("\(model) is not in your ChatGPT account's model list. It stays selected until you choose another, and requests may fail with it.")
                     }
-                    Text(session.accountModels == nil
-                        ? "A new model applies from the next reply. The model is also in the menu bar menu."
-                        : "These are the models your ChatGPT account lists. A new model applies from the next reply. The model is also in the menu bar menu.")
+                    Text((session.accountModels == nil ? "" : "These are the models your ChatGPT account lists. ")
+                        + (localModelsOn
+                            ? "A new model applies from the next reply. The model is also in the menu bar menu. Models marked Ollama run on this Mac, through Ollama at localhost:11434, and need no sign-in.\(localModels.isEmpty ? " Ollama has no models, or is not running." : "")"
+                            : "A new model applies from the next reply. The model is also in the menu bar menu.")
+                        + (session.modelAccess == .gateway
+                            ? " This development build has no sign-in of its own. It sends every model request through inference-gateway at \(InferenceGateway.address())."
+                            : ""))
                 }
                 .foregroundStyle(.secondary)
             }
+            .task(id: localModelsOn) {
+                localModels = localModelsOn ? await Ollama.installedModels() : []
+            }
+            WebSearchSettingsSection(model: webSearch)
             Section {
                 Picker("Start a new episode after", selection: $episodeTimeout) {
                     ForEach(EpisodeTimeoutSetting.choices, id: \.self) { minutes in
@@ -197,7 +227,8 @@ final class InstructionsSettingsModel {
         AgentInstructions.assemble(
             editable: draft,
             skills: prompt.skills.skills().filter(\.isAvailable).map { .init(name: $0.name, description: $0.description) },
-            skillsFolder: prompt.skills.folder)
+            skillsFolder: prompt.skills.folder,
+            memoryBlock: prompt.latestMemoryContents().map(MemoryBlock.placeholder))
     }
 }
 
@@ -218,7 +249,7 @@ struct InstructionsSettingsView: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
             Text("""
                 The app always adds its own rules after this text: how the go-ahead for destructive \
-                commands works, the time at the start of each message, and the list of skills.
+                commands works, the time, the list of skills, and memory.
                 """)
                 .font(.callout)
                 .foregroundStyle(.secondary)

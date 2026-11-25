@@ -6,6 +6,9 @@ import SwiftUI
 /// history, the go-ahead card when one is pending, the instant action row or the command hint,
 /// and the text field at the bottom.
 ///
+/// With the panel with bars experiment on, the top bar is a title bar and the text field is a
+/// pill in a band at the bottom, with the status line under it. See `PanelFrame`.
+///
 /// The main panel and the incognito window are both this view, over sessions of different
 /// kinds. The incognito window adds its label and Clear to the top bar, the theme's incognito
 /// tint for its whole life, and a question before closing or clearing while a task runs.
@@ -17,12 +20,22 @@ struct SummonView: View {
     @State private var focusRequest = 0
     /// The reference time for the history's time labels, refreshed on every summon.
     @State private var now = Date()
+    /// Read here so the panel redraws when a switch changes in Settings. The session reads the
+    /// switches from its own preferences.
+    @AppStorage(Experiment.suggestionsInFieldAndFooter.key) private var suggestionsSwitch = false
+    @AppStorage(Experiment.panelWithBarsAndInputPill.key) private var barsSwitch = false
+    @Environment(PanelPlacement.self) private var placement: PanelPlacement?
+    @AppStorage(HarnessBehavior.recallEarlierMessages.key) private var recallSwitch = HarnessBehavior.recallEarlierMessages.defaultValue
+    @AppStorage(ModelSetting.key) private var modelID = OpenAIModel.defaultID
+    @AgentName private var agentName
 
     var body: some View {
         VStack(spacing: 0) {
-            PanelTopBar(incognito: session.isIncognito
-                ? .init(canClear: canClear, clear: { session.requestDiscard(.clear) })
-                : nil)
+            PanelTopBar(
+                incognito: session.isIncognito
+                    ? .init(canClear: canClear, clear: { session.requestDiscard(.clear) })
+                    : nil,
+                style: session.panelWithBars ? .titled : .named)
             PanelDivider()
             HistoryView(session: session, now: now)
             if let discard = session.pendingDiscard {
@@ -34,15 +47,51 @@ struct SummonView: View {
                     .padding(.horizontal, 12)
                     .padding(.bottom, 10)
             }
-            MessageQueueRows(session: session)
-            InstantActionRow(actions: session.instantActions)
-            CommandHint(
-                suggestions: session.commandSuggestions, selection: session.hintSelection,
-                incognito: session.isIncognito, choose: session.complete)
-            PanelDivider()
-            inputRow
+            // With the panel with bars on, queued messages are in the conversation instead.
+            if session.queuedMessagePlacement == .aboveField {
+                MessageQueueRows(session: session)
+            }
+            if session.panelWithBars {
+                // The band: the hairline, then the pill on the bars' fill, then the status line.
+                // Nothing is added above the hairline. A match opens the pill into the match
+                // card, upward over the conversation here, or downward in a window of its own.
+                VStack(spacing: 0) {
+                    PanelDivider()
+                    InputBand {
+                        TaskLinksRow(links: session.taskLinks, clear: session.clearTaskLinks)
+                    } field: {
+                        InputPill(card: session.matchCardSide) { field(metrics: .pill) }
+                            .overlay(alignment: .top) { matchCardAbove }
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.panelSpace)) } action: { pill in
+                                session.suggestionList.pillFrame = pill
+                                let above = pill.minY - PanelTopBar.height - 1
+                                if session.suggestionList.roomAbove != above { session.suggestionList.roomAbove = above }
+                                let update = session.suggestionList.layoutNeedsUpdate
+                                DispatchQueue.main.async { update?() }
+                            }
+                    }
+                }
+                footer
+            } else if session.suggestionsInFooter {
+                // The suggestions are in the field and the footer, so nothing is added above it.
+                VStack(spacing: 0) {
+                    PanelDivider()
+                    inputRow
+                }
+                .overlay(alignment: .top) { overlaidList }
+                listBelow
+                footer
+            } else {
+                InstantActionRow(actions: session.instantActions)
+                CommandHint(
+                    suggestions: session.commandSuggestions, selection: session.hintSelection,
+                    incognito: session.isIncognito, choose: session.complete)
+                PanelDivider()
+                inputRow
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .coordinateSpace(.named(Self.panelSpace))
         // A faint tint on the surface, with the label in the top bar, keeps the incognito window
         // apart from the main panel for its whole life.
         .themedPanel(incognito: session.isIncognito)
@@ -54,8 +103,30 @@ struct SummonView: View {
         }
         .onChange(of: session.isRunning) { _, running in
             if !running { focusRequest += 1 }
+            // A match in the field when a task ends opens the card again.
+            if session.panelWithBars { session.suggestionListFollowsDraft() }
         }
         .onExitCommand(perform: onDismiss)
+        // The experiment matches from the first character and the row only when confident, so
+        // a draft already in the field is judged again when the switch changes in Settings.
+        .onChange(of: suggestionsSwitch) { session.syncInstantActionMode() }
+        // The panel with bars turns that matching on too, and has a larger outer radius, which
+        // the surface and the window's clip read from the placement.
+        .onChange(of: barsSwitch, initial: true) {
+            placement?.cornerRadius = PanelFrame.cornerRadius(panelWithBars: session.panelWithBars)
+            session.syncInstantActionMode()
+            // The match card opens by itself for a match already in the field.
+            if session.panelWithBars { session.suggestionListFollowsDraft() }
+        }
+        // VoiceOver hears what Return will act on when it changes, since the gray text is drawn
+        // only and the mark is beside the field.
+        .onChange(of: session.returnTarget?.id) {
+            guard let target = session.returnTarget else { return }
+            NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [
+                .announcement: "Return \(target.target.actionLabel) \(target.title)",
+                .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+            ])
+        }
         // The inspector shows a call from the history in view. Clearing an incognito
         // conversation drops that history, so the inspector closes.
         .onChange(of: session.conversation) { inspector?.close() }
@@ -69,12 +140,21 @@ struct SummonView: View {
 
     private var inputRow: some View {
         HStack(alignment: .top, spacing: 10) {
-            // A prompt mark in the text color, in the scheme of the tool rows.
-            Text(verbatim: Mark.prompt)
-                .font(.system(size: 17, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(width: 18, height: InputField.rowHeight)
-                .accessibilityHidden(true)
+            // The field holds one icon and the text. The icon is the sparkle, and with the
+            // suggestions experiment on, the icon of what Return will act on takes its place.
+            InputMark(target: session.returnTarget)
+            field(metrics: .standard)
+            // Nothing else goes in the field. Stop is at the end of the thread, on the working row.
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        // The band with the field is on the bars' fill, as the top bar is. With the experiment
+        // on, the list and the footer below continue it.
+        .background(PanelBarFill())
+    }
+
+    /// The text field itself, with its placeholder, in the field's font.
+    private func field(metrics: InputFieldMetrics) -> some View {
             InputField(
                 text: $session.draft,
                 placeholder: placeholder,
@@ -85,34 +165,92 @@ struct SummonView: View {
                 onCancel: onDismiss,
                 onMove: { offset in inspector?.move(by: offset) ?? false },
                 onSubmitToAgent: session.submitToAgent,
-                onChoose: { offset in session.moveHintSelection(by: offset) || session.instantActions.move(by: offset) },
+                onChoose: { offset in
+                    session.suggestionsInFooter
+                        ? session.chooseInFooter(by: offset)
+                        : session.moveHintSelection(by: offset) || session.instantActions.move(by: offset)
+                },
                 onComplete: session.completeHint,
+                onCommandNumber: session.runMatchCardRow(number:),
                 onRecall: session.recallMessage(by:),
                 onInterrupt: session.interrupt,
-                onDoubleDelete: session.startNewEpisodeFromKeys)
+                onDoubleDelete: session.startNewEpisodeFromKeys,
+                onComposingChange: session.composingChanged,
+                inlineCompletion: session.inlineCompletion,
+                metrics: metrics)
                 .overlay(alignment: .topLeading) {
                     if session.draft.isEmpty {
                         Text(placeholder)
-                            .font(.system(size: 15))
+                            .font(.system(size: metrics.font.pointSize))
                             .foregroundStyle(.tertiary)
-                            .padding(.top, InputField.verticalInset)
+                            .padding(.top, metrics.verticalInset)
                             .allowsHitTesting(false)
                             .accessibilityHidden(true)
                     }
                 }
-            if session.isRunning {
-                HStack(spacing: 10) {
-                    ProgressView().controlSize(.small)
-                    // Command-Period reaches it through Stop in the main menu.
-                    Button("Stop", action: session.stop)
-                        .buttonStyle(.glass)
-                        .help("Stop the task (Command-Period)")
-                }
-                .frame(height: InputField.rowHeight)
+    }
+
+    // MARK: The suggestions experiment
+
+    private var footer: some View {
+        // The switches are read through the session, from its preferences. Reading them here
+        // too keeps the footer in step when one changes in Settings.
+        _ = (suggestionsSwitch, recallSwitch, barsSwitch)
+        // No hairline above it: the footer continues the band with the field on the same fill,
+        // so the two read as one bar at the bottom of the panel.
+        return InputFooter(content: .make(
+            session.footerState, agentName: agentName, modelName: InputFooterContent.modelName(id: modelID),
+            recallsMessages: HarnessBehavior.recallEarlierMessages.isOn(session.preferences),
+            queuesWhileRunning: session.queuesWhileRunning,
+            statusLine: session.panelWithBars))
+    }
+
+    private var suggestionList: some View {
+        SuggestionListView(
+            rows: session.suggestionRows, highlight: session.highlightedRowIndex, agentName: agentName,
+            incognito: session.isIncognito, usesLogo: session.panelWithBars, activate: session.activateSuggestionRow)
+    }
+
+    /// The list between the field and the footer, in the room the window grew by. The room
+    /// stays until the window shrinks, so nothing above it moves in between.
+    @ViewBuilder private var listBelow: some View {
+        let growth = session.suggestionList.growth
+        if growth > 0 {
+            ZStack(alignment: .top) {
+                if !session.suggestionRows.isEmpty { suggestionList }
             }
+            .frame(height: growth, alignment: .top)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .background(PanelBarFill())
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+    }
+
+    /// The list drawn over the bottom of the conversation, just above the field, when the
+    /// window has no room to grow downward. The conversation does not move or reflow.
+    @ViewBuilder private var overlaidList: some View {
+        if session.suggestionList.growth == 0, !session.suggestionRows.isEmpty {
+            // Moved up by its own height, so its bottom meets the top of the field's divider.
+            suggestionList
+                .background(PanelBarFill(opaque: true))
+                .offset(y: -session.suggestionListHeight)
+        }
+    }
+
+    // MARK: The match card
+
+    /// The panel's content, in which the pill's frame is measured for the match card's window.
+    static let panelSpace = "panel"
+
+    /// The rows of a match card that opens upward, over the end of the conversation, with their
+    /// bottom on the pill's top. A card that opens downward is drawn by `MatchCardWindow`.
+    @ViewBuilder private var matchCardAbove: some View {
+        if session.matchCardSide == .above {
+            let height = MatchCard.heightAbovePill(rows: session.matchCardVisibleRows)
+            MatchCardAbove(session: session, agentName: agentName)
+                .frame(height: height)
+                .offset(y: -height)
+        }
     }
 
     /// The incognito window says what it is for where the owner types, too.
@@ -138,10 +276,10 @@ private struct DiscardCard: View {
             HStack {
                 Spacer()
                 Button(discard == .close ? "Keep Open" : "Keep") { session.cancelDiscard() }
-                    .buttonStyle(.glass)
+                    .panelGlassButton()
                     .keyboardShortcut(.cancelAction)
                 Button(discard == .close ? "Stop and Close" : "Stop and Clear") { session.confirmDiscard() }
-                    .buttonStyle(.glassProminent)
+                    .panelGlassButton(prominent: true)
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -218,10 +356,10 @@ struct CommandHint: View {
     }
 
     /// The indexes listed: the first few, moved along so the chosen one is always in view.
-    static func window(count: Int, selection: Int) -> [Int] {
-        guard count > visibleLimit else { return Array(0..<count) }
-        let start = max(0, min(selection - visibleLimit + 1, count - visibleLimit))
-        return Array(start..<(start + visibleLimit))
+    static func window(count: Int, selection: Int, limit: Int = visibleLimit) -> [Int] {
+        guard count > limit else { return Array(0..<count) }
+        let start = max(0, min(selection - limit + 1, count - limit))
+        return Array(start..<(start + limit))
     }
 
     private func accessibilityText(chosen: Int) -> String {
@@ -288,6 +426,25 @@ struct ConfirmationCard: View {
                 if let detail { selectable(detail) }
             }
             .font(.callout)
+        case .toolCall(let server, let tool, let arguments):
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(verbatim: tool).foregroundStyle(.primary)
+                    selectable("on \(server)")
+                }
+                .font(.callout)
+                CodeBracket(font: .system(size: 12, design: .monospaced)) {
+                    scrollsWhenLong(selectable(arguments))
+                }
+            }
+        case .setting(let change, let notes):
+            VStack(alignment: .leading, spacing: 4) {
+                Text(verbatim: change).foregroundStyle(.primary)
+                ForEach(Array(notes.enumerated()), id: \.offset) { _, note in
+                    selectable(note)
+                }
+            }
+            .font(.callout)
         }
     }
 
@@ -296,13 +453,27 @@ struct ConfirmationCard: View {
             Text(verbatim: request.prompt)
                 .foregroundStyle(.primary)
             requestBody
+            if let note = request.alwaysNote {
+                Text(verbatim: note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            // Left to right from the strongest no to the plainest yes: Deny, Always Deny,
+            // Always Allow, Allow Once. Return allows once and Escape denies.
             HStack {
                 Spacer()
-                Button(request.declineTitle) { session.resolveConfirmation(false) }
-                    .buttonStyle(.glass)
+                Button(request.declineTitle) { session.resolveConfirmation(.deny) }
+                    .panelGlassButton()
                     .keyboardShortcut(.cancelAction)
-                Button(request.approveTitle) { session.resolveConfirmation(true) }
-                    .buttonStyle(.glassProminent)
+                if request.offersAlways {
+                    Button(ConfirmationRequest.alwaysDenyTitle) { session.resolveConfirmation(.alwaysDeny) }
+                        .panelGlassButton()
+                    Button(ConfirmationRequest.alwaysAllowTitle) { session.resolveConfirmation(.alwaysAllow) }
+                        .panelGlassButton()
+                }
+                Button(request.approveTitle) { session.resolveConfirmation(.allowOnce) }
+                    .panelGlassButton(prominent: true)
                     .keyboardShortcut(.defaultAction)
             }
         }

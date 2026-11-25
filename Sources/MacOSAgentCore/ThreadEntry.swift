@@ -22,9 +22,9 @@ public enum ThreadItem: Sendable, Equatable, Codable {
     /// What the person typed into the panel. When they invoked a skill with a slash, such as
     /// `/rename-photos the trip folder`, `text` is the line as typed, which is what the panel and
     /// search show, and `skill` holds the message the model was sent for it. When they ran a
-    /// saved action from the instant row, `text` is what they typed for it and `action` is the
+    /// quick action from the instant row, `text` is what they typed for it and `action` is the
     /// record of the run, with the note the model is sent in place of the typed text.
-    case userMessage(text: String, skill: SkillInvocation? = nil, action: ActionRun? = nil)
+    case userMessage(text: String, skill: SkillInvocation? = nil, action: QuickActionRun? = nil)
     /// Text the model wrote.
     case assistantMessage(AssistantMessage)
     /// Model output that only the provider understands, such as an encrypted reasoning item.
@@ -37,6 +37,10 @@ public enum ThreadItem: Sendable, Equatable, Codable {
     /// The thread from before these markers existed has none, and its episodes are derived
     /// from the pauses between entries instead. See `EpisodeTracker`.
     case episodeStart(EpisodeStart)
+    /// An app the owner opened from the instant row, with the panel with bars experiment on.
+    /// Nothing was sent when it happened. It joins what the model sees with the next request of
+    /// its episode. A build from before it existed skips the line. See `AppOpening`.
+    case appOpened(AppOpening)
 
     /// A skill the owner invoked with a slash, as it was sent. The model gets `message` in
     /// place of the typed line: the line followed by the skill's instructions. It is stored
@@ -56,7 +60,7 @@ public enum ThreadItem: Sendable, Equatable, Codable {
 
     /// The text the model is sent for an owner's message: the record of an action they ran,
     /// the skill's expanded message when they invoked one, and otherwise what they typed.
-    public static func modelText(text: String, skill: SkillInvocation?, action: ActionRun? = nil) -> String {
+    public static func modelText(text: String, skill: SkillInvocation?, action: QuickActionRun? = nil) -> String {
         action?.message ?? skill?.message ?? text
     }
 
@@ -147,6 +151,7 @@ public enum ThreadItem: Sendable, Equatable, Codable {
         case toolCall = "tool_call"
         case toolResult = "tool_result"
         case episodeStart = "episode_start"
+        case appOpened = "app_opened"
     }
 
     /// A user message's value. `skill` and `action` are left out when there is none, so a plain
@@ -155,7 +160,7 @@ public enum ThreadItem: Sendable, Equatable, Codable {
     private struct UserText: Codable {
         var text: String
         var skill: SkillInvocation?
-        var action: ActionRun?
+        var action: QuickActionRun?
     }
 
     public init(from decoder: Decoder) throws {
@@ -169,6 +174,7 @@ public enum ThreadItem: Sendable, Equatable, Codable {
         case .toolCall: self = .toolCall(try container.decode(ToolCall.self, forKey: .value))
         case .toolResult: self = .toolResult(try container.decode(ToolResult.self, forKey: .value))
         case .episodeStart: self = .episodeStart(try container.decode(EpisodeStart.self, forKey: .value))
+        case .appOpened: self = .appOpened(try container.decode(AppOpening.self, forKey: .value))
         }
     }
 
@@ -192,6 +198,9 @@ public enum ThreadItem: Sendable, Equatable, Codable {
             try container.encode(value, forKey: .value)
         case .episodeStart(let value):
             try container.encode(Kind.episodeStart, forKey: .type)
+            try container.encode(value, forKey: .value)
+        case .appOpened(let value):
+            try container.encode(Kind.appOpened, forKey: .type)
             try container.encode(value, forKey: .value)
         }
     }

@@ -2,7 +2,7 @@ import Foundation
 
 /// Where a tool comes from. Tools are shown in Settings grouped by source.
 ///
-/// Every tool is built in today. An MCP server will be a source of its own, such as
+/// An MCP server is a source of its own, `ToolSource.mcp("calendar")`, which is
 /// `ToolSource(id: "mcp:calendar", title: "calendar")`, set by its tools' `source`.
 public struct ToolSource: Sendable, Hashable, Identifiable {
     public var id: String
@@ -24,6 +24,8 @@ public enum ToolGoAhead: Sendable, Equatable {
     case sometimes(String)
     /// It asks before every call.
     case always
+    /// It never runs, since the owner set it to always deny.
+    case denied
 
     /// A short label for a list.
     public var label: String {
@@ -31,6 +33,7 @@ public enum ToolGoAhead: Sendable, Equatable {
         case .never: "No"
         case .sometimes: "Sometimes"
         case .always: "Always"
+        case .denied: "Denied"
         }
     }
 
@@ -40,6 +43,7 @@ public enum ToolGoAhead: Sendable, Equatable {
         case .never: "Runs without asking."
         case .sometimes(let text): text
         case .always: "Asks for a go-ahead before every call."
+        case .denied: "Never runs. Each call is denied without asking."
         }
     }
 }
@@ -110,15 +114,22 @@ public struct ToolSummary: Sendable, Equatable, Identifiable {
     public var source: ToolSource
     /// The parameters' JSON Schema, indented for reading.
     public var schemaText: String
+    /// Where an MCP tool comes from, for its go-ahead control. Nil for a built-in tool.
+    public var mcp: MCPToolReference?
 
-    public init(_ tool: any AgentTool) {
+    /// - Parameter source: Where Settings lists it, when not the tool's own source, such as the
+    ///   group a tool behind `use_tool` is kept in.
+    public init(_ tool: any AgentTool, source: ToolSource? = nil) {
         let definition = tool.definition
         name = definition.name
         description = definition.description
         parameters = ToolParameter.list(from: definition.parameters)
         goAhead = tool.goAhead
-        source = tool.source
+        self.source = source ?? tool.source
         schemaText = definition.parameters.prettyEncodedString()
+        if let tool = tool as? MCPTool {
+            mcp = MCPToolReference(server: tool.server, tool: tool.info.name, readOnly: tool.info.readOnly)
+        }
     }
 
     /// The first sentence of the description, for a list row.
@@ -126,6 +137,26 @@ public struct ToolSummary: Sendable, Equatable, Identifiable {
         let text = AgentInstructions.singleLine(description)
         guard let end = text.range(of: ". ") else { return text }
         return String(text[..<end.lowerBound]) + "."
+    }
+}
+
+/// An MCP tool by its server and the name its server gave it.
+public struct MCPToolReference: Sendable, Equatable {
+    public var server: String
+    public var tool: String
+    public var readOnly: Bool
+
+    public init(server: String, tool: String, readOnly: Bool) {
+        self.server = server
+        self.tool = tool
+        self.readOnly = readOnly
+    }
+
+    /// What the tool does without an override, in a sentence for Settings.
+    public var defaultExplanation: String {
+        readOnly
+            ? "By default it runs without asking, since its server marks it read-only."
+            : "By default it asks, since its server does not mark it read-only."
     }
 }
 
@@ -143,10 +174,12 @@ extension ToolRegistry {
     }
 
     /// The tools grouped by source. Groups come in the order their first tool appears, so the
-    /// built-in tools are first, and each group keeps the registry's order.
+    /// built-in tools are first, and each group keeps the registry's order. The tools kept in
+    /// groups behind `use_tool` follow, one source per group, since the model can call them too.
     public var groups: [ToolGroup] {
         var groups: [ToolGroup] = []
-        for tool in tools.map(ToolSummary.init) {
+        let inGroups = onDemandGroups.flatMap { group in group.tools.map { ToolSummary($0, source: group.source) } }
+        for tool in tools.map({ ToolSummary($0) }) + inGroups {
             if let index = groups.firstIndex(where: { $0.source == tool.source }) {
                 groups[index].tools.append(tool)
             } else {

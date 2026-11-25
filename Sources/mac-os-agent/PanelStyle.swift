@@ -28,9 +28,10 @@ enum PanelShape {
     /// The surface with square corners on the sides flush against the screen's edge, from
     /// `PanelGeometry.flushEdges`: a slide over panel at the left has its left corners square
     /// and its right ones rounded. The panel is laid out left to right, so leading is left.
-    static func surface(squareEdges: Set<PanelEdge>) -> UnevenRoundedRectangle {
-        let left: CGFloat = squareEdges.contains(.left) ? 0 : cornerRadius
-        let right: CGFloat = squareEdges.contains(.right) ? 0 : cornerRadius
+    /// `radius` is the panel's outer radius, larger with the panel with bars experiment on.
+    static func surface(squareEdges: Set<PanelEdge>, radius: CGFloat = cornerRadius) -> UnevenRoundedRectangle {
+        let left: CGFloat = squareEdges.contains(.left) ? 0 : radius
+        let right: CGFloat = squareEdges.contains(.right) ? 0 : radius
         return UnevenRoundedRectangle(
             topLeadingRadius: left, bottomLeadingRadius: left, bottomTrailingRadius: right, topTrailingRadius: right,
             style: .continuous)
@@ -50,8 +51,8 @@ enum PanelShape {
     /// square outline of the window shows at the corners, or the glass is cut at a corner it
     /// should fill.
     @MainActor
-    static func clipToSurface(_ layer: CALayer, squareEdges: Set<PanelEdge> = []) {
-        layer.cornerRadius = cornerRadius
+    static func clipToSurface(_ layer: CALayer, squareEdges: Set<PanelEdge> = [], radius: CGFloat = cornerRadius) {
+        layer.cornerRadius = radius
         layer.cornerCurve = surface.style == .continuous ? .continuous : .circular
         layer.maskedCorners = roundedCorners(squareEdges: squareEdges)
         layer.masksToBounds = true
@@ -71,6 +72,29 @@ struct PanelDivider: View {
             .fill(palette.inputDivider)
             .frame(height: 1)
             .accessibilityHidden(true)
+    }
+}
+
+/// The fill of the panel's bars, `PanelPalette.bar`: behind the top bar, the band with the
+/// text field, the footer and the list it grows into, and the inspector's bar. Every bar draws
+/// it through this one view, so they all read the same value. The window clips it to the
+/// surface's shape, so it never shows past a rounded corner.
+struct PanelBarFill: View {
+    /// Opaque, on the theme's solid fill, for the list where it covers the conversation.
+    var opaque = false
+    @Environment(\.panelPalette) private var palette
+
+    var body: some View {
+        ZStack {
+            if opaque {
+                // A theme's solid fill can be translucent, as Glass's is. Under it the window's
+                // own background makes sure the conversation does not show through.
+                Rectangle().fill(Color(nsColor: .windowBackgroundColor))
+                Rectangle().fill(palette.fallbackFill)
+            }
+            Rectangle().fill(palette.bar)
+        }
+        .accessibilityHidden(true)
     }
 }
 

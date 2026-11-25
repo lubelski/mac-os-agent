@@ -44,6 +44,12 @@ struct BehaviorsSettingsView: View {
 /// Features being tried, each a switch, off until the owner turns it on. See `Experiment`.
 struct ExperimentsSettingsView: View {
     @AppStorage(Experiment.queueMessagesWhileRunning.key) private var queuesMessages = false
+    @AppStorage(Experiment.suggestionsInFieldAndFooter.key) private var suggestionsInField = false
+    @AppStorage(Experiment.mcpServers.key) private var mcpServers = false
+    @AppStorage(Experiment.panelWithBarsAndInputPill.key) private var panelWithBars = false
+    @AppStorage(Experiment.scripts.key) private var scripts = false
+    @AppStorage(Experiment.settingsTools.key) private var settingsTools = false
+    @AppStorage(Experiment.settingsPaneStack.key) private var settingsPaneStack = false
 
     var body: some View {
         Form {
@@ -51,6 +57,30 @@ struct ExperimentsSettingsView: View {
                 Toggle(isOn: $queuesMessages) {
                     Text("Queue messages while a task runs")
                     Text("Return while a task runs adds the message to a queue above the field, and each one is sent as its own turn when the one before finishes. Stopping the task pauses the queue.")
+                }
+                Toggle(isOn: $suggestionsInField) {
+                    Text("Suggestions in the field and a footer")
+                    Text("An app or quick action that Return would open is shown in the field itself, with its icon beside it and its name in gray after what you typed, and a line under the field says what the keys do. Down Arrow lists the other matches under the field. Nothing is added above the field, so the conversation stays where it is.")
+                }
+                Toggle(isOn: $panelWithBars) {
+                    Text(Experiment.panelWithBarsAndInputPill.title)
+                    Text("The panel reads as bar, conversation, band. The title bar shows the model's name at the left and MacOS Agent in the middle. The text field is a pill at the bottom with the logo beside it, and a line under it says what the keys do. Matches show in the field as the suggestions experiment shows them, whether or not that switch is on.")
+                }
+                Toggle(isOn: $mcpServers) {
+                    Text("MCP servers")
+                    Text("The agent gets the tools of the MCP servers listed in mcp-servers.json, and Settings gets an MCP Servers section. Turning it on starts the servers now, and their tools join at the next launch. Turning it off stops them, and their tools leave at the next launch.")
+                }
+                Toggle(isOn: $scripts) {
+                    Text(Experiment.scripts.title)
+                    Text("The agent gets run_script, which runs a short JavaScript script that calls its other tools, so it can chain them without writing a program in the shell. Each call asks for a go-ahead exactly when calling the tool directly would. Takes effect at the next launch.")
+                }
+                Toggle(isOn: $settingsTools) {
+                    Text(Experiment.settingsTools.title)
+                    Text("The agent can read and change MOA's own setup: its MCP servers and its experiments. Every change asks for your go-ahead first, and a server's environment values are never shown to it or taken from it. Its tools sit in a group behind find_tools and use_tool, so they cost the prompt a line. Takes effect at the next launch.")
+                }
+                Toggle(isOn: $settingsPaneStack) {
+                    Text(Experiment.settingsPaneStack.title)
+                    Text("Tools shows its groups, a group's tools, and a tool's details as panes that slide in from the right over each other, each leaving a strip of the one under it showing. Click a strip or press Escape to go back. Read-only, as Tools is today.")
                 }
             } header: {
                 Text("Features being tried. They may change or go.")

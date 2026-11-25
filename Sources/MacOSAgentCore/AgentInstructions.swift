@@ -55,8 +55,47 @@ public enum AgentInstructions {
         }
     }
 
+    /// The rule for the task links row, in the fixed part only when `set_links` is in the run's
+    /// tool list, which the panel with bars experiment decides at launch. So it changes only
+    /// with the switch and a relaunch, and the prompt cache holds.
+    public static let taskLinksRule = """
+        - The row of links above the text field is for the task at hand: its tickets, pull requests, \
+        mock pages, and similar pages. Keep it current with \(SetLinksTool.name), sending the complete \
+        list each time, and clear links that stop being relevant.
+        """
+
+    /// A group of tools behind `find_tools` and `use_tool`, as the instructions list it.
+    public struct ToolGroupSummary: Sendable, Equatable {
+        public var name: String
+        public var summary: String
+
+        public init(name: String, summary: String) {
+            self.name = name
+            self.summary = summary
+        }
+    }
+
+    /// The rules for tools kept in groups, in the fixed part only when the run's tool list has
+    /// `find_tools` and `use_tool`, which the settings tools experiment decides at launch. So
+    /// they change only with the switch and a relaunch, and the prompt cache holds. The app's
+    /// names are here too, since the owner calls it MOA and the settings group is its setup.
+    public static func toolGroupsRules(_ groups: [ToolGroupSummary]) -> String {
+        """
+        - This app is MacOS Agent, also called MOA or mac-os-agent.
+        - More tools are kept in groups, out of your tool list. Call \(FindToolsTool.name) with a \
+        group's name to see its tools, then \(UseToolTool.name) to call one with the arguments its \
+        parameters describe. Do not answer from this list alone what a group's tools can read. Groups:
+        """ + groups.map { "\n  - \($0.name): \(singleLine($0.summary))" }.joined()
+    }
+
     /// The part the app always sends after the editable part, in the main panel.
-    public static func fixed(skills: [SkillSummary], skillsFolder: URL) -> String {
+    /// - Parameters:
+    ///   - taskLinks: True when the run has `set_links`, which adds `taskLinksRule`.
+    ///   - toolGroups: The groups behind `find_tools` and `use_tool` in this run, which add
+    ///     `toolGroupsRules`. Empty for a run without them.
+    public static func fixed(
+        skills: [SkillSummary], skillsFolder: URL, taskLinks: Bool = false, toolGroups: [ToolGroupSummary] = []
+    ) -> String {
         let folder = skillsFolder.plainPath
         let list = skills.isEmpty
             ? "There are no skills yet."
@@ -99,16 +138,30 @@ public enum AgentInstructions {
             extend what you can do. Write one when the person asks, or when you have worked out a \
             task they are likely to ask for again. New and changed skills are listed from their next \
             message on.
-            - A saved action is a fixed tool call, or a few in order, with the arguments filled in. \
+            - A quick action is a fixed tool call, or a few in order, with the arguments filled in. \
             When the person types its name in the panel and presses Return, the app runs it at once, \
-            with no request to you and no go-ahead, since choosing it is the go-ahead. Manage actions \
-            with \(ReadActionsTool.name) and \(ChangeActionTool.name). When a request came down to a \
+            with no request to you and no go-ahead, since choosing it is the go-ahead. Manage quick actions \
+            with \(ReadQuickActionsTool.name) and \(ChangeQuickActionTool.name). When a request came down to a \
             fixed call or calls the person is likely to repeat, such as opening one thing or running \
-            one command, offer to save it as an action, and save one when they ask, for example \
+            one command, offer to save it as a quick action, and save one when they ask, for example \
             "make that instant". Use a skill instead when the task needs judgment each time.
-            - When the person runs an action, their message holds an <action_run> record of what ran \
+            - When the person runs a quick action, their message holds an <action_run> record of what ran \
             and what came of it, instead of text for you to answer. If they refer to it later, such \
             as "undo that", it is what they mean.
+            - Your memory, shown at the end of these instructions, is yours to manage with \
+            \(ReadMemoryTool.name) and \(ChangeMemoryTool.name). Save to it when the person asks you to \
+            remember something, or states a lasting fact about themselves or how they want things done. \
+            Do not save what only matters to the current task.
+            - Core is for what you need in most episodes, and for every standing rule or prohibition, \
+            since you only see a topic file when you read it. Topic files are for long or \
+            subject-specific material. Give each a description that says when to read it.
+            - Read a topic file when its description matches the request. Check what exists before you \
+            write, and update a memory rather than add one that duplicates or contradicts it. When core \
+            nears its cap, move its least general items to topic files.
+            - Never store passwords, card numbers, or other secrets, even when asked, and say why: \
+            memory is a plain file sent with every request.
+            - When the person says to forget something, remove it. Say briefly in your reply what you \
+            remembered, changed, or forgot.\(taskLinks ? "\n" + taskLinksRule : "")\(toolGroups.isEmpty ? "" : "\n" + toolGroupsRules(toolGroups))
 
             \(list)
             """
@@ -126,8 +179,9 @@ public enum AgentInstructions {
         - Here you can only open apps and answer questions. Your only tools are \
         \(SearchApplicationsTool.name), \(OpenApplicationTool.name), and \
         \(ListRunningApplicationsTool.name). You cannot run shell commands, read or change files, \
-        reminders, calendar events, the clipboard, or settings, load skills, change themes, or \
-        search or read earlier conversations, even when the text above mentions tools for them.
+        reminders, calendar events, the clipboard, or settings, load skills, change themes, \
+        search or read earlier conversations, or read or change memory, even when the text above \
+        mentions tools for them.
         - Answer questions from what you know. When a request needs something you cannot do \
         here, say so plainly in a sentence and suggest asking in the main panel instead. Never \
         say you did something you could not do.
@@ -135,9 +189,18 @@ public enum AgentInstructions {
         brackets. The time is not part of what they typed.
         """
 
-    /// The instructions for one request: the editable text, then the fixed part.
-    public static func assemble(editable: String, skills: [SkillSummary], skillsFolder: URL) -> String {
-        join(editable: editable, fixed: fixed(skills: skills, skillsFolder: skillsFolder))
+    /// The instructions for one request: the editable text, then the fixed part, then the
+    /// memory block when there is one. The block is last so that everything before it stays a
+    /// cached prefix when only memory changes.
+    public static func assemble(
+        editable: String, skills: [SkillSummary], skillsFolder: URL, memoryBlock: String? = nil, taskLinks: Bool = false,
+        toolGroups: [ToolGroupSummary] = []
+    ) -> String {
+        let text = join(
+            editable: editable,
+            fixed: fixed(skills: skills, skillsFolder: skillsFolder, taskLinks: taskLinks, toolGroups: toolGroups))
+        guard let memoryBlock else { return text }
+        return text + "\n\n" + memoryBlock
     }
 
     /// The instructions for an incognito window: the owner's editable text, as in the main
@@ -214,19 +277,85 @@ public struct InstructionsStore: Sendable {
 public struct AgentPrompt: Sendable {
     public var instructions: InstructionsStore
     public var skills: SkillLibrary
+    /// The memory folder, whose block ends the main panel's instructions. Nil sends no block,
+    /// as in tests that do not need one. The incognito window never gets one.
+    public var memories: MemoryLibrary?
+    /// The block as the current episode's first request read it. Shared by copies of this
+    /// prompt, so Settings sees the block the panel sent.
+    public let memorySnapshot: MemorySnapshot
+    /// True when the run's tool list has `set_links`, so the fixed part says what the links row
+    /// is for. Set once at launch with the tool list, never changed while the app runs.
+    public var taskLinks: Bool
+    /// The groups behind `find_tools` and `use_tool` in the run's tool list, which the fixed
+    /// part lists one line each. Set once at launch with the tool list, never changed while the
+    /// app runs. Empty without them.
+    public var toolGroups: [AgentInstructions.ToolGroupSummary]
 
-    public init(instructions: InstructionsStore = InstructionsStore(), skills: SkillLibrary = SkillLibrary()) {
+    public init(
+        instructions: InstructionsStore = InstructionsStore(), skills: SkillLibrary = SkillLibrary(),
+        memories: MemoryLibrary? = nil, memorySnapshot: MemorySnapshot = MemorySnapshot(), taskLinks: Bool = false,
+        toolGroups: [AgentInstructions.ToolGroupSummary] = []
+    ) {
         self.instructions = instructions
         self.skills = skills
+        self.memories = memories
+        self.memorySnapshot = memorySnapshot
+        self.taskLinks = taskLinks
+        self.toolGroups = toolGroups
     }
 
-    /// The full instructions as they stand now. Read once per request, so the name and the
-    /// skills in them stay the same through the request's tool calls.
+    /// The instructions without the memory block, as they stand now.
     public func current() -> String {
+        assemble(memoryBlock: nil)
+    }
+
+    /// The full instructions for a request in this episode. Read once per request, so the name
+    /// and the skills in them stay the same through the request's tool calls. The memory block
+    /// at the end is taken at the episode's first request and kept for the rest of it.
+    public func current(episodeID: UUID?) -> String {
+        assemble(memoryBlock: memoryContents(episodeID: episodeID)?.text)
+    }
+
+    /// The episode's memory block: the one its first request took, or a fresh one for a new
+    /// episode. Nil when this prompt has no memory.
+    public func memoryContents(episodeID: UUID?) -> MemoryBlock.Contents? {
+        guard let memories else { return nil }
+        return memorySnapshot.contents(for: episodeID) { MemoryBlock.contents(memories) }
+    }
+
+    /// The instructions a new episode's first request would send, with the memory folder as it
+    /// is now, without taking a snapshot. For warming a local model's cache ahead of it.
+    public func forNewEpisode() -> String {
+        assemble(memoryBlock: memories.map { MemoryBlock.contents($0) }?.text)
+    }
+
+    /// The block the next request in the current episode would send, without taking a
+    /// snapshot: the one already taken, or the folder as it is now before any request.
+    public func latestMemoryContents() -> MemoryBlock.Contents? {
+        guard let memories else { return nil }
+        return memorySnapshot.latest?.contents ?? MemoryBlock.contents(memories)
+    }
+
+    /// The instructions the next request in the current episode would send, for the
+    /// fingerprint and length Debugging shows. Never shown as text.
+    public func currentAsNextSent() -> String {
+        assemble(memoryBlock: latestMemoryContents()?.text)
+    }
+
+    /// The instructions as Debugging shows them: the block replaced by its size.
+    public func currentForDisplay() -> String {
+        guard let contents = latestMemoryContents() else { return current() }
+        return assemble(memoryBlock: MemoryBlock.placeholder(contents))
+    }
+
+    private func assemble(memoryBlock: String?) -> String {
         AgentInstructions.assemble(
             editable: instructions.load(),
             skills: skills.skills().filter(\.isAvailable).map { .init(name: $0.name, description: $0.description) },
-            skillsFolder: skills.folder)
+            skillsFolder: skills.folder,
+            memoryBlock: memoryBlock,
+            taskLinks: taskLinks,
+            toolGroups: toolGroups)
     }
 
     /// The instructions for an incognito window as they stand now. The window reads them once

@@ -23,6 +23,16 @@ import Foundation
 ///   only one is inherently light or dark, and the panel uses that appearance whatever the
 ///   Mac is set to.
 ///
+/// An appearance may also set `bar`, the fill of the panel's bars: the top bar, the band with
+/// the text field, and the footer under it. It is optional. Without it the bars are the primary
+/// text at 3 percent, a faint offset from the surface that suits any theme, and a file written
+/// before the key existed reads exactly as before.
+///
+/// An appearance may also set `field`, a fill and an edge for the text field drawn as a pill in
+/// the band, with the panel with bars and an input pill experiment on. It is optional too.
+/// Without it the pill is the primary text at 6 percent with an edge at 12 percent. See
+/// `derivedField`.
+///
 /// Fonts, layout, and corner radii are not part of a theme.
 public struct Theme: Sendable, Hashable {
     public static let format = 1
@@ -161,10 +171,17 @@ public struct ThemeAppearance: Sendable, Hashable {
     /// The card that asks for a go-ahead.
     public var goAhead: ThemeBox
     public var incognito: ThemeIncognito
+    /// The fill of the panel's bars, laid over the surface: the top bar, the band with the text
+    /// field, and the footer, and the inspector's bar. Nil takes `derivedBar`. Optional in a file.
+    public var bar: ThemeColor?
+    /// The text field drawn as a pill in the band, its fill laid over the bars' fill and its
+    /// edge around it. Nil takes `derivedField`. Optional in a file.
+    public var field: ThemeBox?
 
     public init(
         surface: ThemeSurface, text: ThemeText, accent: ThemeColor, ownerMessage: ThemeBox, agentReply: ThemeBox,
-        divider: ThemeColor, code: ThemeColor, goAhead: ThemeBox, incognito: ThemeIncognito
+        divider: ThemeColor, code: ThemeColor, goAhead: ThemeBox, incognito: ThemeIncognito, bar: ThemeColor? = nil,
+        field: ThemeBox? = nil
     ) {
         self.surface = surface
         self.text = text
@@ -175,7 +192,41 @@ public struct ThemeAppearance: Sendable, Hashable {
         self.code = code
         self.goAhead = goAhead
         self.incognito = incognito
+        self.bar = bar
+        self.field = field
     }
+
+    /// How strong the bars' fill is when a theme does not set one: the primary text at this
+    /// fraction of its own strength. It is the fill the suggestions experiment's footer had.
+    public static let derivedBarStrength = 0.03
+
+    /// The bars' fill when the theme does not set one: the primary text at 3 percent. Over a
+    /// dark surface that is a faint lightening and over a light one a faint darkening, and for
+    /// a theme whose text is the system's it is `system-label 3%`, which keeps the vibrancy.
+    public var derivedBar: ThemeColor {
+        text.primary.scaled(toOpacity: text.primary.opacity * Self.derivedBarStrength)
+    }
+
+    /// The bars' fill as drawn: the theme's own, or the derived one.
+    public var barFill: ThemeColor { bar ?? derivedBar }
+
+    /// How strong the pill's fill and edge are when a theme does not set `field`: the primary
+    /// text at these fractions of its own strength.
+    public static let derivedFieldFillStrength = 0.06
+    public static let derivedFieldEdgeStrength = 0.12
+
+    /// The pill when the theme does not set one: the primary text at 6 percent, a step
+    /// stronger than the bars' 3, with an edge at 12. Lighter than the band on a dark theme and
+    /// darker on a light one, and `system-label` for a theme whose text is the system's.
+    public var derivedField: ThemeBox {
+        let primary = text.primary
+        return ThemeBox(
+            fill: primary.scaled(toOpacity: primary.opacity * Self.derivedFieldFillStrength),
+            edge: primary.scaled(toOpacity: primary.opacity * Self.derivedFieldEdgeStrength))
+    }
+
+    /// The pill as drawn: the theme's own, or the derived one.
+    public var fieldBox: ThemeBox { field ?? derivedField }
 }
 
 /// Why a theme file could not be read, with where in the file the problem is.
@@ -252,7 +303,7 @@ extension Theme {
         }
 
         static func appearance(_ value: JSONValue, at path: String) throws(ThemeFormatError) -> ThemeAppearance {
-            let object = try Self.object(value, at: path, keys: ThemeAppearance.keys)
+            let object = try Self.object(value, at: path, keys: ThemeAppearance.keys, optional: ["bar", "field"])
 
             let surfacePath = "\(path).surface"
             let surface = try Self.object(object["surface"] ?? .null, at: surfacePath, keys: ["kind", "tint", "fill"], optional: ["tint"])
@@ -287,14 +338,20 @@ extension Theme {
                 goAhead: try box(object["goAhead"], at: "\(path).goAhead"),
                 incognito: ThemeIncognito(
                     tint: try color(incognito, "tint", at: incognitoPath),
-                    badge: try color(incognito, "badge", at: incognitoPath)))
+                    badge: try color(incognito, "badge", at: incognitoPath)),
+                bar: try object["bar"].flatMap { value throws(ThemeFormatError) in
+                    value == .null ? nil : try color(object, "bar", at: path)
+                },
+                field: try object["field"].flatMap { value throws(ThemeFormatError) in
+                    value == .null ? nil : try box(value, at: "\(path).field")
+                })
         }
     }
 }
 
 extension ThemeAppearance {
     /// The keys of an appearance, in the order a file writes them.
-    static let keys = ["surface", "text", "accent", "ownerMessage", "agentReply", "divider", "code", "goAhead", "incognito"]
+    static let keys = ["surface", "text", "accent", "ownerMessage", "agentReply", "divider", "code", "goAhead", "incognito", "bar", "field"]
 }
 
 // MARK: - Writing
@@ -313,6 +370,13 @@ extension Theme {
             }
             let surface = appearance.surface
             let tint = surface.tint.map { " \"tint\": \(color($0))," } ?? ""
+            // The optional keys, each written only when the theme sets it, so a file without
+            // them writes the same bytes as before they existed.
+            var optional: [String] = []
+            if let bar = appearance.bar { optional.append("    \"bar\": \(color(bar))") }
+            if let field = appearance.field {
+                optional.append("    \"field\": { \"fill\": \(color(field.fill)), \"edge\": \(color(field.edge)) }")
+            }
             lines += [
                 "  \"\(entry.kind.rawValue)\": {",
                 "    \"surface\": { \"kind\": \"\(surface.kind.rawValue)\",\(tint) \"fill\": \(color(surface.fill)) },",
@@ -323,9 +387,12 @@ extension Theme {
                 "    \"divider\": \(color(appearance.divider)),",
                 "    \"code\": \(color(appearance.code)),",
                 box("goAhead", appearance.goAhead),
-                "    \"incognito\": { \"tint\": \(color(appearance.incognito.tint)), \"badge\": \(color(appearance.incognito.badge)) }",
-                last ? "  }" : "  },",
+                "    \"incognito\": { \"tint\": \(color(appearance.incognito.tint)), \"badge\": \(color(appearance.incognito.badge)) }\(optional.isEmpty ? "" : ",")",
             ]
+            for (index, line) in optional.enumerated() {
+                lines.append(index == optional.count - 1 ? line : line + ",")
+            }
+            lines.append(last ? "  }" : "  },")
         }
         lines.append("}")
         return lines.joined(separator: "\n") + "\n"

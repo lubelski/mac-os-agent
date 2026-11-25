@@ -6,15 +6,19 @@ import SwiftUI
 
 /// The sections of the Settings window, in sidebar order.
 ///
-/// Debugging is always last. A new section, such as MCP servers, goes above it, with its view
-/// in `SettingsRootView.detail`.
+/// Debugging is always last. A new section goes above it, with its view in
+/// `SettingsRootView.detail`.
 enum SettingsSection: String, CaseIterable, Identifiable {
     case general
     case appearance
     case instructions
+    case memory
     case skills
-    case actions
+    // The raw value stays "actions": it is the section kept in the preferences, and the
+    // name `--preview-settings` takes, from before quick actions were renamed.
+    case quickActions = "actions"
     case tools
+    case mcpServers = "mcp-servers"
     case history
     case behaviors
     case experiments
@@ -27,9 +31,11 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .general: "General"
         case .appearance: "Appearance"
         case .instructions: "Instructions"
+        case .memory: "Memory"
         case .skills: "Skills"
-        case .actions: "Actions"
+        case .quickActions: "Quick Actions"
         case .tools: "Tools"
+        case .mcpServers: "MCP Servers"
         case .history: "History"
         case .behaviors: "Behaviors"
         case .experiments: "Experiments"
@@ -37,14 +43,21 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The sections in the sidebar. MCP Servers shows only with its experiment on.
+    static func visible(mcpServersOn: Bool) -> [SettingsSection] {
+        allCases.filter { $0 != .mcpServers || mcpServersOn }
+    }
+
     var symbolName: String {
         switch self {
         case .general: "gearshape"
         case .appearance: "paintpalette"
         case .instructions: "text.quote"
+        case .memory: "brain"
         case .skills: "puzzlepiece.extension"
-        case .actions: "bolt"
+        case .quickActions: "bolt"
         case .tools: "wrench.and.screwdriver"
+        case .mcpServers: "server.rack"
         case .history: "clock.arrow.circlepath"
         case .behaviors: "keyboard"
         case .experiments: "flask"
@@ -66,14 +79,34 @@ final class SettingsNavigation {
         }
     }
 
+    /// Whether the MCP Servers section is in the sidebar: the MCP servers experiment is on.
+    private(set) var mcpServersOn: Bool
+
     /// Called after the section changes, so the window can title itself with it.
     @ObservationIgnored var didChange: ((SettingsSection) -> Void)?
 
     @ObservationIgnored private let defaults: UserDefaults
+    /// Set for a preview that asks for MCP, which shows the section whatever the preference says.
+    @ObservationIgnored private let mcpServersOverride: Bool?
 
-    init(defaults: UserDefaults) {
+    init(defaults: UserDefaults, mcpServersOverride: Bool? = nil) {
         self.defaults = defaults
-        section = defaults.string(forKey: Self.key).flatMap(SettingsSection.init(rawValue:)) ?? .general
+        self.mcpServersOverride = mcpServersOverride
+        let mcpServersOn = mcpServersOverride ?? Experiment.mcpServers.isOn(defaults)
+        self.mcpServersOn = mcpServersOn
+        let stored = defaults.string(forKey: Self.key).flatMap(SettingsSection.init(rawValue:))
+        // A remembered section that is hidden now falls back as an unknown one does.
+        section = stored.flatMap { SettingsSection.visible(mcpServersOn: mcpServersOn).contains($0) ? $0 : nil } ?? .general
+    }
+
+    var sections: [SettingsSection] { SettingsSection.visible(mcpServersOn: mcpServersOn) }
+
+    /// The MCP servers experiment was turned on or off. Turning it off while its section shows
+    /// lands on Experiments, where the switch is.
+    func mcpServersExperimentChanged(_ on: Bool) {
+        guard mcpServersOverride == nil, on != mcpServersOn else { return }
+        mcpServersOn = on
+        if !on, section == .mcpServers { section = .experiments }
     }
 }
 
@@ -84,11 +117,14 @@ struct SettingsModels {
     let shortcut: ShortcutRecorderModel
     let navigation: SettingsNavigation
     let instructions: InstructionsSettingsModel
+    let memory: MemorySettingsModel
     let skills: SkillsSettingsModel
-    let actions: ActionsSettingsModel
+    let quickActions: QuickActionsSettingsModel
     let tools: ToolsSettingsModel
+    let mcpServers: MCPServersSettingsModel
     let history: HistorySettingsModel
     let debugging: DebuggingSettingsModel
+    let webSearch: WebSearchSettingsModel
     let updater: AppUpdater
 }
 
@@ -100,16 +136,20 @@ struct SettingsRootView: View {
 
     let models: SettingsModels
     @Bindable var navigation: SettingsNavigation
+    @AppStorage(Experiment.mcpServers.key) private var mcpServersExperiment = false
 
     var body: some View {
         // A plain row rather than a split view, so the sidebar keeps its width: it cannot be
         // dragged or collapsed, and there is no sidebar button.
         HStack(spacing: 0) {
+            // A render draws offscreen, where the sidebar's selection material comes out as a
+            // solid block over the row. It selects nothing there and draws the highlight itself,
+            // as meeting-agenda-clock does. See `PreviewRender`.
             List(selection: Binding<SettingsSection?>(
-                get: { navigation.section },
+                get: { PreviewRender.isRendering ? nil : navigation.section },
                 set: { if let section = $0 { navigation.section = section } }
             )) {
-                ForEach(SettingsSection.allCases) { section in
+                ForEach(navigation.sections) { section in
                     // The sidebar draws the selected row's title in a heavier weight, which widens
                     // it. A weight set on the title's own Text overrides that, so the row keeps
                     // one weight across hover and selection. On the Label it has no effect.
@@ -119,6 +159,12 @@ struct SettingsRootView: View {
                         Image(systemName: section.symbolName)
                     }
                     .tag(section)
+                    .listRowBackground(
+                        PreviewRender.isRendering && navigation.section == section
+                            ? RoundedRectangle(cornerRadius: 8)
+                                .fill(Color(nsColor: .unemphasizedSelectedContentBackgroundColor))
+                                .padding(.horizontal, 10)
+                            : nil)
                 }
             }
             .listStyle(.sidebar)
@@ -129,22 +175,28 @@ struct SettingsRootView: View {
             detail
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         }
+        .onChange(of: mcpServersExperiment) { _, on in navigation.mcpServersExperimentChanged(on) }
     }
 
     @ViewBuilder private var detail: some View {
         switch navigation.section {
         case .general:
-            GeneralSettingsView(session: models.session, shortcut: models.shortcut, updater: models.updater)
+            GeneralSettingsView(
+                session: models.session, shortcut: models.shortcut, webSearch: models.webSearch, updater: models.updater)
         case .appearance:
             AppearanceSettingsView(model: ThemeModel.shared)
         case .instructions:
             InstructionsSettingsView(model: models.instructions)
+        case .memory:
+            MemorySettingsView(model: models.memory)
         case .skills:
             SkillsSettingsView(model: models.skills)
-        case .actions:
-            ActionsSettingsView(model: models.actions)
+        case .quickActions:
+            QuickActionsSettingsView(model: models.quickActions)
         case .tools:
             ToolsSettingsView(model: models.tools)
+        case .mcpServers:
+            MCPServersSettingsView(model: models.mcpServers)
         case .history:
             HistorySettingsView(model: models.history)
         case .behaviors:
@@ -176,23 +228,30 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     init(
         session: AgentSession, prompt: AgentPrompt, usageLog: UsageLog, tools: ToolRegistry,
         history: ThreadStore?, problems: ProblemLog, signInStatus: @escaping @Sendable () async -> SignInStatus?,
+        secretStorage: SecretStorage.Status? = nil, modelAccess: ModelAccess = .signIn,
         summonTrigger: SummonTriggerController, defaults: UserDefaults = .standard, remembersFrame: Bool = true,
         privacyAccess: any PrivacyAccessGate = EventKitStore.shared,
-        actions: SavedActionLibrary = SavedActionLibrary(),
+        quickActions: QuickActionLibrary = QuickActionLibrary(),
+        mcp: MCPServerPool = .empty, mcpServersOverride: Bool? = nil,
+        webSearch: WebSearchContext = WebSearchContext(launched: .off, key: nil),
         updater: AppUpdater = .unavailable()
     ) {
         models = SettingsModels(
             session: session,
             shortcut: ShortcutRecorderModel(controller: summonTrigger),
-            navigation: SettingsNavigation(defaults: defaults),
+            navigation: SettingsNavigation(defaults: defaults, mcpServersOverride: mcpServersOverride),
             instructions: InstructionsSettingsModel(prompt: prompt),
+            memory: MemorySettingsModel(prompt: prompt),
             skills: SkillsSettingsModel(library: prompt.skills),
-            actions: ActionsSettingsModel(library: actions, tools: tools.definitions, summaries: tools.summaries),
-            tools: ToolsSettingsModel(registry: tools, access: privacyAccess),
+            quickActions: QuickActionsSettingsModel(library: quickActions, tools: tools.definitions, summaries: tools.summaries),
+            tools: ToolsSettingsModel(registry: tools, access: privacyAccess, mcpSettings: mcp.settings),
+            mcpServers: MCPServersSettingsModel(pool: mcp),
             history: HistorySettingsModel(history: history),
             debugging: DebuggingSettingsModel(
                 prompt: prompt, usageLog: usageLog, tools: tools, problems: problems,
-                signInStatus: signInStatus, defaults: defaults),
+                signInStatus: signInStatus, secretStorage: secretStorage, modelAccess: modelAccess,
+                webSearch: webSearch, defaults: defaults),
+            webSearch: WebSearchSettingsModel(context: webSearch),
             updater: updater)
 
         let root = SettingsRootView(models: models, navigation: models.navigation)
@@ -263,11 +322,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         // The agent can write skills and the person can edit files in Finder while the window
         // is closed, so read them again whenever it comes forward.
         models.skills.reload()
-        models.actions.reload()
+        models.quickActions.reload()
         models.instructions.reloadIfUnchanged()
+        models.memory.reload()
         models.debugging.reload()
         models.history.reload()
         models.tools.reloadAccess()
+        Task { await models.mcpServers.reload() }
     }
 }
 
@@ -316,16 +377,23 @@ final class SettingsTitleBar: NSObject, NSToolbarDelegate {
 /// shows it, and `--preview-item <name>` selects a skill or tool in that section.
 @MainActor
 enum SettingsPreview {
+    /// The tools of the settings tools experiment, any of which `--preview-item` can select.
+    static let settingsToolNames: Set = [FindToolsTool.name, UseToolTool.name, ReadSettingsTool.name, ChangeSettingsTool.name]
+
     private static var controller: SettingsWindowController?
 
     static func show(_ section: SettingsSection, item: String?) {
         let session = AgentSession(previewEntries: [])
+        // `--preview-item gateway` in General or Debugging shows a development build, which
+        // reaches its models through inference-gateway and has no sign-in.
+        let modelAccess: ModelAccess = item == "gateway" && [.general, .debugging].contains(section) ? .gateway : .signIn
+        session.modelAccess = modelAccess
         // Preferences of their own, so the model picker never reads or writes the real setting.
         let defaults = UserDefaults(suiteName: "dev.lubelski.mac-os-agent.preview") ?? .standard
         // The default instructions take the agent's name from the same preferences.
         let prompt = AgentPrompt(instructions: InstructionsStore(agentName: {
             AgentNameSetting.current(UserDefaults(suiteName: "dev.lubelski.mac-os-agent.preview") ?? .standard)
-        }))
+        }), memories: MemoryLibrary())
         let problems = ProblemLog()
         problems.record(
             "Request", "OpenAI API error (429): The usage limit for this plan was reached. Try again in 12 minutes.",
@@ -334,9 +402,34 @@ enum SettingsPreview {
         // A stand-in hotkey that never registers, so a preview cannot take the installed app's.
         let hotKey = StandInHotKey()
         let summonTrigger = SettingsPreview.summonTrigger(hotKey: hotKey, defaults: defaults, state: section == .general ? item : nil)
+        let webSearch = SettingsPreview.webSearch(defaults: defaults, state: section == .general ? item : nil)
+        // A preview of MCP Servers, or of an MCP tool, asks for MCP, so it shows as if the
+        // experiment were on without reading or writing its preference. Other previews follow
+        // the preview's own preferences, where it is off.
+        // A Tools item names one tool, or a pane stack state whose words may name one.
+        let toolWords = section == .tools ? Set((item ?? "").split(separator: ".").map(String.init)) : []
+        let showsMCP = section == .mcpServers || (section == .tools && item?.contains(MCPToolNaming.separator) == true)
+        let mcp = showsMCP ? standInMCPServers() : .empty
         let controller = SettingsWindowController(
             session: session, prompt: prompt, usageLog: UsageLog(),
-            tools: ToolRegistry(builtIn: BuiltInTools.make(skills: prompt.skills, history: history)),
+            tools: ToolRegistry(
+                builtIn: BuiltInTools.make(
+                    skills: prompt.skills, history: history,
+                    // `--preview-item set_links` shows the tool as a run with the panel with bars
+                    // experiment on has it, without reading or writing its preference.
+                    taskLinks: toolWords.contains(SetLinksTool.name) ? SetLinksTool(store: TaskLinkStore(fileURL: URL(filePath: "/dev/null"))) : nil,
+                    // `--preview-item` with a tool of the settings tools experiment, such as
+                    // `use_tool` or `change_settings`, shows the tools as a run with it on has
+                    // them, without reading or writing its preference.
+                    onDemandGroups: !toolWords.isDisjoint(with: SettingsPreview.settingsToolNames)
+                        ? [SettingsToolGroup.make(access: AppSettingsAccess(
+                            serversFile: URL(filePath: "/dev/null"), mcp: mcp, toolsInThisRun: [:], defaults: defaults,
+                            experimentsOnAtLaunch: []))]
+                        : []),
+                additional: mcp.makeTools()
+                // `--preview-item run_script` shows the tool as a run with the scripts
+                // experiment on has it, without reading or writing its preference.
+            ).addingRunScript(toolWords.contains(RunScriptTool.name)),
             history: history,
             problems: problems,
             signInStatus: {
@@ -344,22 +437,58 @@ enum SettingsPreview {
                     isSignedIn: true, accessTokenExpires: Date().addingTimeInterval(52 * 60),
                     lastTokenDate: Date().addingTimeInterval(-8 * 60))
             },
+            // A stand-in. A preview decides nothing about the real store and never opens the Keychain.
+            secretStorage: SecretStorage.Status(location: .file, reason: .anotherDataFolder, migration: nil),
+            modelAccess: modelAccess,
             summonTrigger: summonTrigger, defaults: defaults, remembersFrame: false,
-            privacyAccess: StandInPrivacyAccess())
+            privacyAccess: StandInPrivacyAccess(), mcp: mcp, mcpServersOverride: showsMCP ? true : nil,
+            webSearch: webSearch)
         self.controller = controller
         if section == .general, let item {
             showShortcut(item, in: controller.models.shortcut)
         } else if let item {
             controller.models.history.query = section == .history ? item : ""
             controller.models.skills.selection = item
-            if section == .actions { controller.models.actions.selection = item }
-            controller.models.tools.selection = item
-            controller.models.debugging.scrollTarget = item
+            if section == .quickActions { controller.models.quickActions.selection = item }
+            if section == .tools, item.hasPrefix(SettingsPreview.paneStackItem) {
+                showPaneStack(item, in: controller)
+            } else {
+                controller.models.tools.selection = item
+            }
+            if section == .mcpServers { controller.models.mcpServers.selection = item }
+            controller.models.debugging.scrollTarget = item == "gateway" ? "sign-in" : item
+        }
+        controller.models.debugging.reload()
+        if PreviewRender.isRendering, let window = controller.window {
+            // Drawn offscreen, never ordered in. See `PreviewRender`.
+            controller.models.navigation.section = section
+            window.center()
+            PreviewRender.render(window)
+            return
         }
         controller.show(section, takeFocus: false)
-        controller.models.debugging.reload()
         // Quits on its own, so a failed capture script cannot leave it on screen.
         Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { _ in exit(0) }
+    }
+
+    /// The first word of a Tools `--preview-item` that shows the pane stack, as if its
+    /// experiment were on, without reading or writing its preference.
+    static let paneStackItem = "stack"
+
+    /// Tools as a pane stack. The item is `stack`, then dot-separated words: a group's id or a
+    /// tool's name opens it (a tool opens its group too), `end` scrolls the top pane to its end,
+    /// and `narrow` shrinks the window to its minimum size. `stack.system.narrow` opens System at
+    /// the minimum width, and `stack.find_files.end` opens find_files scrolled to its end.
+    private static func showPaneStack(_ item: String, in controller: SettingsWindowController) {
+        let tools = controller.models.tools
+        tools.paneStackOverride = true
+        for word in item.split(separator: ".").dropFirst().map(String.init) {
+            switch word {
+            case "end": tools.stack.topStartsAtEnd = true
+            case "narrow": controller.window?.setContentSize(SettingsWindowController.minimumSize)
+            default: tools.showInStack(word)
+            }
+        }
     }
 
     /// The summon shortcut in a preview. `--preview-item` picks a state for General:
@@ -376,6 +505,19 @@ enum SettingsPreview {
             hotKey.taken = [KeyChord(keyCode: UInt16(kVK_ANSI_K), modifiers: [.control, .option])]
         }
         return controller
+    }
+
+    /// Web search in a preview, as if the run launched with it off. `--preview-item` picks a
+    /// state for General: `brave` (Brave Search chosen, no key yet) or `brave-saved` (a key
+    /// saved). The key lives in a temporary file, never the Keychain or the real data folder.
+    private static func webSearch(defaults: UserDefaults, state: String?) -> WebSearchContext {
+        WebSearchSetting.set(state?.hasPrefix("brave") == true ? .brave : .off, defaults)
+        let file = FileManager.default.temporaryDirectory
+            .appending(path: "mac-os-agent-preview-\(UUID().uuidString)", directoryHint: .isDirectory)
+            .appending(path: "secrets.json")
+        let key = BraveSearchKey(secrets: FileSecrets(fileURL: file))
+        if state == "brave-saved" { try? key.save("preview-key") }
+        return WebSearchContext(launched: .off, key: key)
     }
 
     private static func showShortcut(_ state: String, in recorder: ShortcutRecorderModel) {
@@ -403,6 +545,55 @@ enum SettingsPreview {
         }
 
         func requestAccess(_ kind: PrivacyAccessKind) async -> PrivacyAccessStatus { status(kind) }
+    }
+
+    /// The MCP servers in the data folder's files, with stand-in connections that start no
+    /// process. Without `--data-folder` it reads nothing and shows no servers. Each server acts
+    /// by its name: `notes` fails, `files` never finishes starting, and the rest connect with
+    /// their cached tools, or a stand-in list when they have none.
+    private static func standInMCPServers() -> MCPServerPool {
+        guard CommandLine.arguments.contains(AgentPaths.dataFolderArgument) else { return .empty }
+        let settings = MCPSettingsStore()
+        let cache = MCPToolCache.read()
+        let pool = MCPServerPool(
+            config: MCPServerConfig.read(), settings: settings, cache: cache, cacheFile: nil,
+            factory: { entry in StandInMCPConnection(name: entry.name, cached: cache.servers[entry.name]?.tools) })
+        Task { await pool.start() }
+        return pool
+    }
+
+    /// A connection that acts by the server's name and never starts a process.
+    private struct StandInMCPConnection: MCPServerConnection {
+        let name: String
+        let cached: [MCPToolInfo]?
+
+        func connect() async throws {
+            switch name {
+            case "notes":
+                throw MCPConnectionError.exited(status: 1, message: "Error: NOTES_API_TOKEN is not set.")
+            case "files":
+                try await Task.sleep(for: .seconds(60))
+            default:
+                break
+            }
+        }
+
+        func listTools() async throws -> [MCPToolInfo] {
+            cached ?? [
+                MCPToolInfo(name: "current_time", description: "The current time in a time zone.", inputSchema: [
+                    "type": "object", "properties": ["zone": ["type": "string", "description": "An IANA time zone, such as Europe/Lisbon."]],
+                ], readOnly: true),
+                MCPToolInfo(name: "set_timer", description: "Starts a countdown timer.", inputSchema: [
+                    "type": "object", "properties": ["minutes": ["type": "number"]], "required": ["minutes"],
+                ]),
+            ]
+        }
+
+        func callTool(name: String, arguments: JSONValue) async throws -> MCPCallResult {
+            MCPCallResult(content: [.text("A stand-in result.")])
+        }
+
+        func stop() async {}
     }
 
     /// A few episodes of stand-in conversation in a temporary folder, never the real thread.

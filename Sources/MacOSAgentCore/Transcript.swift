@@ -13,6 +13,9 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
         case tool(command: String, status: ToolStatus, output: String?)
         case notice(String)
         case error(String)
+        /// Something the owner did without a message, with the panel with bars experiment on:
+        /// a quick action that ran or failed, or an app they opened. One small centered line.
+        case line(TranscriptLine)
     }
 
     public enum ToolStatus: Equatable, Sendable {
@@ -54,12 +57,18 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
         if case .episodeStart = kind { true } else { false }
     }
 
+    public var isLine: Bool {
+        if case .line = kind { true } else { false }
+    }
+
     /// How much room goes above a row, which is what groups the history into exchanges.
     public enum Gap: Equatable, Sendable {
         /// The first row.
         case none
         /// Between two commands in a run, so the run reads as one block.
         case tight
+        /// Between two lines for things the owner did without a message. Each is its own line.
+        case betweenLines
         /// Between rows of one exchange.
         case regular
         /// Above the owner's message that starts the next exchange.
@@ -77,6 +86,7 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
         if previous.isEpisodeStart { return .belowEpisode }
         if row.isUser { return .exchange }
         if previous.isTool && row.isTool { return .tight }
+        if previous.isLine && row.isLine { return .betweenLines }
         return .regular
     }
 
@@ -122,19 +132,32 @@ public struct Transcript: Equatable, Sendable {
     private let calendar: Calendar
     /// What a tool call's row says, from the tools themselves.
     private let summaries: ToolCallSummaries
+    /// With the panel with bars experiment on: a quick action's run is one line, in place of
+    /// the typed text and a row per step, and an app the owner opened is a line too. Off, both
+    /// read as they always have, and an opening shows nothing.
+    public let showsLines: Bool
+    /// The entry id of a quick action that is running while `showsLines` is on. Its steps get
+    /// no rows of their own.
+    private var runningActionID: UUID?
 
     /// - Parameter summaries: The tools whose summaries the rows show. A call to a tool that is
     ///   not among them shows the tool's name.
-    public init(calendar: Calendar = .current, summaries: ToolCallSummaries = .builtIn) {
+    ///   - showsLines: Draws what the owner did without a message as one line each, for the
+    ///     panel with bars experiment.
+    public init(calendar: Calendar = .current, summaries: ToolCallSummaries = .builtIn, showsLines: Bool = false) {
         self.calendar = calendar
         self.summaries = summaries
+        self.showsLines = showsLines
     }
 
     /// Builds the rows for a thread loaded from disk. A command that never got a result, because
     /// the app quit or the task stopped while it ran, is shown as finished rather than running.
     /// Each tool call shows the summary its tool gives, as it did while it ran.
-    public init(entries: some Sequence<ThreadEntry>, calendar: Calendar = .current, summaries: ToolCallSummaries = .builtIn) {
-        self.init(calendar: calendar, summaries: summaries)
+    public init(
+        entries: some Sequence<ThreadEntry>, calendar: Calendar = .current, summaries: ToolCallSummaries = .builtIn,
+        showsLines: Bool = false
+    ) {
+        self.init(calendar: calendar, summaries: summaries, showsLines: showsLines)
         for entry in entries { apply(entry) }
         for index in rows.indices {
             if case .tool(let command, let status, let output) = rows[index].kind, status != .finished {
@@ -191,7 +214,11 @@ public struct Transcript: Equatable, Sendable {
             break
         case .userMessage(let text, _, let action):
             if let action {
-                applyActionRun(action, text: text, entry: entry)
+                if showsLines {
+                    applyActionLine(action, text: text, entry: entry)
+                } else {
+                    applyActionRun(action, text: text, entry: entry)
+                }
                 break
             }
             let showsTime = lastUserDate != nil
@@ -220,19 +247,75 @@ public struct Transcript: Equatable, Sendable {
                 status = .finished
                 output = result.output
             }
-        case .providerItem:
-            break
+        case .providerItem(let item):
+            // Reasoning shows nothing. A hosted tool call, such as OpenAI's web search, is a
+            // tool row like any other, filled in from the finished item, so a row rebuilt from
+            // the saved thread reads the same as the live one.
+            if let call = item.hostedToolCall { applyHostedCall(call, item: item, entry: entry) }
+        case .appOpened(let opening):
+            // With the experiment off an opening shows nothing, as before it was logged.
+            guard showsLines else { break }
+            append(TranscriptRow(id: entry.id.uuidString, kind: .line(TranscriptLine(
+                verb: TranscriptLine.opened, name: opening.name, icon: .application(path: opening.path), date: entry.date))))
         }
     }
 
-    /// A saved action began running: the owner's typed text shows as their message at once, and
+    /// A quick action's run as one line: "Ran" and its name, or its name and why it failed.
+    /// The line the run showed while it ran is filled in where it is.
+    private mutating func applyActionLine(_ action: ThreadItem.QuickActionRun, text: String, entry: ThreadEntry) {
+        let id = entry.id.uuidString
+        if runningActionID == entry.id { runningActionID = nil }
+        lastUserDate = entry.date
+        let line = TranscriptLine(
+            verb: TranscriptLine.ran, name: action.name, icon: .quickAction, failure: action.failureReason,
+            typed: text, date: entry.date)
+        if let index = indexByID[id] {
+            rows[index].kind = .line(line)
+        } else {
+            append(TranscriptRow(id: id, kind: .line(line)))
+        }
+    }
+
+    /// The row of a call the model ran on the provider's side. While it runs, the loop's
+    /// started and running events made the row. The finished item fills it in, or adds it
+    /// when the thread is loaded from disk.
+    private mutating func applyHostedCall(_ call: HostedToolCall, item: ThreadItem.ProviderItem, entry: ThreadEntry) {
+        var facts = toolFacts[call.callID] ?? ToolCallFacts()
+        facts.call = ThreadItem.ToolCall(
+            callID: call.callID, name: call.name, arguments: call.arguments.encodedString(),
+            provider: item.provider, model: item.model, providerID: call.callID)
+        if facts.calledAt == nil { facts.calledAt = entry.date }
+        // Only a call seen running has a duration. One loaded from disk has no start time.
+        if facts.runningSince != nil { facts.finishedAt = entry.date }
+        facts.details = ToolRunDetails(source: call.host)
+        toolFacts[call.callID] = facts
+        let output: String? = call.status == .running ? nil : call.output
+        let status: TranscriptRow.ToolStatus = call.status == .running ? .running : .finished
+        if indexByID[call.callID] == nil {
+            append(TranscriptRow(id: call.callID, kind: .tool(command: call.summary, status: status, output: output)))
+        } else {
+            updateTool(call.callID) { command, rowStatus, rowOutput in
+                command = call.summary
+                rowStatus = status
+                rowOutput = output
+            }
+        }
+    }
+
+    /// A quick action began running: the owner's typed text shows as their message at once, and
     /// each step adds its row as it starts, under the call ids the run gives it. The run's entry
     /// fills them in when it ends, through `apply`.
-    public mutating func beginActionRun(_ start: ActionRunStart) {
+    public mutating func beginActionRun(_ start: QuickActionRunStart) {
         let id = start.entryID.uuidString
         guard indexByID[id] == nil else { return }
         // The very first entry of a thread starts an episode. Its separator has to come first.
         if tracker.lastActivity == nil, pendingSeparator == nil, rows.isEmpty { beginEpisode(at: start.date) }
+        if showsLines {
+            runningActionID = start.entryID
+            append(TranscriptRow(id: id, kind: .line(TranscriptLine(
+                verb: TranscriptLine.running, name: start.name, icon: .quickAction, typed: start.text, date: start.date))))
+            return
+        }
         let showsTime = lastUserDate != nil
             && Self.startsNewStretch(previous: lastUserDate, current: start.date, calendar: calendar)
         append(TranscriptRow(id: id, kind: .user(text: start.text, date: start.date, showsTime: showsTime)))
@@ -241,7 +324,7 @@ public struct Transcript: Equatable, Sendable {
     /// The rows of an action's run: the typed text, a row per step that ran with its output, and
     /// a line saying where it stopped when a step failed. Rows the run already showed while it
     /// ran are filled in where they are.
-    private mutating func applyActionRun(_ action: ThreadItem.ActionRun, text: String, entry: ThreadEntry) {
+    private mutating func applyActionRun(_ action: ThreadItem.QuickActionRun, text: String, entry: ThreadEntry) {
         let id = entry.id.uuidString
         if indexByID[id] == nil {
             let showsTime = lastUserDate != nil
@@ -277,6 +360,8 @@ public struct Transcript: Equatable, Sendable {
     /// The model began a call whose arguments have not arrived yet.
     public mutating func toolStarted(_ callID: String) {
         guard indexByID[callID] == nil else { return }
+        // A running quick action's steps have no rows when it is drawn as one line.
+        if let runningActionID, callID.hasPrefix(runningActionID.uuidString) { return }
         append(TranscriptRow(id: callID, kind: .tool(command: "", status: .preparing, output: nil)))
     }
 
@@ -396,5 +481,57 @@ public enum TranscriptTimeLabel {
     /// The full date and time, for the tooltip on every message.
     public static func fullText(for date: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
         date.formatted(Date.FormatStyle(date: .complete, time: .shortened, locale: locale, calendar: calendar, timeZone: calendar.timeZone))
+    }
+}
+
+/// A line in the conversation for something the owner did without a message, with the panel
+/// with bars experiment on: "Ran", a quick action's icon, and its name; "Opened", an app's own
+/// icon, and its name; or a quick action's icon, its name, and why it failed. It is drawn
+/// centered and faint, like a time stamp, and a failure in red.
+public struct TranscriptLine: Equatable, Sendable {
+    public enum Icon: Equatable, Sendable {
+        /// A quick action's symbol.
+        case quickAction
+        /// The app's own icon, read from its bundle.
+        case application(path: String)
+    }
+
+    public static let ran = "Ran"
+    public static let opened = "Opened"
+    /// While a quick action runs. The panel is hidden then, so it is rarely seen.
+    public static let running = "Running"
+
+    public var verb: String
+    public var name: String
+    public var icon: Icon
+    /// Why a quick action failed. Nil when it finished, and for an opening.
+    public var failure: String?
+    /// What the owner typed for a quick action, which Up Arrow still recalls.
+    public var typed: String?
+    public var date: Date
+
+    public init(verb: String, name: String, icon: Icon, failure: String? = nil, typed: String? = nil, date: Date) {
+        self.verb = verb
+        self.name = name
+        self.icon = icon
+        self.failure = failure
+        self.typed = typed
+        self.date = date
+    }
+
+    public var isFailure: Bool { failure != nil }
+
+    /// The words after the icon: the name, and for a failure "failed:" and why.
+    public var trailingText: String {
+        guard let failure else { return name }
+        return "\(name) failed: \(failure)"
+    }
+
+    /// The words before the icon. A failure has none.
+    public var leadingText: String? { isFailure ? nil : verb }
+
+    /// The whole line in words, for VoiceOver.
+    public var spokenText: String {
+        [leadingText, trailingText].compactMap { $0 }.joined(separator: " ")
     }
 }

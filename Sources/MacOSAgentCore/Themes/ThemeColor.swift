@@ -164,4 +164,15 @@ public enum ThemeColor: Sendable, Hashable, CustomStringConvertible {
         case .system(_, let percent): Double(percent) / 100
         }
     }
+
+    /// The same color at another alpha, from 0 to 1, rounded to what a file can write.
+    public func scaled(toOpacity opacity: Double) -> ThemeColor {
+        let opacity = min(1, max(0, opacity))
+        return switch self {
+        case .hex(let red, let green, let blue, _):
+            .hex(red: red, green: green, blue: blue, alpha: UInt8((opacity * 255).rounded()))
+        case .system(let system, _):
+            .system(system, percent: Int((opacity * 100).rounded()))
+        }
+    }
 }
