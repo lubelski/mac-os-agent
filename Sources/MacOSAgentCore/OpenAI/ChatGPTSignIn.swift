@@ -4,16 +4,22 @@ import Foundation
 /// The pieces of "Sign in with ChatGPT" that do not touch the network: constants, PKCE,
 /// the authorize URL, the callback, and token responses.
 ///
-/// Ported from pi's `packages/ai/src/auth/oauth/openai-chatgpt.ts` and `pkce.ts`. The flow
-/// registers this installation as its own OAuth client (the dynamic client id), and the
-/// resulting access token is sent directly to api.openai.com. It does not use the Codex
-/// client or the chatgpt.com backend.
+/// Ported from pi's `packages/ai/src/auth/oauth/openai-chatgpt.ts` and `pkce.ts`, and brought
+/// in line with OpenAI's documentation for open-source apps
+/// (https://developers.openai.com/siwc/token-sharing-open-source). The first sign-in registers
+/// this installation as its own OAuth client through the dynamic client id, and later sign-ins
+/// to the same account reuse the client id OpenAI issued. The access token is sent directly to
+/// api.openai.com. It does not use the Codex client or the chatgpt.com backend.
 public enum ChatGPTSignIn {
-    /// Every sign-in registers a new client with this id. OpenAI returns the issued client id in the callback.
+    /// The entry point for a first registration only. OpenAI returns the issued client id in the
+    /// callback, and that is the id to keep and use from then on.
     public static let dynamicClientID = "dynamic_agent_client"
     public static let agentNameHint = "mac-os-agent"
     public static let authorizeURL = URL(string: "https://auth.openai.com/api/accounts/authorize")!
     public static let tokenURL = URL(string: "https://auth.openai.com/api/accounts/oauth/token")!
+    public static let issuer = "https://auth.openai.com"
+    /// Where the revocation endpoint is published. The docs say to read it from here.
+    public static let discoveryURL = URL(string: "https://auth.openai.com/.well-known/openid-configuration")!
     public static let resource = "https://api.openai.com/v1"
     public static let callbackHost = "127.0.0.1"
     public static let callbackPort: UInt16 = 1455
@@ -44,6 +50,24 @@ public enum ChatGPTSignIn {
         public var clientID: String
     }
 
+    /// This installation's registration with OpenAI for one ChatGPT account: the issued client
+    /// id, and the account it was issued for. It is kept apart from the tokens, so signing out
+    /// removes the tokens and keeps this for the next sign-in.
+    public struct Registration: Sendable, Equatable {
+        public var clientID: String
+        /// The `sub` of the account's ID token. Nil for a registration kept before the app read
+        /// it, which takes the subject of its next sign-in.
+        public var subject: String?
+        /// The account's email, sent as `login_hint` on the next sign-in.
+        public var email: String?
+
+        public init(clientID: String, subject: String? = nil, email: String? = nil) {
+            self.clientID = clientID
+            self.subject = subject
+            self.email = email
+        }
+    }
+
     public struct Credential: Sendable, Equatable {
         public var accessToken: String
         public var refreshToken: String
@@ -51,6 +75,14 @@ public enum ChatGPTSignIn {
         public var refreshAfter: Date
         public var clientID: String
         public var scopes: [String]
+        /// The ID token, when the response had one. It is kept with the tokens for `id_token_hint`.
+        public var idToken: String? = nil
+    }
+
+    /// What the app reads from an ID token: who signed in.
+    public struct IDTokenClaims: Sendable, Equatable {
+        public var subject: String
+        public var email: String?
     }
 
     public enum SignInError: Error, Equatable, LocalizedError {
@@ -65,6 +97,11 @@ public enum ChatGPTSignIn {
         case portInUse
         case notSignedIn
         case cancelled
+        /// A sign-in that reused a client id got a callback naming another one.
+        case clientIDMismatch
+        case invalidIDToken(String)
+        /// A sign-in that reused this installation's registration came back as another account.
+        case differentAccount
 
         public var errorDescription: String? {
             switch self {
@@ -80,6 +117,10 @@ public enum ChatGPTSignIn {
                 "Port \(callbackPort) is in use, probably by an unfinished sign-in in another app such as the Codex CLI. Cancel that sign-in and try again."
             case .notSignedIn: "Not signed in to ChatGPT"
             case .cancelled: "Sign-in cancelled"
+            case .clientIDMismatch: "OpenAI returned a different client ID from the one this sign-in used, so it was not accepted. Try again."
+            case .invalidIDToken(let detail): "OpenAI's ID token \(detail)"
+            case .differentAccount:
+                "The browser signed in to a different ChatGPT account from the one this Mac is registered with, so nothing was changed. Sign in again with the account you used before, or choose Use a Different Account in Settings, General."
             }
         }
     }
@@ -95,10 +136,18 @@ public enum ChatGPTSignIn {
     }
 
     /// The browser URL that starts sign-in. The parameters and their order match pi.
-    public static func authorizationURL(installationID: UUID, state: String, challenge: String, nonce: String) -> URL {
-        let query = FormEncoding.encode([
-            ("client_id", dynamicClientID),
-            ("agent_name_hint", agentNameHint),
+    ///
+    /// With no registration it is a first registration: `dynamic_agent_client` and
+    /// `agent_name_hint`. With one it is a reauthorization: the issued client id, no
+    /// `agent_name_hint`, and the account's email as `login_hint` and a retained ID token as
+    /// `id_token_hint` when there are any. The host id is the same either way.
+    public static func authorizationURL(
+        installationID: UUID, state: String, challenge: String, nonce: String,
+        registration: Registration? = nil, idTokenHint: String? = nil
+    ) -> URL {
+        var pairs: [(String, String)] = [("client_id", registration?.clientID ?? dynamicClientID)]
+        if registration == nil { pairs.append(("agent_name_hint", agentNameHint)) }
+        pairs += [
             ("ext_agent_host_id", agentHostID(installationID)),
             ("response_type", "code"),
             ("redirect_uri", redirectURI),
@@ -108,13 +157,28 @@ public enum ChatGPTSignIn {
             ("code_challenge", challenge),
             ("code_challenge_method", "S256"),
             ("nonce", nonce),
-        ])
-        return URL(string: authorizeURL.absoluteString + "?" + query)!
+        ]
+        if let registration {
+            if let email = registration.email, !email.isEmpty { pairs.append(("login_hint", email)) }
+            if let idTokenHint, !idTokenHint.isEmpty { pairs.append(("id_token_hint", idTokenHint)) }
+        }
+        return URL(string: authorizeURL.absoluteString + "?" + FormEncoding.encode(pairs))!
+    }
+
+    /// True for a client id OpenAI could have issued: not the dynamic entry point, and only
+    /// letters, digits, `_`, and `-`.
+    static func isIssuedClientID(_ id: String) -> Bool {
+        let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+        return !id.isEmpty && id.count <= 200 && id != dynamicClientID && id.allSatisfy(allowed.contains)
     }
 
     /// Reads the browser's redirect to the callback. Throws when OpenAI reported an error,
     /// a field is missing, or the state does not match the one this sign-in sent.
-    public static func authorizationResult(callback: URL, expectedState: String) throws -> AuthorizationResult {
+    /// - Parameter savedClientID: The issued client id a reauthorization sent. Its callback may
+    ///   leave `client_id` out, and one that names a different id is refused.
+    public static func authorizationResult(
+        callback: URL, expectedState: String, savedClientID: String? = nil
+    ) throws -> AuthorizationResult {
         var components = URLComponents(url: callback, resolvingAgainstBaseURL: false)
         // Read `+` as a space, as URLSearchParams does.
         let query = components?.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%20")
@@ -127,7 +191,12 @@ public enum ChatGPTSignIn {
         guard let code = value("code"), !code.isEmpty else { throw SignInError.missingCode }
         guard let state = value("state"), !state.isEmpty else { throw SignInError.missingState }
         guard state == expectedState else { throw SignInError.stateMismatch }
-        guard let clientID = value("client_id")?.trimmingCharacters(in: .whitespaces), !clientID.isEmpty else {
+        let returned = value("client_id")?.trimmingCharacters(in: .whitespaces)
+        if let savedClientID {
+            if let returned, !returned.isEmpty, returned != savedClientID { throw SignInError.clientIDMismatch }
+            return AuthorizationResult(code: code, clientID: savedClientID)
+        }
+        guard let clientID = returned, isIssuedClientID(clientID) else {
             throw SignInError.missingClientID
         }
         return AuthorizationResult(code: code, clientID: clientID)
@@ -143,6 +212,26 @@ public enum ChatGPTSignIn {
             ("redirect_uri", redirectURI),
             ("resource", resource),
         ])
+    }
+
+    /// The form body that revokes the renewable session at sign-out.
+    public static func revocationBody(refreshToken: String, clientID: String) -> String {
+        FormEncoding.encode([
+            ("token", refreshToken),
+            ("token_type_hint", "refresh_token"),
+            ("client_id", clientID),
+        ])
+    }
+
+    /// Reads `revocation_endpoint` from the OpenID configuration. It has to be an https address
+    /// on OpenAI's issuer, so a tampered document cannot send the refresh token elsewhere.
+    public static func revocationEndpoint(fromDiscovery data: Data) -> URL? {
+        guard let json = try? JSONDecoder().decode(JSONValue.self, from: data),
+              json["issuer"]?.stringValue == issuer,
+              let text = json["revocation_endpoint"]?.stringValue,
+              let url = URL(string: text), url.scheme == "https", url.host() == "auth.openai.com"
+        else { return nil }
+        return url
     }
 
     /// The form body that trades a refresh token for new tokens.
@@ -169,10 +258,9 @@ public enum ChatGPTSignIn {
             }
             return value
         }
-        if requireIDToken {
-            guard let idToken = object["id_token"]?.stringValue, !idToken.trimmingCharacters(in: .whitespaces).isEmpty else {
-                throw SignInError.invalidTokenResponse("did not contain an ID token")
-            }
+        let idToken = object["id_token"]?.stringValue.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
+        if requireIDToken, idToken == nil {
+            throw SignInError.invalidTokenResponse("did not contain an ID token")
         }
         let access = try requireString("access_token")
         let refresh = try requireString("refresh_token")
@@ -187,7 +275,43 @@ public enum ChatGPTSignIn {
             refreshToken: refresh,
             refreshAfter: now.addingTimeInterval(expiresIn - expiryMargin),
             clientID: clientID,
-            scopes: scopes)
+            scopes: scopes,
+            idToken: idToken)
+    }
+
+    /// Reads who signed in from an ID token, and checks its issuer, its audience against the
+    /// issued client id, its expiry, and the nonce this sign-in sent.
+    ///
+    /// The token's signature is not checked against OpenAI's published keys. The token comes
+    /// straight from the token endpoint over TLS, and the app uses it only to tell accounts
+    /// apart, but the docs do ask for the signature check, and it is not built yet.
+    public static func idTokenClaims(_ token: String, clientID: String, nonce: String, now: Date = Date()) throws -> IDTokenClaims {
+        let parts = token.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 3, let payload = base64URLDecode(String(parts[1])),
+              let json = try? JSONDecoder().decode(JSONValue.self, from: payload), case .object(let claims) = json
+        else { throw SignInError.invalidIDToken("could not be read") }
+        guard claims["iss"]?.stringValue == issuer else { throw SignInError.invalidIDToken("has the wrong issuer") }
+        let audience: [String] = switch claims["aud"] {
+        case .string(let value): [value]
+        case .array(let values): values.compactMap(\.stringValue)
+        default: []
+        }
+        guard audience.contains(clientID) else { throw SignInError.invalidIDToken("is for a different client") }
+        guard claims["nonce"]?.stringValue == nonce else { throw SignInError.invalidIDToken("does not match this sign-in") }
+        guard let expiry = claims["exp"]?.numberValue, Date(timeIntervalSince1970: expiry) > now.addingTimeInterval(-60) else {
+            throw SignInError.invalidIDToken("has expired")
+        }
+        guard let subject = claims["sub"]?.stringValue, !subject.isEmpty else {
+            throw SignInError.invalidIDToken("does not name an account")
+        }
+        let email = claims["email"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+        return IDTokenClaims(subject: subject, email: email)
+    }
+
+    static func base64URLDecode(_ text: String) -> Data? {
+        var base64 = text.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
+        return Data(base64Encoded: base64)
     }
 
     static func randomBytes(_ count: Int) -> Data {

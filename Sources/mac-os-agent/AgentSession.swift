@@ -45,6 +45,12 @@ final class AgentSession {
     private(set) var isRunning = false
     private(set) var pendingConfirmation: ConfirmationRequest?
     private(set) var signInState: SignInState = .signedOut
+    /// True when this Mac keeps a registration with OpenAI, signed in or not, so a sign-in
+    /// reuses it. Settings then offers to register a different account instead.
+    private(set) var hasRegistration = false
+    /// The signed-in account's own model list, or nil until it has been read, when signed out,
+    /// and when reading it failed. The pickers fall back to `OpenAIModel.all`.
+    private(set) var accountModels: [OpenAIModel]?
     /// Changes every time the window is shown, so the text field takes focus again.
     private(set) var focusRequest = 0
     /// Changes each time an incognito conversation is discarded and started over, so the
@@ -105,6 +111,11 @@ final class AgentSession {
     /// Makes the loop for a new incognito conversation, over a fresh `InMemoryThreadStore`.
     @ObservationIgnored private let makeLoop: (() -> AgentLoop)?
     @ObservationIgnored private let authenticator: ChatGPTAuthenticator?
+    /// Reads the account's model list. Nil without an authenticator, as in a development build,
+    /// which then offers `OpenAIModel.all`.
+    @ObservationIgnored private let modelCatalog: OpenAIModelCatalog?
+    /// Goes up at every sign-in and sign-out, so a model list read for an earlier account is dropped.
+    @ObservationIgnored private var account = 0
     /// `.gateway` in a development build, which reaches its models through inference-gateway.
     /// It starts signed in and shows no sign-in controls.
     @ObservationIgnored var modelAccess: ModelAccess = .signIn
@@ -167,6 +178,7 @@ final class AgentSession {
         self.loop = loop
         makeLoop = nil
         self.authenticator = authenticator
+        modelCatalog = authenticator.map { OpenAIModelCatalog(authenticator: $0) }
         self.episodeTimeout = episodeTimeout
         if signedIn { signInState = .signedIn }
     }
@@ -181,6 +193,7 @@ final class AgentSession {
         problems = ProblemLog()
         self.makeLoop = makeLoop
         authenticator = nil
+        modelCatalog = nil
         episodeTimeout = { .infinity }
         if signedIn { signInState = .signedIn }
         startConversation()
@@ -196,6 +209,7 @@ final class AgentSession {
         loop = nil
         makeLoop = nil
         authenticator = nil
+        modelCatalog = nil
         episodeTimeout = { EpisodeTimeoutSetting.current() }
         if incognito {
             transcript.beginEpisode(at: previewEntries.first?.date ?? Date())
@@ -236,8 +250,12 @@ final class AgentSession {
                 entries: await loop.thread.entries, summaries: ToolCallSummaries(loop.tools), showsLines: panelWithBars)
             reloadTaskLinks()
         }
-        if let authenticator, await authenticator.isSignedIn() {
-            signInState = .signedIn
+        if let authenticator {
+            hasRegistration = await authenticator.registration() != nil
+            if await authenticator.isSignedIn() {
+                signInState = .signedIn
+                refreshModels()
+            }
         }
         onStatusChange?()
     }
@@ -986,16 +1004,49 @@ final class AgentSession {
 
     // MARK: - Sign-in
 
-    func signIn() {
+    /// What the model pickers offer: the account's list when it has been read, the fallback
+    /// otherwise, and the saved model after them when the list leaves it out. A local model is
+    /// offered in its own list, from Ollama, so it is never added here as an OpenAI model.
+    func modelChoices(current: String) -> (models: [OpenAIModel], currentIsUnlisted: Bool) {
+        if Ollama.modelName(fromID: current) != nil { return (accountModels ?? OpenAIModel.all, false) }
+        return OpenAIModel.choices(listed: accountModels, current: current)
+    }
+
+    /// Reads the signed-in account's model list in the background. Nothing waits on it: the
+    /// pickers show the fallback until it arrives, and keep it when reading fails.
+    private func refreshModels() {
+        guard let modelCatalog else { return }
+        let account = account
+        Task {
+            do {
+                let models = try await modelCatalog.fetch()
+                guard account == self.account, signInState == .signedIn else { return }
+                accountModels = models
+            } catch {
+                guard account == self.account else { return }
+                accountModels = nil
+                problems.record("Models", (error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
+            }
+            onStatusChange?()
+        }
+    }
+
+    /// - Parameter differentAccount: Register anew for another ChatGPT account, instead of
+    ///   reusing the kept registration.
+    func signIn(differentAccount: Bool = false) {
         guard let authenticator, signInState != .signingIn else { return }
         signInState = .signingIn
         onStatusChange?()
         Task {
             do {
-                try await authenticator.signIn { url in
+                try await authenticator.signIn(differentAccount: differentAccount) { url in
                     await MainActor.run { _ = NSWorkspace.shared.open(url) }
                 }
                 signInState = .signedIn
+                // A sign-in may be a different account, so its list is read again.
+                account += 1
+                accountModels = nil
+                refreshModels()
             } catch ChatGPTSignIn.SignInError.cancelled {
                 signInState = await authenticator.isSignedIn() ? .signedIn : .signedOut
             } catch {
@@ -1003,6 +1054,7 @@ final class AgentSession {
                 problems.record("Sign-in", (error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
                 Self.showAlert("Sign-in did not finish", error)
             }
+            hasRegistration = await authenticator.registration() != nil
             onStatusChange?()
         }
     }
@@ -1012,19 +1064,34 @@ final class AgentSession {
         Task { await authenticator.cancelSignIn() }
     }
 
+    /// Signs out at once on this Mac, then waits for OpenAI to confirm the revocation. When it
+    /// does not, the owner is told in the same way as a sign-in that did not finish.
     func signOut() {
         guard let authenticator else { return }
+        signInState = .signedOut
+        account += 1
+        accountModels = nil
+        onStatusChange?()
         Task {
-            await authenticator.signOut()
-            signInState = .signedOut
+            let result = await authenticator.signOut()
+            hasRegistration = await authenticator.registration() != nil
             onStatusChange?()
+            if result == .notConfirmed {
+                let message = "You are signed out on this Mac, but OpenAI did not confirm that it ended the session. To be sure, disconnect mac-os-agent in ChatGPT Settings."
+                problems.record("Sign-out", message)
+                Self.showAlert("Signed out on this Mac only", message: message)
+            }
         }
     }
 
     private static func showAlert(_ title: String, _ error: Error) {
+        showAlert(title, message: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
+    }
+
+    private static func showAlert(_ title: String, message: String) {
         let alert = NSAlert()
         alert.messageText = title
-        alert.informativeText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        alert.informativeText = message
         NSApp.activate()
         alert.runModal()
     }

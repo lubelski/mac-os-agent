@@ -5,14 +5,17 @@ import Network
 /// `/auth/callback` and checks it against the state this sign-in sent.
 final class OAuthCallbackListener: @unchecked Sendable {
     private let expectedState: String
+    private let savedClientID: String?
     private let queue = DispatchQueue(label: "mac-os-agent.oauth-callback")
     private let listener: NWListener
     private let results = AsyncThrowingStream<ChatGPTSignIn.AuthorizationResult, Error>.makeStream()
     private let lock = NSLock()
     private var connections: [NWConnection] = []
 
-    init(expectedState: String) throws {
+    /// - Parameter savedClientID: The issued client id a reauthorization sent, if it is one.
+    init(expectedState: String, savedClientID: String? = nil) throws {
         self.expectedState = expectedState
+        self.savedClientID = savedClientID
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .hostPort(
             host: NWEndpoint.Host(ChatGPTSignIn.callbackHost),
@@ -100,7 +103,8 @@ final class OAuthCallbackListener: @unchecked Sendable {
             return
         }
         do {
-            let result = try ChatGPTSignIn.authorizationResult(callback: url, expectedState: expectedState)
+            let result = try ChatGPTSignIn.authorizationResult(
+                callback: url, expectedState: expectedState, savedClientID: savedClientID)
             respond(on: connection, status: 200, body: Self.page("ChatGPT is connected to mac-os-agent. You can close this window."))
             results.continuation.yield(result)
             results.continuation.finish()

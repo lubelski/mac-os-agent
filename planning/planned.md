@@ -32,7 +32,7 @@ What is not built yet: proposals waiting for agreement, open questions, and work
 
 ## Open
 
-- Which ChatGPT plans and models the sign-in token covers, and what OpenAI's terms say about third-party apps using it. Neither has been checked.
+- What OpenAI's terms say about this app using the sign-in. The app is on OpenAI's documented path for open-source and locally hosted apps. That path registers its own client at sign-in, with no requested client ID, client secret, or partner API key, and OpenAI's interest form is only for paid or remotely hosted apps. The docs name ChatGPT Plus and Pro as the eligible plans, and the models now come from the account's own list. Still unread are the specific OpenAI policy documents behind https://openai.com/policies, and the docs do not say whether a prebuilt download of an open-source app is covered.
 - Whether the ChatGPT sign-in token covers OpenAI's hosted web search. It is built but has not been tried with a real sign-in. Also unchecked: whether a kept `web_search_call` is accepted when the request no longer offers the tool, such as after a relaunch with web search turned off partway through an episode.
 - Whether a new episode should start with a short summary of the recent ones, and whether the agent should name episodes by topic. For now it starts with nothing from before and searches when it needs to.
 - Whether an experiment that wins may keep the path it replaced as a setting, as Behaviors keeps a switch per habit, or whether the old path is always deleted. The rule in [decided.md](decided.md) under Experiments says deleted, and names this as undecided.
