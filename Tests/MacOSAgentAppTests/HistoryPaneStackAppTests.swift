@@ -28,9 +28,18 @@ import Testing
         try await append(.userMessage(text: "turn on dark mode"))
         try await append(.assistantMessage(.init(text: "Dark mode is on.", provider: "openai", model: "test-model")))
         // The window read the thread when it opened, before these were written.
-        harness.controller.models.history.reload()
-        await settle(harness)
+        let history = harness.controller.models.history
+        history.reload()
+        await settle(harness) { history.items.count == 2 }
         return harness
+    }
+
+    /// Waits for the model's tasks until a condition holds, for up to five seconds, since a
+    /// search is slower in a full test run.
+    private func settle(_ harness: SettingsWindowHarness, until condition: () -> Bool) async {
+        for _ in 0..<50 where !condition() {
+            await settle(harness)
+        }
     }
 
     /// Lays the window out and lets the model's own tasks run: reading the thread, and a
@@ -106,7 +115,7 @@ import Testing
         defer { harness.tearDown() }
         let history = harness.controller.models.history
         history.query = "dark mode"
-        await settle(harness)
+        await settle(harness) { history.items.count == 1 }
         #expect(history.items.map(\.episode.number) == [2])
         let panes = history.panes
         let episode = try #require(panes.episode("2"))
@@ -118,7 +127,7 @@ import Testing
         // An episode that is open stays open when the search changes and no longer lists it.
         history.showInStack("2")
         history.query = "movies"
-        await settle(harness)
+        await settle(harness) { history.items.first?.episode.number == 1 }
         #expect(history.items.map(\.episode.number) == [1])
         #expect(history.stack.path.entries == ["2"])
     }
