@@ -199,7 +199,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let startupError {
             session.problems.record("Startup", "Could not open the thread: \(startupError.localizedDescription)")
         }
-        updater = AppUpdater { [weak self] in self?.relaunchActivity() ?? .init() }
+        let updater = AppUpdater { [weak self] in self?.relaunchActivity() ?? .init() }
+        self.updater = updater
+        // The panel menu's Check for Updates runs the same check as the menu bar menu's, and
+        // like it is there only in a build with a feed. The incognito window's menu has none.
+        if updater.isAvailable {
+            panel.placement.updateCheck = PanelPlacement.UpdateCheck(
+                canCheck: { updater.canCheck },
+                check: { [weak self] in self?.checkForUpdates() })
+        }
         settings = SettingsWindowController(
             session: session, prompt: prompt, usageLog: usageLog, tools: tools, history: thread, problems: session.problems,
             signInStatus: { await authenticator?.status() },
@@ -371,8 +379,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // has no item.
         if updater.isAvailable {
             menu.addItem(updater.canCheck
-                ? item("Check for Updates…", #selector(checkForUpdates))
-                : disabledItem("Check for Updates…"))
+                ? item(AppUpdater.checkTitle, #selector(checkForUpdates))
+                : disabledItem(AppUpdater.checkTitle))
         }
         menu.addItem(NSMenuItem(title: "Quit mac-os-agent", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
