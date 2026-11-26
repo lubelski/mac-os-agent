@@ -207,15 +207,19 @@ struct SuggestionIcon: View {
     }
 
     /// Icons by path. Reading one asks Launch Services, which is fast but not free on every
-    /// keystroke.
-    @MainActor private static var icons: [String: NSImage] = [:]
+    /// keystroke. Each is kept until its bundle folder's date changes, the same date Launch
+    /// Services goes by, so an app that is updated shows its new icon.
+    @MainActor private static var icons = ModificationDateCache<NSImage>()
 
     /// The app's icon, drawn once into a small sRGB bitmap: enough for the mark and the rows at
     /// any scale, and with none of the extended range some icons carry, which made an
     /// offscreen render of the panel read as dimmed.
     @MainActor static func icon(for url: URL) -> NSImage {
         let path = url.path(percentEncoded: false)
-        if let icon = icons[path] { return icon }
+        return icons.value(for: path) { drawIcon(atPath: path) }
+    }
+
+    @MainActor private static func drawIcon(atPath path: String) -> NSImage {
         // An app that is gone since the list was read gets the generic app icon, not a
         // document's.
         let source = FileManager.default.fileExists(atPath: path)
@@ -233,8 +237,6 @@ struct SuggestionIcon: View {
             NSGraphicsContext.restoreGraphicsState()
             if let image = context.makeImage() { icon = NSImage(cgImage: image, size: NSSize(width: 32, height: 32)) }
         }
-        if icons.count > 200 { icons.removeAll() }
-        icons[path] = icon
         return icon
     }
 }

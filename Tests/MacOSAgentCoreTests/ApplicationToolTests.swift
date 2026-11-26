@@ -351,6 +351,31 @@ final class FakeApplicationWorkspace: ApplicationWorkspace, @unchecked Sendable 
         #expect(catalog.applications().map(\.name) == ["One", "Three", "Two"])
     }
 
+    @Test func anAppUpdatedInPlaceIsReadAgain() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appending(path: "mac-os-agent-catalog-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let info = folder.appending(path: "Placeholder.app/Contents/Info.plist")
+        try FileManager.default.createDirectory(at: info.deletingLastPathComponent(), withIntermediateDirectories: true)
+        func writeInfo(displayName: String, date: Date) throws {
+            let plist = ["CFBundleIdentifier": "com.example.placeholder", "CFBundleDisplayName": displayName]
+            try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0).write(to: info)
+            try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: info.path)
+        }
+        try writeInfo(displayName: "Old Name", date: Date(timeIntervalSince1970: 1_000_000))
+        let folderDate = try #require(
+            try FileManager.default.attributesOfItem(atPath: folder.path)[.modificationDate] as? Date)
+
+        let catalog = ApplicationCatalog(folders: [folder])
+        #expect(catalog.applications().map(\.alternateNames) == [["Old Name"]])
+
+        // The updater rewrites the Info.plist inside the bundle. The folder the app sits in keeps
+        // its date.
+        try writeInfo(displayName: "New Name", date: Date(timeIntervalSince1970: 2_000_000))
+        try FileManager.default.setAttributes([.modificationDate: folderDate], ofItemAtPath: folder.path)
+        #expect(catalog.applications().map(\.alternateNames) == [["New Name"]])
+    }
+
     @Test func aFolderThatIsNotAnAppIsNotAnApplication() {
         #expect(ApplicationCatalog.application(at: URL(filePath: "/Applications")) == nil)
         #expect(ApplicationCatalog.application(at: URL(filePath: "/nonexistent/Nothing.app")) == nil)

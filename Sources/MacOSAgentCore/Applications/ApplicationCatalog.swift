@@ -3,7 +3,10 @@ import Foundation
 import Synchronization
 
 /// The application bundles in the folders where macOS keeps apps. A folder is read again only
-/// when its modification date changes, so a search after the first one costs a few `stat` calls.
+/// when its modification date changes, or the date of one of its bundles' Info.plist files, so a
+/// search after the first one costs a `stat` call per folder and per bundle. An app updated in
+/// place, with its files rewritten inside the old bundle, changes its Info.plist and not the
+/// folder it sits in.
 public final class ApplicationCatalog: Sendable {
     /// Where apps live, in the order results prefer them.
     public static let standardFolders: [URL] = [
@@ -28,6 +31,13 @@ public final class ApplicationCatalog: Sendable {
         var modified: Date
         var applications: [InstalledApplication]
         var subfolders: [URL]
+        /// Each bundle's Info.plist and its date when the folder was read, including bundles
+        /// left out of `applications`.
+        var infoDates: [(path: String, date: FileModificationDate?)]
+
+        var bundlesAreUnchanged: Bool {
+            infoDates.allSatisfy { FileModificationDate.read($0.path) == $0.date }
+        }
     }
 
     public init(folders: [URL] = ApplicationCatalog.standardFolders) {
@@ -50,7 +60,7 @@ public final class ApplicationCatalog: Sendable {
         guard let modified = (try? FileManager.default.attributesOfItem(atPath: key))?[.modificationDate] as? Date
         else { return }
         let entry: CachedFolder
-        if let cached = cache.withLock({ $0[key] }), cached.modified == modified {
+        if let cached = cache.withLock({ $0[key] }), cached.modified == modified, cached.bundlesAreUnchanged {
             entry = cached
         } else {
             entry = Self.read(folder, modified: modified, systemComponents: systemComponents)
@@ -70,8 +80,12 @@ public final class ApplicationCatalog: Sendable {
             at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
         var applications: [InstalledApplication] = []
         var subfolders: [URL] = []
+        var infoDates: [(path: String, date: FileModificationDate?)] = []
         for url in contents.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             if url.pathExtension == "app" {
+                // Read before the bundle, so a change while it is read shows next time.
+                let infoPath = url.appending(path: "Contents/Info.plist").path(percentEncoded: false)
+                infoDates.append((infoPath, FileModificationDate.read(infoPath)))
                 guard var application = application(at: url) else { continue }
                 if systemComponents {
                     if application.hasNoDockIcon { continue }
@@ -84,7 +98,7 @@ public final class ApplicationCatalog: Sendable {
                 subfolders.append(url)
             }
         }
-        return CachedFolder(modified: modified, applications: applications, subfolders: subfolders)
+        return CachedFolder(modified: modified, applications: applications, subfolders: subfolders, infoDates: infoDates)
     }
 
     /// Reads an application bundle's name and bundle identifier from its Info.plist.
