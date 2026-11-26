@@ -237,7 +237,6 @@ public struct OpenAIResponsesProvider: ModelProvider {
         return [("session-id", key), ("x-client-request-id", key)]
     }
 
-    /// Adds a hint to errors that mean the ChatGPT plan's shared usage limit was reached.
     /// The hint after an error about an attached image, such as from a local model that cannot
     /// read one.
     public static let imageErrorHint = "The model could not take the attached image. Choose a model that reads images, or send the message without it."
@@ -262,6 +261,7 @@ public struct OpenAIResponsesProvider: ModelProvider {
         return explained
     }
 
+    /// Adds a hint to errors that mean the ChatGPT plan's shared usage limit was reached.
     static func explain(_ message: String) -> String {
         if message.contains("subscription_sharing_workplace_individual_usage_limit_exceeded") {
             return message + "\nYou have reached your ChatGPT workspace's usage limit. Ask the workspace admin to raise it."
