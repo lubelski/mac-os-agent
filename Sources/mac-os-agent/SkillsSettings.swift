@@ -56,7 +56,7 @@ final class SkillsSettingsModel {
             filter = ""
             reload()
             selection = skill.id
-            NSWorkspace.shared.open(skill.fileURL)
+            if let fileURL = skill.fileURL { NSWorkspace.shared.open(fileURL) }
             return nil
         } catch {
             return error.localizedDescription
@@ -64,13 +64,13 @@ final class SkillsSettingsModel {
     }
 
     func openSelected() {
-        guard let skill = selectedSkill else { return }
-        NSWorkspace.shared.open(FileManager.default.fileExists(atPath: skill.fileURL.path) ? skill.fileURL : skill.folderURL)
+        guard let skill = selectedSkill, let folderURL = skill.folderURL, let fileURL = skill.fileURL else { return }
+        NSWorkspace.shared.open(FileManager.default.fileExists(atPath: fileURL.path) ? fileURL : folderURL)
     }
 
     func revealInFinder() {
-        if let skill = selectedSkill {
-            NSWorkspace.shared.activateFileViewerSelecting([skill.folderURL])
+        if let folderURL = selectedSkill?.folderURL {
+            NSWorkspace.shared.activateFileViewerSelecting([folderURL])
             return
         }
         try? FileManager.default.createDirectory(at: library.folder, withIntermediateDirectories: true)
@@ -190,7 +190,13 @@ struct SkillRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
-            if skill.problem != nil {
+            if skill.isPartOfApp {
+                Image(systemName: "lock.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help("Part of the app")
+                    .accessibilityLabel("Part of the app")
+            } else if skill.problem != nil {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                     .accessibilityLabel("Has a problem")
@@ -215,19 +221,27 @@ struct SkillDetailView: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(skill.name).font(.title2)
-                        Text(skill.folderURL.path(percentEncoded: false))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                        if let folderURL = skill.folderURL {
+                            Text(folderURL.path(percentEncoded: false))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        } else {
+                            Label("Part of the app", systemImage: "lock.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     Spacer()
-                    Toggle("Use \(skill.name)", isOn: Binding(
-                        get: { skill.isEnabled }, set: { model.setEnabled($0, skill) }))
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .help(skill.isEnabled ? "On: listed in the agent's instructions" : "Off: the agent does not see it")
+                    if !skill.isPartOfApp {
+                        Toggle("Use \(skill.name)", isOn: Binding(
+                            get: { skill.isEnabled }, set: { model.setEnabled($0, skill) }))
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .help(skill.isEnabled ? "On: listed in the agent's instructions" : "Off: the agent does not see it")
+                    }
                 }
                 if let problem = skill.problem {
                     Label(problem, systemImage: "exclamationmark.triangle.fill")
@@ -246,14 +260,31 @@ struct SkillDetailView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if skill.isPartOfApp {
+                    Text("This skill comes with the app and is always on. It is not in the skills folder, so it cannot be edited, turned off, or replaced. A skill folder with the same name is not used.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if let error = model.errorMessage {
                     Text(error).font(.callout).foregroundStyle(.red)
                 }
-                HStack {
-                    Button("Open SKILL.md") { model.openSelected() }
-                    Button("Show in Finder") { model.revealInFinder() }
+                if !skill.isPartOfApp {
+                    HStack {
+                        Button("Open SKILL.md") { model.openSelected() }
+                        Button("Show in Finder") { model.revealInFinder() }
+                    }
                 }
-                if let contents {
+                if let contents, skill.isPartOfApp {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Instructions").font(.headline)
+                        MarkdownText(text: contents.instructions)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(.background.secondary, in: .rect(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
+                    }
+                } else if let contents {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Files").font(.headline)
                         if contents.files.isEmpty {
