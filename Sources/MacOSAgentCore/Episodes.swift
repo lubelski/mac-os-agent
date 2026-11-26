@@ -16,15 +16,67 @@ public struct Episode: Sendable, Equatable, Identifiable {
     public var startDate: Date
     /// When the last message, reply, command, or result in the episode was written.
     public var lastActivity: Date
-    /// The owner's messages and the agent's replies with text.
+    /// The owner's messages and the agent's replies with text. A quick action's run is not
+    /// one: it counts in `quickActionCount`.
     public var messageCount: Int
+    /// Tools the model ran: here, or on the provider's side, such as a hosted web search.
     public var commandCount: Int
-    /// The first line of the owner's first message, for lists of episodes.
-    public var preview: String
+    /// Quick actions the owner ran from the instant row.
+    public var quickActionCount: Int = 0
+    /// Apps the owner opened from the instant row.
+    public var appOpenedCount: Int = 0
+    /// Why the episode started, from its marker. Nil for the first episode and for one derived
+    /// from a pause, which have none.
+    public var startReason: ThreadItem.EpisodeStart.Reason?
+    /// The first line of the owner's first message, for lists of episodes. With no message,
+    /// the first thing that happened, such as "Opened Slack".
+    public var preview: String { messagePreview.isEmpty ? eventPreview : messagePreview }
+    var messagePreview = ""
+    var eventPreview = ""
 
     /// False for an episode that holds only its marker so far.
     public var hasActivity: Bool { activityCount > 0 }
     var activityCount: Int
+
+    /// Whether History has anything to show for it. An episode can have activity and still
+    /// hold nothing to show: a marker followed only by answers to calls the episode before
+    /// left open, when what came next failed to be written.
+    public var hasSomethingToShow: Bool {
+        messageCount + commandCount + quickActionCount + appOpenedCount > 0
+    }
+
+    /// What the episode holds, for lists of episodes: "4 messages, 2 commands", with "1 quick
+    /// action" and "2 apps opened" after them when it has those. With no messages it says what
+    /// there is instead: "Opened 2 apps", or "Ran 1 quick action, opened 1 app".
+    public var summary: String {
+        func count(_ number: Int, _ one: String, _ many: String) -> String {
+            number == 1 ? "1 \(one)" : "\(number) \(many)"
+        }
+        var parts: [String] = []
+        if messageCount > 0 {
+            parts.append(count(messageCount, "message", "messages"))
+            if commandCount > 0 { parts.append(count(commandCount, "command", "commands")) }
+            if quickActionCount > 0 { parts.append(count(quickActionCount, "quick action", "quick actions")) }
+            if appOpenedCount > 0 { parts.append(count(appOpenedCount, "app opened", "apps opened")) }
+            return parts.joined(separator: ", ")
+        }
+        if quickActionCount > 0 { parts.append("ran " + count(quickActionCount, "quick action", "quick actions")) }
+        if appOpenedCount > 0 { parts.append("opened " + count(appOpenedCount, "app", "apps")) }
+        if commandCount > 0 { parts.append(count(commandCount, "command", "commands")) }
+        guard !parts.isEmpty else { return "Nothing to show" }
+        let text = parts.joined(separator: ", ")
+        return text.prefix(1).uppercased() + text.dropFirst()
+    }
+
+    /// Why the episode started, as a quiet caption: after the episode before it went idle, or
+    /// fresh because the owner asked. Nil for the first episode.
+    public var startCaption: String? {
+        switch startReason {
+        case .timeout: "Started after the episode before it went idle"
+        case .requested: "Started fresh, as asked"
+        case nil: number == 1 ? nil : "Started after a pause of 30 minutes or more"
+        }
+    }
 
     /// True when the owner writing at `now` starts a new episode: something happened in this
     /// one, and it has been idle at least `timeout`.
@@ -93,26 +145,36 @@ public struct ThreadContents: Sendable, Equatable {
         if tracker.observe(entry) || episodes.isEmpty {
             episodes.append(Episode(
                 id: entry.id, number: episodes.count + 1, range: position..<position, startDate: entry.date,
-                lastActivity: entry.date, messageCount: 0, commandCount: 0, preview: "", activityCount: 0))
+                lastActivity: entry.date, messageCount: 0, commandCount: 0, activityCount: 0))
         }
         var episode = episodes[episodes.count - 1]
         episode.range = episode.range.lowerBound..<(position + 1)
         episode.lastActivity = entry.date
-        switch entry.item {
-        case .episodeStart:
-            break
-        case .userMessage(let text, _, _):
+        // Every entry but the marker is activity, which the timeout counts from. What it
+        // counts as is History's reading of it.
+        if case .episodeStart = entry.item {} else { episode.activityCount += 1 }
+        switch HistoryReading.of(entry.item) {
+        case .episodeStart(let reason):
+            episode.startReason = reason
+        case .owner(let text):
             episode.messageCount += 1
-            episode.activityCount += 1
-            if episode.preview.isEmpty { episode.preview = Self.firstLine(text) }
-        case .assistantMessage(let message):
-            if !message.text.isEmpty { episode.messageCount += 1 }
-            episode.activityCount += 1
-        case .toolCall:
+            if episode.messagePreview.isEmpty { episode.messagePreview = Self.firstLine(text) }
+        case .agent:
+            episode.messageCount += 1
+        case .command, .hostedCommand:
             episode.commandCount += 1
-            episode.activityCount += 1
-        case .toolResult, .providerItem, .appOpened:
-            episode.activityCount += 1
+        case .quickAction(let typed, let run):
+            episode.quickActionCount += 1
+            if episode.eventPreview.isEmpty {
+                episode.eventPreview = TranscriptLine.ran(run, typed: typed, date: entry.date).spokenText
+            }
+        case .appOpened(let opening):
+            episode.appOpenedCount += 1
+            if episode.eventPreview.isEmpty {
+                episode.eventPreview = TranscriptLine.opened(opening, date: entry.date).spokenText
+            }
+        case .folded:
+            break
         }
         episodes[episodes.count - 1] = episode
     }
