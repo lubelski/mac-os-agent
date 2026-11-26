@@ -423,6 +423,51 @@ private func darkThemeFile(name: String = "Night Swim", primary: String = "#F2F4
         #expect(ThemePreferences(suiteName: sandbox.suiteName).themeID == "paper")
         #expect(ThemePreferences(suiteName: sandbox.suiteName).usesGlass == false)
     }
+
+    @Test func theMessageLayoutIsOnOppositeSidesUntilChosen() {
+        let sandbox = ThemeSandbox()
+        #expect(sandbox.preferences.messageLayout == .sides)
+        sandbox.preferences.setMessageLayout(.fullWidth)
+        #expect(ThemePreferences(suiteName: sandbox.suiteName).messageLayout == .fullWidth)
+        sandbox.preferences.setMessageLayout(.sides)
+        #expect(ThemePreferences(suiteName: sandbox.suiteName).messageLayout == .sides)
+        // A value a later build might write reads as the default.
+        sandbox.preferences.defaults.set("somethingNew", forKey: ThemePreferences.messageLayoutKey)
+        #expect(sandbox.preferences.messageLayout == .sides)
+    }
+}
+
+@Suite struct MessageLayoutTests {
+    @Test func oppositeSidesIsHowThePanelLookedBefore() {
+        let layout = MessageLayout.sides
+        #expect(!layout.boxesFillWidth)
+        #expect(layout.timeLabelAlignment == .center)
+        #expect(layout.conversationLineAlignment == .center)
+        #expect(layout.edgeStrength == 1)
+        for edge in [ThemeColor.hex(red: 0x40, green: 0x59, blue: 0x7D, alpha: 0xFF), .system(.label, percent: 10)] {
+            #expect(layout.messageEdge(edge, increasedContrast: false) == edge)
+        }
+    }
+
+    @Test func fullWidthPutsEverythingAtTheLeftWithFainterEdges() {
+        let layout = MessageLayout.fullWidth
+        #expect(layout.boxesFillWidth)
+        #expect(layout.timeLabelAlignment == .leading)
+        #expect(layout.conversationLineAlignment == .leading)
+        #expect(layout.edgeStrength == MessageLayout.fullWidthEdgeStrength)
+        #expect(MessageLayout.fullWidthEdgeStrength > 0.5 && MessageLayout.fullWidthEdgeStrength < 1)
+        let opaque = ThemeColor.hex(red: 0x40, green: 0x59, blue: 0x7D, alpha: 0xFF)
+        #expect(layout.messageEdge(opaque, increasedContrast: false) == .hex(red: 0x40, green: 0x59, blue: 0x7D, alpha: 153))
+        #expect(layout.messageEdge(.system(.label, percent: 10), increasedContrast: false) == .system(.label, percent: 6))
+        // An edge the theme leaves empty stays empty.
+        let empty = ThemeColor.hex(red: 0, green: 0, blue: 0, alpha: 0)
+        #expect(layout.messageEdge(empty, increasedContrast: false) == empty)
+    }
+
+    @Test func increaseContrastKeepsTheThemesEdge() {
+        let edge = ThemeColor.system(.label, percent: 10)
+        #expect(MessageLayout.fullWidth.messageEdge(edge, increasedContrast: true) == edge)
+    }
 }
 
 @Suite struct ThemeToolTests {

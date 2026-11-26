@@ -53,6 +53,10 @@ struct PanelPalette {
     var ownerEdge: AnyShapeStyle { edge(appearance.ownerMessage) }
     var agentFill: AnyShapeStyle { fill(appearance.agentReply) }
     var agentEdge: AnyShapeStyle { edge(appearance.agentReply) }
+    /// The message boxes' edges as a layout draws them: full width draws them a little
+    /// fainter. See `MessageLayout.messageEdge`.
+    func ownerEdge(_ layout: MessageLayout) -> AnyShapeStyle { edge(appearance.ownerMessage, layout: layout) }
+    func agentEdge(_ layout: MessageLayout) -> AnyShapeStyle { edge(appearance.agentReply, layout: layout) }
     var goAheadFill: AnyShapeStyle { fill(appearance.goAhead) }
     var goAheadEdge: AnyShapeStyle { edge(appearance.goAhead) }
     /// The text field drawn as a pill, with the panel with bars experiment on: the theme's
@@ -77,8 +81,8 @@ struct PanelPalette {
     /// A box's edge. Increase Contrast draws it at least at 35 percent and two and a half
     /// times as strong, and an edge the theme leaves empty takes the box's fill at full
     /// strength. For Glass this is exactly how the panel drew before themes.
-    private func edge(_ box: ThemeBox) -> AnyShapeStyle {
-        guard increasedContrast else { return style(box.edge) }
+    private func edge(_ box: ThemeBox, layout: MessageLayout = .sides) -> AnyShapeStyle {
+        guard increasedContrast else { return style(layout.messageEdge(box.edge, increasedContrast: false)) }
         if box.edge.opacity == 0 { return style(scaled(box.fill, toOpacity: 1)) }
         return style(contrasted(box.edge))
     }
@@ -177,6 +181,9 @@ struct PanelPalette {
 extension EnvironmentValues {
     /// The active theme as the panel draws it. Set at the panel's root by `SummonView`.
     @Entry var panelPalette = PanelPalette.standard
+    /// How the panel lays out messages, from Settings, Appearance. Set at the panel's root
+    /// with the palette.
+    @Entry var messageLayout = MessageLayout.sides
 }
 
 extension View {
@@ -359,6 +366,7 @@ private struct ThemedPanelRoot: ViewModifier {
                 .alwaysAppearsActive()
                 .panelText(palette)
                 .environment(\.panelPalette, palette)
+                .environment(\.messageLayout, model.messageLayout)
                 .panelSurface(
                     palette, incognito: incognito, squareEdges: placement?.squareEdges ?? [],
                     cornerRadius: placement?.cornerRadius ?? PanelShape.cornerRadius)
@@ -368,6 +376,7 @@ private struct ThemedPanelRoot: ViewModifier {
                 .alwaysAppearsActive()
                 .panelText(palette)
                 .environment(\.panelPalette, palette)
+                .environment(\.messageLayout, model.messageLayout)
                 .background(WindowAppearance(fixed: theme.fixedAppearance))
         }
     }

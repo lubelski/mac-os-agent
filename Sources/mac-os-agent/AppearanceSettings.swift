@@ -3,7 +3,7 @@ import MacOSAgentCore
 import SwiftUI
 
 /// The Appearance section: the panel's themes as small live previews, the actions on them,
-/// and the Use Glass switch. Choosing a theme applies it to the panel at once. Settings itself
+/// the Use Glass switch, and the message layout. Choosing a theme applies it to the panel at once. Settings itself
 /// keeps the standard system look.
 struct AppearanceSettingsView: View {
     @Bindable var model: ThemeModel
@@ -13,6 +13,16 @@ struct AppearanceSettingsView: View {
     private let columns = [GridItem(.adaptive(minimum: 168, maximum: 240), spacing: 14, alignment: .top)]
 
     var body: some View {
+        ScrollViewReader { proxy in
+            form
+                .task {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    if let target = model.previewScrollTarget { proxy.scrollTo(target, anchor: .top) }
+                }
+        }
+    }
+
+    private var form: some View {
         Form {
             Section {
                 grid(model.builtInEntries)
@@ -66,6 +76,21 @@ struct AppearanceSettingsView: View {
                 Text(reduceTransparency
                      ? "Reduce Transparency is on in Accessibility settings, so the panel draws every theme on its solid fill whatever this says."
                      : "When this is off, every theme draws on its solid fill, without Liquid Glass or blur. The panel does the same while Reduce Transparency is on in Accessibility settings.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Picker("Message layout", selection: Binding(get: { model.messageLayout }, set: { model.setMessageLayout($0) })) {
+                    ForEach(MessageLayout.allCases) { layout in
+                        Text(layout.title).tag(layout)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+            } header: {
+                Text("Messages")
+                    .id("messages")
+            } footer: {
+                Text("Full width puts your messages and the agent's at the left, across the whole conversation, with fainter outlines. Time labels and the lines for apps opened and quick actions run move to the left too.")
                     .foregroundStyle(.secondary)
             }
         }

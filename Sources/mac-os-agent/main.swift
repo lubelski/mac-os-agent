@@ -28,7 +28,8 @@ MainActor.assumeIsolated {
     if arguments.contains("--preview-settings") || arguments.contains("--preview-panel") {
         // Previews keep their theme choices in preferences of their own, never the owner's.
         // `--preview-theme <id>` shows a theme without saving it, and `--preview-glass off`
-        // shows the panel as it draws with Use Glass off.
+        // shows the panel as it draws with Use Glass off. `--preview-message-layout full-width`
+        // shows the full width message layout without saving it.
         // Without --data-folder, a preview reads an empty temporary themes folder, never the real one.
         let folder = arguments.contains(AgentPaths.dataFolderArgument)
             ? AgentPaths.themesFolder
@@ -41,6 +42,9 @@ MainActor.assumeIsolated {
         }
         if let index = arguments.firstIndex(of: "--preview-glass"), index + 1 < arguments.count {
             model.previewUsesGlass = arguments[index + 1] != "off"
+        }
+        if let index = arguments.firstIndex(of: "--preview-message-layout"), index + 1 < arguments.count {
+            model.previewMessageLayout = arguments[index + 1] == "full-width" ? .fullWidth : .sides
         }
         ThemeModel.shared = model
     }

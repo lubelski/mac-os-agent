@@ -161,13 +161,16 @@ private struct AttachedThumbnail: View {
 struct MessageImages: View {
     let images: [ImageAttachment]
     static let thumbnailSize: CGFloat = 72
+    @Environment(\.messageLayout) private var layout
 
     var body: some View {
         HStack(spacing: 6) {
-            Spacer(minLength: MessageStyle.farSideInset)
+            // On the owner's side, or at the left with the full width layout.
+            if !layout.boxesFillWidth { Spacer(minLength: MessageStyle.farSideInset) }
             ForEach(images, id: \.self) { image in
                 MessageImage(image: image)
             }
+            if layout.boxesFillWidth { Spacer(minLength: 0) }
         }
     }
 }

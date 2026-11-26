@@ -203,18 +203,21 @@ private struct QueuedMessage: View {
     let edit: () -> Void
     let remove: () -> Void
     @Environment(\.panelPalette) private var palette
+    @Environment(\.messageLayout) private var layout
     @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 4) {
+        // On the owner's side, or across the full width with the full width layout.
+        VStack(alignment: layout.boxesFillWidth ? .leading : .trailing, spacing: 4) {
             HStack(spacing: 0) {
-                Spacer(minLength: MessageStyle.farSideInset)
+                if !layout.boxesFillWidth { Spacer(minLength: MessageStyle.farSideInset) }
                 Text(verbatim: text)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: layout.boxesFillWidth ? .infinity : nil, alignment: .leading)
                     .padding(.horizontal, MessageStyle.horizontalPadding)
                     .padding(.vertical, MessageStyle.verticalPadding)
                     .background(palette.ownerFill, in: PanelShape.message)
-                    .overlay { PanelShape.message.strokeBorder(palette.ownerEdge, lineWidth: 1) }
+                    .overlay { PanelShape.message.strokeBorder(palette.ownerEdge(layout), lineWidth: 1) }
                     .opacity(QueuedMessagesInConversation.pendingStrength)
             }
             HStack(spacing: 10) {

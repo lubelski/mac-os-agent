@@ -41,8 +41,17 @@ enum MessageStyle {
     static let controlGap: CGFloat = 8
 }
 
-/// What the owner typed: a box on the right with a faint accent tint. A time label sits above
-/// the first message of each stretch, and every message shows its full time on hover.
+extension MessageLayout.LineAlignment {
+    /// The alignment a line that is not a message takes across the conversation.
+    var frameAlignment: Alignment { self == .center ? .center : .leading }
+    var textAlignment: TextAlignment { self == .center ? .center : .leading }
+    /// A line at the left starts where the text in a box starts.
+    var leadingInset: CGFloat { self == .center ? 0 : MessageStyle.horizontalPadding }
+}
+
+/// What the owner typed: a box on the right with a faint accent tint, or across the full width
+/// with the full width layout. A time label sits above the first message of each stretch, and
+/// every message shows its full time on hover.
 struct OwnerMessage: View {
     let text: String
     let date: Date
@@ -52,6 +61,7 @@ struct OwnerMessage: View {
     /// has no box.
     var images: [ImageAttachment] = []
     @Environment(\.panelPalette) private var palette
+    @Environment(\.messageLayout) private var layout
     @State private var hovering = false
 
     var body: some View {
@@ -60,14 +70,41 @@ struct OwnerMessage: View {
                 Text(TranscriptTimeLabel.text(for: date, now: now))
                     .font(.caption)
                     .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity)
+                    .padding(.leading, layout.timeLabelAlignment.leadingInset)
+                    .frame(maxWidth: .infinity, alignment: layout.timeLabelAlignment.frameAlignment)
             }
             if !images.isEmpty {
                 MessageImages(images: images)
                     .help(TranscriptTimeLabel.fullText(for: date))
             }
-            if !text.isEmpty { textBox }
+            if !text.isEmpty {
+                if layout.boxesFillWidth { fullWidthTextBox } else { textBox }
+            }
         }
+    }
+
+    /// The box across the full width. There is no room beside it, so the copy control sits
+    /// inside it at the top right, and its room is kept while it is hidden, so showing it moves
+    /// nothing.
+    private var fullWidthTextBox: some View {
+        HStack(alignment: .top, spacing: MessageStyle.controlGap) {
+            Text(verbatim: text)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            CopyControl(help: "Copy the message") { text }
+                .revealed(when: hovering)
+                .fixedSize()
+        }
+        .padding(.horizontal, MessageStyle.horizontalPadding)
+        .padding(.vertical, MessageStyle.verticalPadding)
+        .background(palette.ownerFill, in: PanelShape.message)
+        .overlay { PanelShape.message.strokeBorder(palette.ownerEdge(layout), lineWidth: 1) }
+        .help(TranscriptTimeLabel.fullText(for: date))
+        .contextMenu { MessageMenu(source: text, plainText: nil) }
+        .onHover { hovering = $0 }
+        .accessibilityElement(children: .contain)
+        .accessibilityAction(named: "Copy") { MessageActions.copy(text) }
     }
 
     private var textBox: some View {
@@ -107,16 +144,50 @@ struct OwnerMessage: View {
 }
 
 /// What the agent said to the owner, as Markdown: a box on the left with a neutral tint that
-/// sets it apart from the glass behind it. While it streams it is parsed with its unfinished
+/// sets it apart from the glass behind it, or across the full width with the full width layout. While it streams it is parsed with its unfinished
 /// end completed, so it keeps its shape as the rest arrives.
 struct AgentMessage: View {
     let text: String
     var streaming = false
     @Environment(\.panelPalette) private var palette
+    @Environment(\.messageLayout) private var layout
     @State private var hovering = false
 
     var body: some View {
         let document = MarkdownCache.document(for: text, streaming: streaming)
+        if layout.boxesFillWidth {
+            fullWidth(document)
+        } else {
+            sides(document)
+        }
+    }
+
+    /// The box across the full width, with the copy control inside it at the top right, as
+    /// the owner's is. Its room is kept while the reply streams, so the finished reply that
+    /// replaces it moves nothing.
+    private func fullWidth(_ document: MarkdownDocument) -> some View {
+        HStack(alignment: .top, spacing: MessageStyle.controlGap) {
+            MarkdownView(document: document)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            CopyControl(help: "Copy the reply as Markdown") { text }
+                .revealed(when: hovering && !streaming)
+                .opacity(streaming ? 0 : 1)
+                .disabled(streaming)
+                .accessibilityHidden(streaming)
+                .fixedSize()
+        }
+        .padding(.horizontal, MessageStyle.horizontalPadding)
+        .padding(.vertical, MessageStyle.verticalPadding)
+        .background(palette.agentFill, in: PanelShape.message)
+        .overlay(PanelShape.message.strokeBorder(palette.agentEdge(layout), lineWidth: 1))
+        .contextMenu { MessageMenu(source: text, plainText: document.plainText) }
+        .onHover { hovering = $0 }
+        .accessibilityElement(children: .contain)
+        .accessibilityAction(named: "Copy as Markdown") { MessageActions.copy(text) }
+        .accessibilityAction(named: "Copy as plain text") { MessageActions.copy(document.plainText) }
+    }
+
+    private func sides(_ document: MarkdownDocument) -> some View {
         HStack(spacing: 0) {
             MarkdownView(document: document)
                 .padding(.horizontal, MessageStyle.horizontalPadding)
@@ -260,9 +331,11 @@ struct ToolLine: View {
 /// Something the owner did without a message, with the panel with bars experiment on: "Ran",
 /// a quick action's icon, and its name; "Opened", an app's own icon, and its name; or a quick
 /// action's icon, its name, and why it failed, in red. Centered and faint, like a time stamp,
-/// with the icon at 10 points. It is not a message, so it has no box, and it opens nothing.
+/// with the icon at 10 points, or at the left with the full width layout. It is not a message,
+/// so it has no box, and it opens nothing.
 struct ConversationLine: View {
     let line: TranscriptLine
+    @Environment(\.messageLayout) private var layout
 
     static let iconSize: CGFloat = 10
     static let fontSize: CGFloat = 11
@@ -275,11 +348,12 @@ struct ConversationLine: View {
             icon
             Text(verbatim: line.trailingText)
                 .lineLimit(2)
-                .multilineTextAlignment(.center)
+                .multilineTextAlignment(layout.conversationLineAlignment.textAlignment)
         }
         .font(.system(size: Self.fontSize))
         .foregroundStyle(line.isFailure ? AnyShapeStyle(Color.red) : AnyShapeStyle(.tertiary))
-        .frame(maxWidth: .infinity)
+        .padding(.leading, layout.conversationLineAlignment.leadingInset)
+        .frame(maxWidth: .infinity, alignment: layout.conversationLineAlignment.frameAlignment)
         .help(TranscriptTimeLabel.fullText(for: line.date))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(line.spokenText)
