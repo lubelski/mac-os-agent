@@ -415,8 +415,17 @@ final class InputTextView: NSTextView {
         return super.validateUserInterfaceItem(item)
     }
 
+    /// Whether the drag in progress, by its sequence number, carries images. Reading the
+    /// pasteboard reads its file URLs, image data, and text, so it is read once per drag rather
+    /// than on every update while the pointer moves.
+    private var dragAttachesImages: (sequence: Int, attaches: Bool)?
+
     private func dropAttachesImages(_ sender: any NSDraggingInfo) -> Bool {
-        onAttachImages != nil && isEditable && sender.draggingPasteboard.attachesImages
+        guard onAttachImages != nil, isEditable else { return false }
+        if let known = dragAttachesImages, known.sequence == sender.draggingSequenceNumber { return known.attaches }
+        let attaches = sender.draggingPasteboard.attachesImages
+        dragAttachesImages = (sender.draggingSequenceNumber, attaches)
+        return attaches
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
