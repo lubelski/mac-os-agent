@@ -80,7 +80,7 @@ struct ExperimentsSettingsView: View {
                 }
                 Toggle(isOn: $settingsPaneStack) {
                     Text(Experiment.settingsPaneStack.title)
-                    Text("Tools shows its groups, a group's tools, and a tool's details as panes that slide in from the right over each other, each leaving a strip of the one under it showing. Click a strip or press Escape to go back. Read-only, as Tools is today.")
+                    Text("Tools shows its groups, a group's tools, and a tool's details as panes that slide in from the right over each other, each leaving a strip of the one under it showing. History does the same with its episodes, an episode, and a command's input and output. Click a strip or press Escape to go back. Read-only, as both are today.")
                 }
             } header: {
                 Text("Features being tried. They may change or go.")

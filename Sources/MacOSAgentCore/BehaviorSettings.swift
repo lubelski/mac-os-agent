@@ -71,7 +71,8 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
     /// `OnDemandToolGroup` and `SettingsToolGroup`.
     case settingsTools
     /// Settings, Tools, as panes that slide over each other from the right, each leaving a strip
-    /// of the one under it showing: the groups, a group's tools, and a tool's details. Built on
+    /// of the one under it showing: the groups, a group's tools, and a tool's details. History
+    /// too: the episodes, an episode, and a command's input and output. Built on
     /// `PaneStackPath`, which any section could use. Takes effect now. See `PaneStackView`.
     case settingsPaneStack
 
