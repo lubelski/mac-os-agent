@@ -40,10 +40,17 @@ public enum AgentInstructions {
     public struct SkillSummary: Sendable, Equatable {
         public var name: String
         public var description: String
+        /// True for a skill that is part of the app, which its line says.
+        public var isPartOfApp: Bool
 
-        public init(name: String, description: String) {
+        public init(name: String, description: String, isPartOfApp: Bool = false) {
             self.name = name
             self.description = description
+            self.isPartOfApp = isPartOfApp
+        }
+
+        public init(_ skill: Skill) {
+            self.init(name: skill.name, description: skill.description, isPartOfApp: skill.isPartOfApp)
         }
     }
 
@@ -93,7 +100,7 @@ public enum AgentInstructions {
             ? "There are no skills yet."
             : "Skills you have:\n" + skills
                 .sorted { $0.name < $1.name }
-                .map { "- \($0.name): \(singleLine($0.description))" }
+                .map { "- \($0.name)\($0.isPartOfApp ? " (part of the app)" : ""): \(singleLine($0.description))" }
                 .joined(separator: "\n")
         return """
             How this app works. These rules come from the app and hold whatever the text above says.
@@ -129,7 +136,8 @@ public enum AgentInstructions {
             - You can write new skills and improve existing ones with the shell tool. That is how you \
             extend what you can do. Write one when the person asks, or when you have worked out a \
             task they are likely to ask for again. New and changed skills are listed from their next \
-            message on.
+            message on. A skill marked part of the app comes with the app. It is not in that folder, it \
+            cannot be changed, and a folder with the same name is not used.
             - A quick action is a fixed tool call, or a few in order, with the arguments filled in. \
             When the person types its name in the panel and presses Return, the app runs it at once, \
             with no request to you and no go-ahead, since choosing it is the go-ahead. Manage quick actions \
@@ -330,7 +338,7 @@ public struct AgentPrompt: Sendable {
     private func assemble(memoryBlock: String?) -> String {
         AgentInstructions.assemble(
             editable: instructions.load(),
-            skills: skills.skills().filter(\.isAvailable).map { .init(name: $0.name, description: $0.description) },
+            skills: skills.skills().filter(\.isAvailable).map(AgentInstructions.SkillSummary.init),
             skillsFolder: skills.folder,
             memoryBlock: memoryBlock,
             taskLinks: taskLinks,

@@ -3,10 +3,16 @@ import Foundation
 
 /// A skill: a folder with a `SKILL.md` that has `name` and `description` front matter and
 /// then instructions, plus any scripts beside it. This is the Agent Skills format.
+///
+/// A skill that is part of the app (`AppSkills`) has no folder: `folderURL` is nil and
+/// `isPartOfApp` is true. It is always on.
 public struct Skill: Sendable, Equatable, Identifiable {
-    public var id: String { folderName }
+    /// The folder's name, or for a skill that is part of the app its name after
+    /// `AppSkills.idPrefix`, so the two never share an id.
+    public var id: String { isPartOfApp ? AppSkills.idPrefix + name : folderName }
     public var folderName: String
-    public var folderURL: URL
+    /// Nil for a skill that is part of the app.
+    public var folderURL: URL?
     /// The name from the front matter, or the folder's name when the file could not be read.
     public var name: String
     public var description: String
@@ -19,8 +25,11 @@ public struct Skill: Sendable, Equatable, Identifiable {
     /// A fingerprint of the `SKILL.md` text, which changes whenever the file does. Nil when
     /// there is no readable file.
     public var revision: String?
+    /// True for a skill that ships in the app, which nothing in the skills folder can change.
+    public var isPartOfApp: Bool = false
 
-    public var fileURL: URL { folderURL.appending(path: SkillLibrary.fileName) }
+    /// The skill's `SKILL.md`, or nil for a skill that is part of the app.
+    public var fileURL: URL? { folderURL?.appending(path: SkillLibrary.fileName) }
     /// Listed in the instructions and loadable by the agent.
     public var isAvailable: Bool { isEnabled && problem == nil }
 }
@@ -185,10 +194,16 @@ public struct SkillLibrary: Sendable {
 
     public let folder: URL
     public let settingsFile: URL
+    /// The versions a skill that is part of the app is told about when it is loaded.
+    public let appSkillContext: AppSkillContext
 
-    public init(folder: URL = AgentPaths.skillsFolder, settingsFile: URL = AgentPaths.skillSettingsFile) {
+    public init(
+        folder: URL = AgentPaths.skillsFolder, settingsFile: URL = AgentPaths.skillSettingsFile,
+        appSkillContext: AppSkillContext = .current
+    ) {
         self.folder = folder
         self.settingsFile = settingsFile
+        self.appSkillContext = appSkillContext
     }
 
     public enum LibraryError: Error, Equatable, LocalizedError {
@@ -204,9 +219,17 @@ public struct SkillLibrary: Sendable {
         }
     }
 
-    /// Every skill folder, sorted by folder name, with any problem found in its `SKILL.md`.
+    /// The skills that are part of the app, then every skill folder, sorted by folder name,
+    /// with any problem found in its `SKILL.md`. A folder whose skill has the name of one that
+    /// is part of the app has a problem, so it is not listed to the agent or loaded.
     public func skills() -> [Skill] {
+        AppSkills.skills + folderSkills()
+    }
+
+    /// Every skill folder, sorted by folder name, with any problem found in its `SKILL.md`.
+    func folderSkills() -> [Skill] {
         let disabled = disabledFolders()
+        let appNames = AppSkills.names
         let contents = (try? FileManager.default.contentsOfDirectory(
             at: folder, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])) ?? []
         var skills: [Skill] = []
@@ -225,7 +248,9 @@ public struct SkillLibrary: Sendable {
                 skill.name = document.name
                 skill.description = document.description
                 skill.isUserInvocable = document.isUserInvocable
-                if !names.insert(document.name).inserted {
+                if appNames.contains(document.name) {
+                    skill.problem = "A skill that is part of the app is named \(document.name), so this one is not used. Rename it to use it."
+                } else if !names.insert(document.name).inserted {
                     skill.problem = "Another skill already has the name \(document.name)."
                 }
             } catch let error as SkillDocument.ParseError {
@@ -247,18 +272,24 @@ public struct SkillLibrary: Sendable {
         return try SkillDocument.parse(text)
     }
 
-    /// The skill's full instructions, for the agent.
+    /// The skill's full instructions, for the agent. A skill that is part of the app comes
+    /// first, whatever the skills folder holds.
     public func load(named name: String) -> Result<(Skill, SkillDocument), LoadError> {
-        let all = skills()
+        if let skill = AppSkills.skill(named: name),
+           let document = AppSkills.document(named: name, context: appSkillContext) {
+            return .success((skill, document))
+        }
+        let all = folderSkills()
         guard let skill = all.first(where: { $0.name == name && $0.problem == nil })
             ?? all.first(where: { $0.folderName == name })
         else {
-            return .failure(.notFound(available: all.filter(\.isAvailable).map(\.name)))
+            return .failure(.notFound(available: skills().filter(\.isAvailable).map(\.name)))
         }
         if let problem = skill.problem { return .failure(.broken(problem)) }
         if !skill.isEnabled { return .failure(.turnedOff) }
+        guard let folderURL = skill.folderURL else { return .failure(.broken("It has no folder.")) }
         do {
-            return .success((skill, try document(in: skill.folderURL)))
+            return .success((skill, try document(in: folderURL)))
         } catch {
             return .failure(.broken("\(error)"))
         }
@@ -289,14 +320,21 @@ public struct SkillLibrary: Sendable {
 
     /// What Settings shows for one skill: its instructions and the files beside them.
     public func contents(of skill: Skill) -> SkillContents {
-        let text = try? String(contentsOf: skill.fileURL, encoding: .utf8)
+        if skill.isPartOfApp {
+            let body = AppSkills.document(named: skill.name, context: appSkillContext)?.body ?? ""
+            return SkillContents(hasFile: true, instructions: body, files: [])
+        }
+        guard let fileURL = skill.fileURL, let folderURL = skill.folderURL else {
+            return SkillContents(hasFile: false, instructions: "", files: [])
+        }
+        let text = try? String(contentsOf: fileURL, encoding: .utf8)
         let instructions: String
         if let text, let document = try? SkillDocument.parse(text) {
             instructions = document.body
         } else {
             instructions = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         }
-        return SkillContents(hasFile: text != nil, instructions: instructions, files: Self.files(in: skill.folderURL))
+        return SkillContents(hasFile: text != nil, instructions: instructions, files: Self.files(in: folderURL))
     }
 
     // MARK: - Turning skills on and off
@@ -312,6 +350,8 @@ public struct SkillLibrary: Sendable {
         return Set(settings.disabled)
     }
 
+    /// Turns a skill folder on or off. A skill that is part of the app is always on, and this
+    /// never reaches it.
     public func setEnabled(_ enabled: Bool, folderName: String) throws {
         var disabled = disabledFolders()
         if enabled { disabled.remove(folderName) } else { disabled.insert(folderName) }
@@ -346,7 +386,7 @@ public struct SkillLibrary: Sendable {
             """
         try Data(text.utf8).write(to: skillFolder.appending(path: Self.fileName), options: .atomic)
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
-        return skills().first { $0.folderName == name }!
+        return folderSkills().first { $0.folderName == name }!
     }
 
     /// Turns a folder name typed in Settings into a skill name: "Rename Photos" gives rename-photos.
@@ -421,13 +461,17 @@ public struct LoadSkillTool: AgentTool {
     /// A skill's instructions as the agent reads them: where it is, the files beside SKILL.md,
     /// and the instructions. A skill invoked with a slash sends the same text in its message.
     public static func instructions(skill: Skill, document: SkillDocument, fileListLimit: Int = 50) -> String {
-        var text = "Skill \(document.name), from \(skill.fileURL.plainPath)\n"
-        var files = SkillLibrary.files(in: skill.folderURL)
+        guard let folderURL = skill.folderURL, let fileURL = skill.fileURL else {
+            return "Skill \(document.name), part of the app. It is not in the skills folder, and it cannot be changed.\n\n"
+                + document.body
+        }
+        var text = "Skill \(document.name), from \(fileURL.plainPath)\n"
+        var files = SkillLibrary.files(in: folderURL)
         if files.count > fileListLimit {
             files = Array(files.prefix(fileListLimit)) + ["(\(files.count - fileListLimit) more)"]
         }
         if !files.isEmpty {
-            text += "Files beside SKILL.md, in \(skill.folderURL.plainPath):\n"
+            text += "Files beside SKILL.md, in \(folderURL.plainPath):\n"
             text += files.map { "- \($0)" }.joined(separator: "\n") + "\n"
         }
         return text + "\n" + document.body

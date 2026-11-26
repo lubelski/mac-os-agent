@@ -84,10 +84,11 @@ private final class SkillWritingProvider: ModelProvider, @unchecked Sendable {
         try FileManager.default.createDirectory(at: library.folder, withIntermediateDirectories: true)
         let (session, _) = try makeSession()
         session.draft = "/"
-        #expect(session.commandSuggestions.map(\.name) == ["/new", "/incognito"])
+        // The skill that is part of the app is there from the start.
+        #expect(session.commandSuggestions.map(\.name) == ["/new", "/incognito", "/file-issue-about-this-app"])
 
         try writeSkill("rename-photos", in: library.folder, skillText("rename-photos", "Renames photos by date."))
-        #expect(await eventually { session.commandSuggestions.map(\.name) == ["/new", "/incognito", "/rename-photos"] })
+        #expect(await eventually { session.commandSuggestions.map(\.name) == ["/new", "/incognito", "/file-issue-about-this-app", "/rename-photos"] })
         #expect(session.commandSuggestions.last?.summary() == "Renames photos by date.")
 
         // Changed by hand, as in an editor that replaces the file.
@@ -96,13 +97,13 @@ private final class SkillWritingProvider: ModelProvider, @unchecked Sendable {
 
         // Broken: not offered.
         try writeSkill("rename-photos", in: library.folder, "no front matter")
-        #expect(await eventually { session.commandSuggestions.map(\.name) == ["/new", "/incognito"] })
+        #expect(await eventually { session.commandSuggestions.map(\.name) == ["/new", "/incognito", "/file-issue-about-this-app"] })
 
         // Fixed, then removed in Finder.
         try writeSkill("rename-photos", in: library.folder, skillText("rename-photos", "Renames photos."))
-        #expect(await eventually { session.commandSuggestions.count == 3 })
+        #expect(await eventually { session.commandSuggestions.count == 4 })
         try FileManager.default.removeItem(at: library.folder.appending(path: "rename-photos"))
-        #expect(await eventually { session.commandSuggestions.count == 2 })
+        #expect(await eventually { session.commandSuggestions.count == 3 })
     }
 
     @Test func turningASkillOffInSettingsTakesItOutAtOnce() throws {
@@ -156,7 +157,7 @@ private final class SkillWritingProvider: ModelProvider, @unchecked Sendable {
         #expect(session.commandSuggestions.isEmpty)
         session.draft = ""
         session.draft = "/"
-        #expect(session.commandSuggestions.count == 4)
+        #expect(session.commandSuggestions.count == 5)
     }
 
     @Test func invokingASkillShowsTheTypedLineAndSendsItsInstructions() async throws {

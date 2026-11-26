@@ -390,7 +390,11 @@ enum SettingsPreview {
         session.modelAccess = modelAccess
         // Preferences of their own, so the model picker never reads or writes the real setting.
         let defaults = UserDefaults(suiteName: "dev.lubelski.mac-os-agent.preview") ?? .standard
-        let prompt = AgentPrompt(memories: MemoryLibrary())
+        // Skills shows stand-in skill folders in a temporary folder, never the real ones, beside
+        // the skills that are part of the app.
+        let prompt = section == .skills
+            ? AgentPrompt(skills: standInSkills(), memories: MemoryLibrary())
+            : AgentPrompt(memories: MemoryLibrary())
         let problems = ProblemLog()
         problems.record(
             "Request", "OpenAI API error (429): The usage limit for this plan was reached. Try again in 12 minutes.",
@@ -592,6 +596,26 @@ enum SettingsPreview {
         }
 
         func stop() async {}
+    }
+
+    /// Two stand-in skill folders in a temporary folder, one of them named like a skill that is
+    /// part of the app so Settings shows it as not used, and placeholder versions.
+    private static func standInSkills() -> SkillLibrary {
+        let folder = FileManager.default.temporaryDirectory
+            .appending(path: "mac-os-agent-preview-skills-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let skills: [(String, String)] = [
+            ("rename-photos", "Rename photos in a folder by the date they were taken."),
+            (AppSkills.fileIssueAboutThisAppName, "Open an issue about the app with the shell."),
+        ]
+        for (name, description) in skills {
+            let skillFolder = folder.appending(path: name, directoryHint: .isDirectory)
+            try? FileManager.default.createDirectory(at: skillFolder, withIntermediateDirectories: true)
+            let text = "---\nname: \(name)\ndescription: \(description)\n---\n\nStand-in steps.\n"
+            try? Data(text.utf8).write(to: skillFolder.appending(path: SkillLibrary.fileName))
+        }
+        return SkillLibrary(
+            folder: folder, settingsFile: folder.appending(path: "skill-settings.json"),
+            appSkillContext: AppSkillContext(appVersion: "1.0.0", macOSVersion: "Version 27.0 (Build 27A100)"))
     }
 
     /// A few episodes of stand-in conversation in a temporary folder, never the real thread.

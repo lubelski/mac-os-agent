@@ -151,7 +151,7 @@ private func library(_ root: URL) -> SkillLibrary {
         try FileManager.default.createDirectory(at: skills.folder.appending(path: "empty-folder"), withIntermediateDirectories: true)
         try Data("not a folder".utf8).write(to: skills.folder.appending(path: "stray.txt"))
 
-        let found = skills.skills()
+        let found = skills.folderSkills()
         #expect(found.map(\.folderName) == ["broken", "copy", "empty-folder", "rename-photos"])
         #expect(found[0].problem == SkillDocument.ParseError.noFrontMatter.description)
         #expect(found[1].problem == nil, "the first folder in order keeps the name")
@@ -160,19 +160,21 @@ private func library(_ root: URL) -> SkillLibrary {
         #expect(found.filter(\.isAvailable).map(\.folderName) == ["copy"])
     }
 
-    @Test func aMissingFolderHasNoSkills() {
-        #expect(library(temporaryFolder()).skills().isEmpty)
+    @Test func aMissingFolderHasOnlyTheSkillsThatArePartOfTheApp() {
+        let skills = library(temporaryFolder())
+        #expect(skills.folderSkills().isEmpty)
+        #expect(skills.skills() == AppSkills.skills)
     }
 
     @Test func skillsCanBeTurnedOffAndOn() throws {
         let skills = library(temporaryFolder())
         try skills.create(name: "tidy-desktop", description: "Tidies the desktop.")
-        #expect(skills.skills().first?.isEnabled == true)
+        #expect(skills.folderSkills().first?.isEnabled == true)
         try skills.setEnabled(false, folderName: "tidy-desktop")
-        #expect(skills.skills().first?.isEnabled == false)
-        #expect(skills.skills().first?.isAvailable == false)
+        #expect(skills.folderSkills().first?.isEnabled == false)
+        #expect(skills.folderSkills().first?.isAvailable == false)
         try skills.setEnabled(true, folderName: "tidy-desktop")
-        #expect(skills.skills().first?.isEnabled == true)
+        #expect(skills.folderSkills().first?.isEnabled == true)
     }
 
     @Test func createdSkillsParse() throws {
@@ -214,7 +216,7 @@ private func library(_ root: URL) -> SkillLibrary {
         let tool = LoadSkillTool(library: skills)
 
         let unknown = await tool.run(arguments: ["name": "missing"], context: context)
-        #expect(unknown == "Error: there is no skill named \"missing\". The skills are: one.")
+        #expect(unknown == "Error: there is no skill named \"missing\". The skills are: \(AppSkills.fileIssueAboutThisAppName), one.")
         let off = await tool.run(arguments: ["name": "off"], context: context)
         #expect(off.hasPrefix("Error: the off skill is turned off"))
         let broken = await tool.run(arguments: ["name": "broken"], context: context)
@@ -234,7 +236,7 @@ private func library(_ root: URL) -> SkillLibrary {
         #expect(text.contains("Set destructive to true on run_shell_command"))
         #expect(text.contains("local time it was sent, in square brackets"))
         #expect(text.contains("call load_skill"))
-        #expect(text.hasSuffix("There are no skills yet."))
+        #expect(text.hasSuffix("Skills you have:\n- \(AppSkills.fileIssueAboutThisAppName) (part of the app): \(AppSkills.skills[0].description)"))
     }
 
     @Test func theEditablePartComesFirst() throws {
@@ -255,7 +257,8 @@ private func library(_ root: URL) -> SkillLibrary {
         try writeSkill("d-folder", in: skills.folder, "broken")
         try skills.setEnabled(false, folderName: "c-folder")
         let text = AgentPrompt(instructions: InstructionsStore(fileURL: root.appending(path: "i.md")), skills: skills).current()
-        #expect(text.hasSuffix("Skills you have:\n- apple: First one.\n- zebra: Last one."))
+        #expect(text.hasSuffix(
+            "Skills you have:\n- apple: First one.\n- \(AppSkills.fileIssueAboutThisAppName) (part of the app): \(AppSkills.skills[0].description)\n- zebra: Last one."))
         #expect(!text.contains("Secret body text"))
         #expect(!text.contains("muted"))
     }
