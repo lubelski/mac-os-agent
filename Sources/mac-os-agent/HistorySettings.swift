@@ -29,7 +29,7 @@ final class HistorySettingsModel {
     var selectedItem: EpisodeListItem? { items.first { $0.id == selection } }
 
     var countText: String {
-        let count = contents.episodes.filter(\.hasActivity).count
+        let count = EpisodeListItem.all(in: contents).count
         return count == 1 ? "1 episode" : "\(count) episodes"
     }
 
@@ -142,7 +142,7 @@ private struct EpisodeRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
-            Text(EpisodeDetailView.length(item.episode))
+            Text(item.episode.summary)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
@@ -150,17 +150,12 @@ private struct EpisodeRow: View {
     }
 }
 
-/// One episode, read-only: the owner's messages, the commands that ran, and the replies, with
-/// selectable text.
+/// One episode, read-only, with selectable text: everything that happened in it, in order.
+/// The owner's messages, the commands that ran, the replies, the quick actions the owner ran
+/// with their steps, and the apps they opened. Why it started is a caption under its title.
 private struct EpisodeDetailView: View {
     let episode: Episode
     let lines: [EpisodeLine]
-
-    static func length(_ episode: Episode) -> String {
-        let messages = episode.messageCount == 1 ? "1 message" : "\(episode.messageCount) messages"
-        guard episode.commandCount > 0 else { return messages }
-        return messages + (episode.commandCount == 1 ? ", 1 command" : ", \(episode.commandCount) commands")
-    }
 
     var body: some View {
         ScrollView {
@@ -168,9 +163,14 @@ private struct EpisodeDetailView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Episode \(episode.number)")
                         .font(.title3)
-                    Text("\(episode.startDate.formatted(date: .complete, time: .shortened)) to \(episode.lastActivity.formatted(date: .omitted, time: .shortened)), \(Self.length(episode))")
+                    Text("\(episode.startDate.formatted(date: .complete, time: .shortened)) to \(episode.lastActivity.formatted(date: .omitted, time: .shortened)), \(episode.summary)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                    if let caption = episode.startCaption {
+                        Text(caption)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
                 .padding(.bottom, 6)
                 ForEach(lines) { line in
@@ -195,19 +195,18 @@ private struct LineView: View {
         case .agent:
             labeled("Agent", Text(line.text))
         case .command(let outcome):
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                // The marks of the panel's tool rows: `›` for a command, `✗` for one that failed.
-                Text(verbatim: outcome == .failed ? Mark.failed : Mark.call)
-                    .font(Mark.rowFont)
-                    .foregroundStyle(outcome == .failed ? HierarchicalShapeStyle.primary : .tertiary)
-                    .frame(width: Mark.rowColumn, alignment: .leading)
-                    .accessibilityHidden(true)
-                Text(line.text)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            CommandLineView(line: line, outcome: outcome)
+        case .event(let event):
+            VStack(alignment: .leading, spacing: 4) {
+                EventLineView(event: event)
+                // A quick action's steps, as commands are.
+                ForEach(line.steps) { step in
+                    if case .command(let outcome) = step.kind {
+                        CommandLineView(line: step, outcome: outcome)
+                    }
+                }
+                .padding(.leading, 16)
             }
-            .help(line.date.formatted(date: .abbreviated, time: .shortened))
         }
     }
 
@@ -221,6 +220,67 @@ private struct LineView: View {
             .foregroundStyle(.secondary)
             text
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// A command, with the marks of the panel's tool rows: `›`, or `✗` for one that failed.
+private struct CommandLineView: View {
+    let line: EpisodeLine
+    let outcome: TranscriptRow.ToolOutcome
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(verbatim: outcome == .failed ? Mark.failed : Mark.call)
+                .font(Mark.rowFont)
+                .foregroundStyle(outcome == .failed ? HierarchicalShapeStyle.primary : .tertiary)
+                .frame(width: Mark.rowColumn, alignment: .leading)
+                .accessibilityHidden(true)
+            Text(line.text)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .help(line.date.formatted(date: .abbreviated, time: .shortened))
+    }
+}
+
+/// Something the owner did without a message, in the panel's words and icon: "Opened" and the
+/// app's own icon and name, or "Ran", the quick action's icon, and its name, or its name and
+/// why it failed, in red. Its time is beside it, as a message's is.
+private struct EventLineView: View {
+    let event: TranscriptLine
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 5) {
+            if let leading = event.leadingText {
+                Text(verbatim: leading)
+            }
+            icon
+            Text(verbatim: event.trailingText)
+                .foregroundStyle(event.isFailure ? AnyShapeStyle(Color.red) : AnyShapeStyle(.primary))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(event.date.formatted(date: .omitted, time: .shortened))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .help(TranscriptTimeLabel.fullText(for: event.date))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(event.spokenText)
+    }
+
+    @ViewBuilder private var icon: some View {
+        switch event.icon {
+        case .quickAction:
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .frame(width: 14, height: 14)
+        case .application(let path):
+            Image(nsImage: SuggestionIcon.icon(for: URL(filePath: path)))
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 14, height: 14)
         }
     }
 }
