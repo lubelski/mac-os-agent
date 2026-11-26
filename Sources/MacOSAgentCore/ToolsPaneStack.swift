@@ -64,6 +64,17 @@ extension Array where Element == ToolGroup {
         if contains(where: { $0.id == item }) { return PaneStackPath([item]) }
         return nil
     }
+
+    /// The ids the top pane of a path lists, top to bottom, which a swap's direction follows:
+    /// the groups as the base shows them, built-in ones first, or a group's tools. A tool's
+    /// details list nothing.
+    public func rows(of path: PaneStackPath) -> [String] {
+        switch pane(at: path.depth, of: path) {
+        case .groups: (builtIn + fromMCPServers).map(\.id)
+        case .group(let group): group.tools.map(\.id)
+        case .tool, nil: []
+        }
+    }
 }
 
 extension ToolGroup {
