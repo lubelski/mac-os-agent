@@ -139,6 +139,9 @@ public struct ReadEpisodeTool: AgentTool {
             text.line(contents.entries[$0], limit: 600)
         }
         let start = max(1, arguments["from_line"]?.numberValue.map { Int($0) } ?? 1)
+        guard !lines.isEmpty else {
+            return text.heading(episode) + " It holds nothing to read."
+        }
         guard start <= lines.count else {
             return "Error: episode \(number) has \(lines.count) lines."
         }
@@ -151,6 +154,7 @@ public struct ReadEpisodeTool: AgentTool {
             index += 1
         }
         var result = text.heading(episode)
+        if let caption = episode.startCaption { result += " \(caption)." }
         if episode.id == context.episodeID { result += " This is the current episode." }
         result += "\n" + page.joined(separator: "\n")
         if index < lines.count {
@@ -174,7 +178,16 @@ struct HistoryText {
     func heading(_ episode: Episode) -> String {
         let messages = episode.messageCount == 1 ? "1 message" : "\(episode.messageCount) messages"
         let commands = episode.commandCount == 1 ? "1 command" : "\(episode.commandCount) commands"
-        return "Episode \(episode.number), \(formatter.string(from: episode.startDate)) to \(formatter.string(from: episode.lastActivity)), \(messages) and \(commands)."
+        var heading = "Episode \(episode.number), \(formatter.string(from: episode.startDate)) to \(formatter.string(from: episode.lastActivity)), \(messages) and \(commands)."
+        var also: [String] = []
+        if episode.quickActionCount > 0 {
+            also.append(episode.quickActionCount == 1 ? "1 quick action the person ran" : "\(episode.quickActionCount) quick actions the person ran")
+        }
+        if episode.appOpenedCount > 0 {
+            also.append(episode.appOpenedCount == 1 ? "1 app the person opened" : "\(episode.appOpenedCount) apps the person opened")
+        }
+        if !also.isEmpty { heading += " Also \(also.joined(separator: " and "))." }
+        return heading
     }
 
     func line(_ entry: ThreadEntry, limit: Int) -> String {
@@ -213,42 +226,71 @@ struct HistoryText {
     }
 }
 
-/// One line of a past episode as the History section in Settings shows it: the owner's
-/// messages, the agent's replies, and the commands that ran, in order.
+/// One line of a past episode as the History section in Settings shows it. Every entry in the
+/// thread has a line here or folds into one, for the reason `HistoryReading` gives: the owner's
+/// messages, the agent's replies, the commands that ran here or on the provider's side, the
+/// quick actions the owner ran with their steps, and the apps they opened, in order.
 public struct EpisodeLine: Sendable, Equatable, Identifiable {
     public enum Kind: Sendable, Equatable {
         case owner
         case agent
         /// A command, and how it ended once its result is in.
         case command(TranscriptRow.ToolOutcome)
+        /// Something the owner did without a message, worded and drawn as the panel's line
+        /// for it: a quick action they ran, or an app they opened.
+        case event(TranscriptLine)
     }
 
-    public var id: UUID
+    public var id: String
     public var date: Date
     public var kind: Kind
     public var text: String
+    /// A quick action's steps that ran, each as a command's line.
+    public var steps: [EpisodeLine] = []
 
-    /// The lines of an episode. Reasoning, results, and the marker are left out, and each
-    /// command takes its outcome from its result. A tool call reads as its row in the panel does.
+    /// The lines of an episode. Each command takes its outcome from its result, which may be
+    /// in the next episode when the app quit while it ran. A tool call reads as its row in
+    /// the panel does.
     public static func lines(of episode: Episode, in contents: ThreadContents, summaries: ToolCallSummaries = .builtIn) -> [EpisodeLine] {
+        let end = contents.episode(numbered: episode.number + 1)?.range.upperBound ?? episode.range.upperBound
         var outcomes: [String: TranscriptRow.ToolOutcome] = [:]
-        for entry in contents.entries[episode.range] {
+        for entry in contents.entries[episode.range.lowerBound..<end] {
             if case .toolResult(let result) = entry.item {
                 outcomes[result.callID] = TranscriptRow.outcome(ofOutput: result.output)
             }
         }
-        return contents.entries[episode.range].compactMap { entry in
-            switch entry.item {
-            case .userMessage(let text, _, _):
-                EpisodeLine(id: entry.id, date: entry.date, kind: .owner, text: text)
-            case .assistantMessage(let message) where !message.text.isEmpty:
-                EpisodeLine(id: entry.id, date: entry.date, kind: .agent, text: message.text)
-            case .toolCall(let call):
-                EpisodeLine(id: entry.id, date: entry.date, kind: .command(outcomes[call.callID] ?? .unknown),
-                            text: summaries.summary(of: call))
-            default:
-                nil
+        return contents.entries[episode.range].compactMap { line(for: $0, outcomes: outcomes, summaries: summaries) }
+    }
+
+    /// One entry's line, or nil for an entry that folds into another or into the episode.
+    static func line(
+        for entry: ThreadEntry, outcomes: [String: TranscriptRow.ToolOutcome] = [:], summaries: ToolCallSummaries = .builtIn
+    ) -> EpisodeLine? {
+        let id = entry.id.uuidString
+        switch HistoryReading.of(entry.item) {
+        case .owner(let text):
+            return EpisodeLine(id: id, date: entry.date, kind: .owner, text: text)
+        case .agent(let text):
+            return EpisodeLine(id: id, date: entry.date, kind: .agent, text: text)
+        case .command(let call):
+            return EpisodeLine(id: id, date: entry.date, kind: .command(outcomes[call.callID] ?? .unknown),
+                               text: summaries.summary(of: call))
+        case .hostedCommand(let call):
+            let output: String? = call.status == .running ? nil : call.output
+            return EpisodeLine(id: id, date: entry.date, kind: .command(TranscriptRow.outcome(ofOutput: output)), text: call.summary)
+        case .quickAction(let typed, let run):
+            let line = TranscriptLine.ran(run, typed: typed, date: entry.date)
+            let steps = run.steps.map { step in
+                EpisodeLine(
+                    id: step.callID, date: step.details?.started ?? entry.date,
+                    kind: .command(TranscriptRow.outcome(ofOutput: step.output)), text: summaries.summary(of: step.call))
             }
+            return EpisodeLine(id: id, date: entry.date, kind: .event(line), text: line.spokenText, steps: steps)
+        case .appOpened(let opening):
+            let line = TranscriptLine.opened(opening, date: entry.date)
+            return EpisodeLine(id: id, date: entry.date, kind: .event(line), text: line.spokenText)
+        case .episodeStart, .folded:
+            return nil
         }
     }
 }
@@ -260,23 +302,20 @@ public struct EpisodeListItem: Sendable, Equatable, Identifiable {
     public var match: String?
     public var id: UUID { episode.id }
 
-    /// Every episode with something in it, newest first.
+    /// Every episode with something to show, newest first. One that holds only its marker, or
+    /// only answers to the episode before's calls, is left out.
     public static func all(in contents: ThreadContents) -> [EpisodeListItem] {
-        contents.episodes.reversed().filter(\.hasActivity).map { EpisodeListItem(episode: $0) }
+        contents.episodes.reversed().filter { $0.hasActivity && $0.hasSomethingToShow }.map { EpisodeListItem(episode: $0) }
     }
 
-    /// The episodes that match a search, best first, each once, with its best match. A tool
-    /// call that matched reads as its row in the panel does.
+    /// The episodes that match a search, best first, each once, with its best match, which
+    /// reads as its line in the episode does.
     public static func matching(_ matches: [HistoryMatch], summaries: ToolCallSummaries = .builtIn) -> [EpisodeListItem] {
         var seen = Set<UUID>()
         return matches.compactMap { match in
             guard seen.insert(match.episode.id).inserted else { return nil }
-            let text: String
-            if case .toolCall(let call) = match.entry.item {
-                text = summaries.summary(of: call)
-            } else {
-                text = HistorySearchText.of(match.entry.item)?.text ?? ""
-            }
+            let text = EpisodeLine.line(for: match.entry, summaries: summaries)?.text
+                ?? HistorySearchText.of(match.entry.item)?.text ?? ""
             return EpisodeListItem(episode: match.episode, match: HistoryText.clipped(text, limit: 200))
         }
     }

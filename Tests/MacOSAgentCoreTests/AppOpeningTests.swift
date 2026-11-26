@@ -229,8 +229,9 @@ private let noConfirm: @Sendable (ConfirmationRequest) async -> Bool = { _ in fa
         if case .appOpened = items[3] {} else { Issue.record("the opening comes after the answer") }
     }
 
-    @Test func searchLeavesOpeningsOut() {
-        #expect(HistorySearchText.of(.appOpened(ThreadItem.AppOpening(calendarApp))) == nil)
+    @Test func searchFindsOpenings() {
+        let text = HistorySearchText.of(.appOpened(ThreadItem.AppOpening(calendarApp)))?.text
+        #expect(text?.contains("Calendar") == true)
     }
 
     static func run(id: UUID, failed: Bool) -> ThreadItem.QuickActionRun {

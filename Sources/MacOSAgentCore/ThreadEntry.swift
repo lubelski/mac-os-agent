@@ -144,7 +144,9 @@ public enum ThreadItem: Sendable, Equatable, Codable {
 
     private enum CodingKeys: String, CodingKey { case type, value }
 
-    private enum Kind: String, Codable {
+    /// The kind of each case, as the thread file names it. Every case has one, so a list of
+    /// every kind is a list of every case, which the History tests check against.
+    enum Kind: String, Codable, CaseIterable {
         case userMessage = "user_message"
         case assistantMessage = "assistant_message"
         case providerItem = "provider_item"
@@ -152,6 +154,18 @@ public enum ThreadItem: Sendable, Equatable, Codable {
         case toolResult = "tool_result"
         case episodeStart = "episode_start"
         case appOpened = "app_opened"
+    }
+
+    var kind: Kind {
+        switch self {
+        case .userMessage: .userMessage
+        case .assistantMessage: .assistantMessage
+        case .providerItem: .providerItem
+        case .toolCall: .toolCall
+        case .toolResult: .toolResult
+        case .episodeStart: .episodeStart
+        case .appOpened: .appOpened
+        }
     }
 
     /// A user message's value. `skill` and `action` are left out when there is none, so a plain
