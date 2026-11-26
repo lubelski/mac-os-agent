@@ -88,6 +88,67 @@ public struct PaneStackPath: Sendable, Equatable, Hashable, CustomStringConverti
     public var description: String { entries.joined(separator: "/") }
 }
 
+/// What a change of path does to the stack, so the view can pick its motion.
+///
+/// Opening a pane where none was open and going back are moves across the stack, and slide
+/// from the side. A swap is neither: the item open at some depth is replaced by another item
+/// from the same list, and any panes above that depth close. A swap moves up or down, following
+/// the two items' order in the list they were picked from.
+public enum PaneStackChange: Equatable, Sendable {
+    /// The path did not change.
+    case none
+    /// Panes opened over the ones already showing, which stay as they were.
+    case open
+    /// Panes closed, and the ones left are as they were.
+    case back
+    /// The item at `depth` was replaced by another. Panes above that depth closed, and any the
+    /// new path opens above it are new.
+    case swap(depth: Int, direction: PaneSwapDirection)
+
+    /// What changed from one path to another.
+    ///
+    /// - Parameters:
+    ///   - old: The path before the change.
+    ///   - new: The path after it.
+    ///   - rows: The ids a pane lists, top to bottom, given the path that shows that pane on top.
+    ///     It is asked only on a swap, for the pane the swapped item was picked from.
+    public init(from old: PaneStackPath, to new: PaneStackPath, rows: (PaneStackPath) -> [String]) {
+        guard old != new else { self = .none; return }
+        let shared = zip(old.entries, new.entries).prefix { $0 == $1 }.count
+        if shared == old.depth { self = .open; return }
+        if shared == new.depth { self = .back; return }
+
+        // Both paths have an entry just past what they share, and the two differ.
+        let list = rows(new.prefix(shared))
+        guard let from = list.firstIndex(of: old.entries[shared]),
+              let to = list.firstIndex(of: new.entries[shared]) else {
+            self = .swap(depth: shared + 1, direction: .inPlace)
+            return
+        }
+        self = .swap(depth: shared + 1, direction: to > from ? .fromBelow : .fromAbove)
+    }
+
+    /// The depth a swap replaced, or nil for any other change.
+    public var swapDepth: Int? {
+        if case .swap(let depth, _) = self { depth } else { nil }
+    }
+
+    /// Which way a swap's new content comes in, or nil for any other change.
+    public var swapDirection: PaneSwapDirection? {
+        if case .swap(_, let direction) = self { direction } else { nil }
+    }
+}
+
+/// Which way a swap's new content comes in.
+public enum PaneSwapDirection: Equatable, Sendable {
+    /// The new item is lower in the list, so its content rises from below.
+    case fromBelow
+    /// The new item is higher in the list, so its content comes down from above.
+    case fromAbove
+    /// An item is not in the list, so there is no order to follow: the content only fades.
+    case inPlace
+}
+
 /// How wide each covered pane's strip is, so the top pane always has room.
 ///
 /// Each covered pane shows a strip at its leading edge, the part the pane above it does not
