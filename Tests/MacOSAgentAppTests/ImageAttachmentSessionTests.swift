@@ -151,4 +151,34 @@ struct StandInPasteboard: ImagePasteboard {
         #expect(session.draft == "and this picture")
         #expect(session.attachments.isEmpty)
     }
+
+    @Test func aKeptThumbnailIsDrawnWithoutReadingTheFileAgain() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let images = ImageFolder(folder: folder.appending(path: "images"))
+        // A size no other test draws, so the shared cache cannot already hold it.
+        let image = try ImagePreparation.prepare(StandInImages.png(.landscape, width: 333, height: 211))
+        let points: CGFloat = 37
+        try images.keep(image)
+        var reads = 0
+        let read = { () -> Data? in
+            reads += 1
+            return images.data(for: image.attachment)
+        }
+        #expect(ImageThumbnails.image(for: image.attachment, points: points, data: read) != nil)
+        #expect(ImageThumbnails.image(for: image.attachment, points: points, data: read) != nil)
+        #expect(reads == 1)
+
+        // A missing image is asked for each time, so it shows once its file is back.
+        let other = try ImagePreparation.prepare(StandInImages.png(.chart, width: 317, height: 203))
+        let readOther = { () -> Data? in
+            reads += 1
+            return images.data(for: other.attachment)
+        }
+        #expect(ImageThumbnails.image(for: other.attachment, points: points, data: readOther) == nil)
+        #expect(ImageThumbnails.image(for: other.attachment, points: points, data: readOther) == nil)
+        #expect(reads == 3)
+        try images.keep(other)
+        #expect(ImageThumbnails.image(for: other.attachment, points: points, data: readOther) != nil)
+        #expect(reads == 4)
+    }
 }

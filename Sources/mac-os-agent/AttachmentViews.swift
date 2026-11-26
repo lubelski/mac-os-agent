@@ -9,15 +9,20 @@ extension EnvironmentValues {
 }
 
 /// Small images drawn from attached images' bytes, made once per image and size and kept, so a
-/// conversation with images does not decode a 2,048 pixel PNG on every redraw.
+/// conversation with images does not read, hash, and decode a 2,048 pixel PNG on every redraw.
 @MainActor
 enum ImageThumbnails {
     private static let cache = NSCache<NSString, NSImage>()
 
-    /// A thumbnail whose long edge is `points` at the screen's scale, or nil when the bytes cannot be read.
-    static func image(for attachment: ImageAttachment, data: Data, points: CGFloat) -> NSImage? {
+    /// A thumbnail whose long edge is `points` at the screen's scale, or nil when the bytes are
+    /// gone or cannot be read. `data` is asked only when no thumbnail is kept, so a kept one costs
+    /// no file read. An image's id is the hash of its bytes, so a kept thumbnail is never stale.
+    /// A missing image is not kept: pasting the same picture again writes its file back under the
+    /// same name, and its thumbnails should then show it. Asking again costs a failed file open.
+    static func image(for attachment: ImageAttachment, points: CGFloat, data: () -> Data?) -> NSImage? {
         let key = "\(attachment.id)-\(Int(points))" as NSString
         if let cached = cache.object(forKey: key) { return cached }
+        guard let data = data() else { return nil }
         let pixels = Int(points * 2)
         let options = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -48,7 +53,7 @@ struct ImageThumbnail: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: PanelShape.messageCornerRadius, style: .continuous)
         Group {
-            if let data = imageData(attachment), let image = ImageThumbnails.image(for: attachment, data: data, points: size) {
+            if let image = ImageThumbnails.image(for: attachment, points: size, data: { imageData(attachment) }) {
                 Image(nsImage: image)
                     .resizable()
                     .interpolation(.high)
