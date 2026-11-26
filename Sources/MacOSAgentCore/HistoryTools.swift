@@ -249,19 +249,25 @@ public struct EpisodeLine: Sendable, Equatable, Identifiable {
     public var steps: [EpisodeLine] = []
     /// The images on an owner's message, which History shows as thumbnails beside its text.
     public var images: [ImageAttachment] = []
+    /// A command's call id, which finds its input and output. Nil on every other line.
+    public var callID: String?
 
     /// The lines of an episode. Each command takes its outcome from its result, which may be
     /// in the next episode when the app quit while it ran. A tool call reads as its row in
     /// the panel does.
     public static func lines(of episode: Episode, in contents: ThreadContents, summaries: ToolCallSummaries = .builtIn) -> [EpisodeLine] {
-        let end = contents.episode(numbered: episode.number + 1)?.range.upperBound ?? episode.range.upperBound
+        // An episode found by a search can be newer than the contents it is read against, when
+        // the thread grew in between. Only the entries the contents hold are read.
+        let count = contents.entries.count
+        let range = min(episode.range.lowerBound, count)..<min(episode.range.upperBound, count)
+        let end = min(contents.episode(numbered: episode.number + 1)?.range.upperBound ?? range.upperBound, count)
         var outcomes: [String: TranscriptRow.ToolOutcome] = [:]
-        for entry in contents.entries[episode.range.lowerBound..<end] {
+        for entry in contents.entries[range.lowerBound..<max(range.lowerBound, end)] {
             if case .toolResult(let result) = entry.item {
                 outcomes[result.callID] = TranscriptRow.outcome(ofOutput: result.output)
             }
         }
-        return contents.entries[episode.range].compactMap { line(for: $0, outcomes: outcomes, summaries: summaries) }
+        return contents.entries[range].compactMap { line(for: $0, outcomes: outcomes, summaries: summaries) }
     }
 
     /// One entry's line, or nil for an entry that folds into another or into the episode.
@@ -277,16 +283,19 @@ public struct EpisodeLine: Sendable, Equatable, Identifiable {
             return EpisodeLine(id: id, date: entry.date, kind: .agent, text: text)
         case .command(let call):
             return EpisodeLine(id: id, date: entry.date, kind: .command(outcomes[call.callID] ?? .unknown),
-                               text: summaries.summary(of: call))
+                               text: summaries.summary(of: call), callID: call.callID)
         case .hostedCommand(let call):
             let output: String? = call.status == .running ? nil : call.output
-            return EpisodeLine(id: id, date: entry.date, kind: .command(TranscriptRow.outcome(ofOutput: output)), text: call.summary)
+            return EpisodeLine(
+                id: id, date: entry.date, kind: .command(TranscriptRow.outcome(ofOutput: output)), text: call.summary,
+                callID: call.callID)
         case .quickAction(let typed, let run):
             let line = TranscriptLine.ran(run, typed: typed, date: entry.date)
             let steps = run.steps.map { step in
                 EpisodeLine(
                     id: step.callID, date: step.details?.started ?? entry.date,
-                    kind: .command(TranscriptRow.outcome(ofOutput: step.output)), text: summaries.summary(of: step.call))
+                    kind: .command(TranscriptRow.outcome(ofOutput: step.output)), text: summaries.summary(of: step.call),
+                    callID: step.callID)
             }
             return EpisodeLine(id: id, date: entry.date, kind: .event(line), text: line.spokenText, steps: steps)
         case .appOpened(let opening):
@@ -303,6 +312,8 @@ public struct EpisodeListItem: Sendable, Equatable, Identifiable {
     public var episode: Episode
     /// The text of the best match in the episode, when the list is a search.
     public var match: String?
+    /// The id of the line that matched, when the list is a search: the thread entry's id.
+    public var matchedLineID: String?
     public var id: UUID { episode.id }
 
     /// Every episode with something to show, newest first. One that holds only its marker, or
@@ -319,7 +330,8 @@ public struct EpisodeListItem: Sendable, Equatable, Identifiable {
             guard seen.insert(match.episode.id).inserted else { return nil }
             let text = EpisodeLine.line(for: match.entry, summaries: summaries)?.text
                 ?? HistorySearchText.of(match.entry.item)?.text ?? ""
-            return EpisodeListItem(episode: match.episode, match: HistoryText.clipped(text, limit: 200))
+            return EpisodeListItem(
+                episode: match.episode, match: HistoryText.clipped(text, limit: 200), matchedLineID: match.entry.id.uuidString)
         }
     }
 }
