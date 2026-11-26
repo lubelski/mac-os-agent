@@ -671,6 +671,9 @@ enum SettingsPreview {
             try? await store.append(.appOpened(.init(
                 name: "Slack", bundleIdentifier: "com.tinyspeck.slackmacgap", path: "/Applications/Slack.app",
                 message: ThreadItem.AppOpening.message(name: "Slack", bundleIdentifier: "com.tinyspeck.slackmacgap"))), date: tick())
+            // The list may have been read while the episodes were still being written, and
+            // selected the oldest. Select the newest once they are all there.
+            controller?.models.history.selection = nil
             controller?.models.history.reload()
         }
         return store
