@@ -38,7 +38,7 @@ A change should be resisted when it makes the instant path wait, changes the sta
 | **Settings window** | Showing and changing what the agent keeps and how this run is set up. | `SettingsWindow.swift`, the `*Settings.swift` files | Nothing of its own. It uses the same library types the tools use. |
 | **What the agent keeps** | The thread, attached images, memory, skills, quick actions, themes, MCP files, the usage log, preferences, secrets. | `AgentPaths.swift`, `SecretStorage.swift`, `Images/`, each library type | Who is reading it. |
 
-Paths under **Where** are in `Sources/mac-os-agent/` for the first four rows and the Settings window, and in `Sources/MacOSAgentCore/` for the rest. `InstantActionsModel.swift` is the instant path's one file in the app target.
+Paths under **Where** are in `Sources/mac-os-agent/` for the first four rows and the Settings window, and in `Sources/MacOSAgentCore/` for the rest. `InstantActionsModel.swift` is the instant path's one file in the app target. The Settings window borrows one set of views from the panel: with the pane stack experiment on, History shows a command with the tool call inspector's facts, input, and output (`ToolInspectorView.swift`), read from the thread by `HistoryPanes`.
 
 ### Four ways a capability reaches the agent
 
