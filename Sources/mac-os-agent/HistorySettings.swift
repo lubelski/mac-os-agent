@@ -163,7 +163,7 @@ private struct EpisodeDetailView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Episode \(episode.number)")
                         .font(.title3)
-                    Text("\(episode.startDate.formatted(date: .complete, time: .shortened)) to \(episode.lastActivity.formatted(date: .omitted, time: .shortened)), \(episode.summary)")
+                    Text("\(episode.startDate.formatted(date: .complete, time: .shortened)) to \(episode.lastActivity.formatted(date: .omitted, time: .shortened)). \(episode.summary)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     if let caption = episode.startCaption {
