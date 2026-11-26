@@ -95,7 +95,7 @@ private struct InspectorBar: View {
 
 // MARK: - Metadata
 
-private struct InspectorMetadata: View {
+struct InspectorMetadata: View {
     let call: InspectedToolCall
     let sourceLookup: (String) -> String?
 
@@ -130,7 +130,7 @@ private struct InspectorMetadata: View {
 
 // MARK: - Input
 
-private struct InspectorInput: View {
+struct InspectorInput: View {
     let call: InspectedToolCall
     @State private var raw = false
 
@@ -235,7 +235,7 @@ private struct RecordList: View {
 
 // MARK: - Output
 
-private struct InspectorOutput: View {
+struct InspectorOutput: View {
     let call: InspectedToolCall
     @State private var raw = false
     @State private var wraps = true

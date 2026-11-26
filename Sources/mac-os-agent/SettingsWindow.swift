@@ -445,7 +445,11 @@ enum SettingsPreview {
         if section == .general, let item {
             showShortcut(item, in: controller.models.shortcut)
         } else if let item {
-            controller.models.history.query = section == .history ? item : ""
+            if section == .history, item.hasPrefix(SettingsPreview.paneStackItem) {
+                showHistoryPaneStack(item, in: controller)
+            } else {
+                controller.models.history.query = section == .history ? item : ""
+            }
             controller.models.skills.selection = item
             if section == .quickActions { controller.models.quickActions.selection = item }
             if section == .tools, item.hasPrefix(SettingsPreview.paneStackItem) {
@@ -485,6 +489,25 @@ enum SettingsPreview {
             case "end": tools.stack.topStartsAtEnd = true
             case "narrow": controller.window?.setContentSize(SettingsWindowController.minimumSize)
             default: tools.showInStack(word)
+            }
+        }
+    }
+
+    /// History as a pane stack. The item is `stack`, then dot-separated words: an episode's
+    /// number opens it, a command's call id opens its episode and the command, `search-<text>`
+    /// searches for the text, and `narrow` shrinks the window to its minimum size.
+    /// `stack.search-receipts.6` searches for receipts and opens episode 6 at the line that
+    /// matched, and `stack.call_5` opens the command `call_5`.
+    private static func showHistoryPaneStack(_ item: String, in controller: SettingsWindowController) {
+        let history = controller.models.history
+        history.paneStackOverride = true
+        for word in item.split(separator: ".").dropFirst().map(String.init) {
+            if word.hasPrefix("search-") {
+                history.query = String(word.dropFirst("search-".count))
+            } else if word == "narrow" {
+                controller.window?.setContentSize(SettingsWindowController.minimumSize)
+            } else {
+                history.showInStack(word)
             }
         }
     }
@@ -594,6 +617,15 @@ enum SettingsPreview {
         func stop() async {}
     }
 
+    /// What the stand-in history's commands printed, by command. Placeholder folders only.
+    private static let standInOutputs: [String: String] = [
+        "du -sh ~/Library/Caches ~/Downloads ~/Movies 2>/dev/null | sort -hr":
+            "38G\t/Users/sam/Movies\n12G\t/Users/sam/Downloads\n4.1G\t/Users/sam/Library/Caches\n",
+        "pmset -g batt":
+            "Now drawing from 'AC Power'\n -InternalBattery-0 (id=4653155)\t81%; charging; 0:42 remaining present: true\n",
+        "ls ~/Desktop/Receipts | grep -c 2026": "5\n",
+    ]
+
     /// A few episodes of stand-in conversation in a temporary folder, never the real thread.
     private static func standInHistory() -> (ThreadStore?, any ImageStorage) {
         let folder = FileManager.default.temporaryDirectory
@@ -622,7 +654,12 @@ enum SettingsPreview {
                         call += 1
                         let arguments: JSONValue = ["command": .string(command), "destructive": false]
                         try? await store.append(.toolCall(.init(callID: "call_\(call)", name: "run_shell_command", arguments: arguments.encodedString(), provider: "openai", model: "gpt-6-luna")), date: tick())
-                        try? await store.append(.toolResult(.init(callID: "call_\(call)", output: "[exit status 0]")), date: tick())
+                        // What a few of the commands printed, for the pane stack's command pane.
+                        // History without the stack shows none of it.
+                        let started = clock
+                        try? await store.append(.toolResult(.init(
+                            callID: "call_\(call)", output: (standInOutputs[command] ?? "") + "[exit status 0]",
+                            details: ToolRunDetails(started: started, seconds: 0.4, source: "Built into the app", exitStatus: 0))), date: tick())
                     }
                     try? await store.append(.assistantMessage(.init(text: reply, provider: "openai", model: "gpt-6-luna")), date: tick())
                 }

@@ -6,6 +6,9 @@ import SwiftUI
 /// The kept thread as a list of episodes, newest first, with a search over all of it and a
 /// read-only view of the selected episode. Incognito episodes are never in the kept thread,
 /// so they never appear here. Nothing here edits or deletes.
+///
+/// With the pane stack experiment on, the same list, episode, and lines show as a stack of
+/// panes instead, and a command opens its input and output. See `HistoryPaneStackView`.
 @MainActor
 @Observable
 final class HistorySettingsModel {
@@ -18,6 +21,11 @@ final class HistorySettingsModel {
     var selection: EpisodeListItem.ID? {
         didSet { if selection != oldValue { readSelected() } }
     }
+    /// Where the pane stack is, with the experiment on: `[episode]` or `[episode, command]`.
+    /// Kept here so the stack and its scroll places last while the window is open.
+    let stack = PaneStackState()
+    /// Set by a preview that asks for the pane stack, which shows it whatever the preference says.
+    var paneStackOverride: Bool?
     @ObservationIgnored let history: ThreadStore?
     /// Where the thread's images are kept, for the thumbnails beside a message's line.
     @ObservationIgnored let images: any ImageStorage
@@ -31,6 +39,23 @@ final class HistorySettingsModel {
 
     var selectedItem: EpisodeListItem? { items.first { $0.id == selection } }
 
+    /// The thread as last read and the list the base shows, for the pane stack.
+    var panes: HistoryPanes { HistoryPanes(contents: contents, items: items) }
+
+    /// Opens an episode, by its number, or a command, by its call id, in the pane stack, as
+    /// `--preview-item` asks. An item that is not here changes nothing. The thread is read
+    /// after the window opens, so the item is opened again each time a read finishes.
+    func showInStack(_ item: String) {
+        stackPreviewItem = item
+        openStackPreviewItem()
+    }
+
+    @ObservationIgnored private var stackPreviewItem: String?
+
+    private func openStackPreviewItem() {
+        if let item = stackPreviewItem, let path = panes.path(showing: item) { stack.path = path }
+    }
+
     var countText: String {
         let count = EpisodeListItem.all(in: contents).count
         return count == 1 ? "1 episode" : "\(count) episodes"
@@ -42,6 +67,7 @@ final class HistorySettingsModel {
         Task {
             contents = await history.contents
             refresh()
+            openStackPreviewItem()
         }
     }
 
@@ -78,7 +104,23 @@ final class HistorySettingsModel {
     }
 }
 
+/// Settings, History: the pane stack with its experiment on, and the list beside the selected
+/// episode without it.
 struct HistorySettingsView: View {
+    @Bindable var model: HistorySettingsModel
+    @AppStorage(Experiment.settingsPaneStack.key) private var paneStack = false
+
+    var body: some View {
+        if model.paneStackOverride ?? paneStack {
+            HistoryPaneStackView(model: model)
+        } else {
+            HistoryListAndDetailView(model: model)
+        }
+    }
+}
+
+/// The list of episodes beside the selected one, the layout without the pane stack experiment.
+struct HistoryListAndDetailView: View {
     @Bindable var model: HistorySettingsModel
 
     var body: some View {
@@ -192,8 +234,10 @@ private struct EpisodeDetailView: View {
     }
 }
 
-private struct LineView: View {
+struct LineView: View {
     let line: EpisodeLine
+    /// True in the pane stack, where a command is a row that opens its input and output.
+    var opensCommands = false
 
     var body: some View {
         switch line.kind {
@@ -212,18 +256,38 @@ private struct LineView: View {
         case .agent:
             labeled("Agent", Text(line.text))
         case .command(let outcome):
-            CommandLineView(line: line, outcome: outcome)
+            command(line, outcome)
         case .event(let event):
             VStack(alignment: .leading, spacing: 4) {
                 EventLineView(event: event)
                 // A quick action's steps, as commands are.
                 ForEach(line.steps) { step in
                     if case .command(let outcome) = step.kind {
-                        CommandLineView(line: step, outcome: outcome)
+                        command(step, outcome)
                     }
                 }
                 .padding(.leading, 16)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func command(_ line: EpisodeLine, _ outcome: TranscriptRow.ToolOutcome) -> some View {
+        if opensCommands, let callID = line.callID {
+            PaneStackLink(id: callID) {
+                HStack(spacing: 8) {
+                    CommandLineView(line: line, outcome: outcome)
+                    Spacer(minLength: 8)
+                    PaneChevron()
+                }
+                .padding(.vertical, 4)
+                .padding(.horizontal, 6)
+            }
+            .textSelection(.disabled)
+            .padding(.horizontal, -6)
+            .accessibilityHint(Text("Shows the command's input and output"))
+        } else {
+            CommandLineView(line: line, outcome: outcome)
         }
     }
 
