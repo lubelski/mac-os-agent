@@ -145,7 +145,7 @@ struct GeneralSettingsView: View {
                         Text(AppUpdates.version(Bundle.main.infoDictionary))
                             .textSelection(.enabled)
                         if updater.isAvailable {
-                            Button("Check for Updates…") { updater.checkForUpdates() }
+                            Button(AppUpdater.checkTitle) { updater.checkForUpdates() }
                         }
                     }
                 }
@@ -153,7 +153,7 @@ struct GeneralSettingsView: View {
                 Text("Updates")
             } footer: {
                 Text(updater.isAvailable
-                     ? "Checks about once a day, downloads a newer release, and relaunches into it. While a task runs, waits for a go-ahead, has queued messages, or an incognito conversation is open, the relaunch waits until it ends. Check for Updates is also in the menu bar menu."
+                     ? "Checks about once a day, downloads a newer release, and relaunches into it. While a task runs, waits for a go-ahead, has queued messages, or an incognito conversation is open, the relaunch waits until it ends. Check for Updates is also in the menu bar menu and the panel's menu."
                      : "This build does not update itself. Only a release build does.")
                     .foregroundStyle(.secondary)
             }

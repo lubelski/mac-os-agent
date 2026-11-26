@@ -1,8 +1,11 @@
 import Foundation
 import SQLite3
 
-/// What search reads from each entry: the owner's messages, the agent's replies, and the
-/// commands that ran. Command output is left out, since it is long and mostly noise.
+/// What search reads from each entry: the owner's messages, the agent's replies, the commands
+/// that ran (here or on the provider's side), the quick actions the owner ran with their steps,
+/// and the apps they opened from the instant row. It is History's reading of the entry, so
+/// whatever History shows can be found. Command output is left out, since it is long and
+/// mostly noise, and so are the episode marker and reasoning, which say nothing to find.
 enum HistorySearchText {
     enum Kind: String {
         case owner
@@ -11,15 +14,24 @@ enum HistorySearchText {
     }
 
     static func of(_ item: ThreadItem) -> (kind: Kind, text: String)? {
-        switch item {
-        case .userMessage(let text, _, let action):
-            // A quick action's name is searchable beside what was typed for it.
-            return (.owner, action.map { "\(text)\n[ran the quick action \($0.name)]" } ?? text)
-        case .assistantMessage(let message):
-            return message.text.isEmpty ? nil : (.agent, message.text)
-        case .toolCall(let call):
+        switch HistoryReading.of(item) {
+        case .owner(let text):
+            return (.owner, text)
+        case .agent(let text):
+            return (.agent, text)
+        case .command(let call):
             return (.command, command(of: call))
-        case .toolResult, .providerItem, .episodeStart, .appOpened:
+        case .hostedCommand(let call):
+            return (.command, call.summary)
+        case .quickAction(let typed, let run):
+            // A quick action's name and its steps are searchable beside what was typed for it.
+            var lines = [typed, "[ran the quick action \(run.name)]"]
+            lines += run.steps.map { "step: \(command(of: $0.call))" }
+            if let failure = run.failureReason { lines.append("[it failed: \(failure)]") }
+            return (.owner, lines.joined(separator: "\n"))
+        case .appOpened(let opening):
+            return (.owner, "[opened \(opening.name) from the instant row]")
+        case .episodeStart, .folded:
             return nil
         }
     }
@@ -65,7 +77,10 @@ enum HistorySearchText {
 /// and only used from inside that actor. It is never used from two places at once, which is
 /// why it can cross between them.
 final class HistoryIndex: @unchecked Sendable {
-    static let formatVersion = "1"
+    /// What the index holds. A change to what it reads from an entry (`HistorySearchText`)
+    /// changes this, and an index of another version is rebuilt from the thread once, on the
+    /// next open. 2: quick action steps, apps opened, and hosted tool calls (MAC-50).
+    static let formatVersion = "2"
 
     private var database: OpaquePointer?
 

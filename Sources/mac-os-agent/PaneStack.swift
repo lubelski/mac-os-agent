@@ -28,9 +28,23 @@ final class PaneStackState {
     @ObservationIgnored var scrollOffsets: [String: CGFloat] = [:]
     /// For previews and renders: the top pane opens scrolled to its end instead of its top.
     @ObservationIgnored var topStartsAtEnd = false
+    /// The last change the stack made itself, and the path it led to. Not observed: it is set
+    /// with the path, and read by the panes' transitions while they come and go.
+    @ObservationIgnored private var recorded = (change: PaneStackChange.none, path: PaneStackPath())
 
     init(path: PaneStackPath = PaneStackPath()) {
         self.path = path
+    }
+
+    /// What the change that led to the current path was. A path set from outside the stack,
+    /// such as by a preview or when a group goes away, reads as no change, and its panes slide
+    /// as they always did.
+    var change: PaneStackChange {
+        recorded.path == path ? recorded.change : .none
+    }
+
+    func record(_ change: PaneStackChange, leadingTo path: PaneStackPath) {
+        recorded = (change, path)
     }
 }
 
@@ -82,6 +96,11 @@ struct PaneStackView<Pane: View>: View {
     @Bindable var state: PaneStackState
     let stripWidth: (PaneStrip) -> CGFloat
     let title: (PaneLevel) -> String
+    /// The item ids a pane lists, top to bottom, given the path that shows it on top. A swap
+    /// between two of them moves up or down by their order. Without it a swap only fades.
+    var rows: (PaneStackPath) -> [String] = { _ in [] }
+    /// Every duration and distance the stack moves by. See `PaneStackMotion`.
+    var motion: PaneStackMotion = .standard
     @ViewBuilder let pane: (PaneLevel) -> Pane
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -96,11 +115,13 @@ struct PaneStackView<Pane: View>: View {
             let edges = PaneStackLayout.leadingEdges(stripWidths: widths)
             let tops = PaneStackLayout.topEdges(stripWidths: widths)
             ZStack(alignment: .topLeading) {
-                ForEach(levels) { level in
+                // A pane is known by its depth, so a swap keeps its card and changes only what
+                // is on it. Opening a depth adds a pane, and going back takes one away.
+                ForEach(levels, id: \.depth) { level in
                     paneView(level)
                         .padding(.leading, edges[level.depth])
                         .padding(.top, tops[level.depth])
-                        .transition(level.depth == 0 ? .identity : paneTransition)
+                        .transition(level.depth == 0 ? .identity : paneTransition(width: proxy.size.width))
                         .zIndex(Double(level.depth))
                 }
             }
@@ -111,7 +132,7 @@ struct PaneStackView<Pane: View>: View {
             // Escape closes one pane. With only the base showing there is no button, so Escape
             // means what it meant before.
             if !state.path.isAtBase {
-                Button("Back") { change { state.path.goBack() } }
+                Button("Back") { change { _ = $0.goBack() } }
                     .keyboardShortcut(.cancelAction)
                     .opacity(0)
                     .frame(width: 0, height: 0)
@@ -125,22 +146,112 @@ struct PaneStackView<Pane: View>: View {
         let context = PaneStackContext(
             depth: depth, isCovered: level.isCovered, openedID: state.path.opened(from: depth),
             scrollKey: level.id, state: state, startsAtEnd: state.topStartsAtEnd && !level.isCovered,
-            open: { id in change { state.path.open(id, from: depth) } })
-        return pane(level)
-            .environment(\.paneStack, context)
-            .modifier(CoveredPane(
-                isCovered: level.isCovered, backLabel: "Back to \(title(level))", openedID: context.openedID,
-                click: { item in change { state.path.clickStrip(at: depth, on: item) } }))
-            .modifier(PaneCard(level: depth))
+            open: { id in change { $0.open(id, from: depth) } })
+        // The content is known by the path up to this pane, so a swap replaces it inside the
+        // card, which stays.
+        return ZStack(alignment: .topLeading) {
+            pane(level)
+                .environment(\.paneStack, context)
+                .id(level.path)
+                .transition(swapTransition(depth: depth))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .modifier(CoveredPane(
+            isCovered: level.isCovered, backLabel: "Back to \(title(level))", openedID: context.openedID,
+            click: { item in change { $0.clickStrip(at: depth, on: item) } }))
+        .modifier(PaneCard(level: depth))
     }
 
-    /// Panes slide in from the right, or fade with Reduce Motion on.
-    private var paneTransition: AnyTransition {
-        (reduceMotion ? AnyTransition.opacity : .move(edge: .trailing)).ignoringClicksWhileLeaving
+    /// Panes slide in from the right, or fade with Reduce Motion on. A pane that closes because
+    /// a pane under it swapped fades instead, so a swap reads as one change.
+    private func paneTransition(width: CGFloat) -> AnyTransition {
+        .asymmetric(
+            insertion: reduceMotion ? .opacity : .move(edge: .trailing),
+            removal: .modifier(
+                active: PaneLeaving(state: state, width: width, reduceMotion: reduceMotion, isActive: true),
+                identity: PaneLeaving(state: state, width: width, reduceMotion: reduceMotion, isActive: false)))
     }
 
-    private func change(_ body: () -> Void) {
-        withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.28, bounce: 0), body)
+    /// A pane's content coming and going inside its card, which only a swap does.
+    private func swapTransition(depth: Int) -> AnyTransition {
+        func effect(_ phase: PaneSwapping.Phase) -> PaneSwapping {
+            PaneSwapping(state: state, depth: depth, distance: motion.swapDistance, reduceMotion: reduceMotion, phase: phase)
+        }
+        return .asymmetric(
+            insertion: .modifier(active: effect(.entering), identity: effect(.identity)),
+            removal: .modifier(active: effect(.leaving), identity: effect(.identity)))
+    }
+
+    /// Makes a change to the path, recording what kind of change it is so the panes' transitions
+    /// can follow it, and animates it: a swap with a short ease out, anything else with the
+    /// stack's spring.
+    private func change(_ mutate: (inout PaneStackPath) -> Void) {
+        let old = state.path
+        var new = old
+        mutate(&new)
+        let change = PaneStackChange(from: old, to: new, rows: rows)
+        guard change != .none else { return }
+        state.record(change, leadingTo: new)
+        let animation: Animation = if reduceMotion {
+            .easeInOut(duration: motion.reduceMotionFadeDuration)
+        } else if change.swapDepth != nil {
+            .easeOut(duration: motion.swapDuration)
+        } else {
+            .spring(duration: motion.slideDuration, bounce: motion.slideBounce)
+        }
+        withAnimation(animation) { state.path = new }
+    }
+}
+
+/// A pane leaving the stack. Going back slides it out to the right. When it closes because a
+/// pane under it swapped, or with Reduce Motion on, it fades.
+///
+/// The kind of change is read from the state when the pane leaves, not when it was drawn last,
+/// since the pane cannot know beforehand which change will close it.
+private struct PaneLeaving: ViewModifier {
+    let state: PaneStackState
+    /// The stack's width, which takes the pane fully past the right edge.
+    let width: CGFloat
+    let reduceMotion: Bool
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        let fades = reduceMotion || state.change.swapDepth != nil
+        content
+            .opacity(isActive && fades ? 0 : 1)
+            .offset(x: isActive && !fades ? width : 0)
+            .allowsHitTesting(!isActive)
+    }
+}
+
+/// A pane's content swapping for another item's inside the card: a fade with a short move up
+/// or down, by the two items' order in their list. A fade alone with Reduce Motion on, or when
+/// the order is not known.
+private struct PaneSwapping: ViewModifier {
+    enum Phase { case identity, entering, leaving }
+
+    let state: PaneStackState
+    let depth: Int
+    let distance: CGFloat
+    let reduceMotion: Bool
+    let phase: Phase
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(phase == .identity ? 1 : 0)
+            .offset(y: offset)
+            .allowsHitTesting(phase != .leaving)
+    }
+
+    private var offset: CGFloat {
+        guard phase != .identity, !reduceMotion, state.change.swapDepth == depth else { return 0 }
+        // From below: the new content rises into place and the old one rises out.
+        let distance = phase == .entering ? distance : -distance
+        switch state.change.swapDirection {
+        case .fromBelow: return distance
+        case .fromAbove: return -distance
+        case .inPlace, nil: return 0
+        }
     }
 }
 

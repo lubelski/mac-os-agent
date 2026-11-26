@@ -42,7 +42,7 @@ Settings > Appearance picks the panel's theme. Everything the agent keeps (the t
 
 ## Releases and updates
 
-A release build updates itself with [Sparkle](https://sparkle-project.org). It checks about once a day, downloads a newer build, checks its signature, and relaunches into it. The relaunch waits while a task runs or waits for a go-ahead, while messages are queued, and while the incognito window holds a conversation. Settings, General has Update automatically and Check for Updates, and the menu bar menu has Check for Updates.
+A release build updates itself with [Sparkle](https://sparkle-project.org). It checks about once a day, downloads a newer build, checks its signature, and relaunches into it. The relaunch waits while a task runs or waits for a go-ahead, while messages are queued, and while the incognito window holds a conversation. Settings, General has Update automatically and Check for Updates, and the menu bar menu and the panel's menu have Check for Updates.
 
 ```sh
 scripts/release.sh 1.2.0            # build, sign, notarize, and publish v1.2.0 from main
