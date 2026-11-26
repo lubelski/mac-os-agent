@@ -728,6 +728,16 @@ final class AgentSession {
         }
     }
 
+    /// What a drop on the panel carried that can be an image. A drop of only other files, such
+    /// as a PDF, attaches nothing and says why, since the drop was taken before its files were read.
+    func attachDropped(_ sources: [ImagePaste.Source]) {
+        if sources.isEmpty {
+            attachmentNotice = ImagePreparation.PreparationError.notAnImage.errorDescription
+        } else {
+            attach(sources)
+        }
+    }
+
     /// Attaches images already prepared. The same picture twice is attached once.
     func attach(prepared images: [PreparedImage]) {
         let new = images.reduce(into: [PreparedImage]()) { kept, image in

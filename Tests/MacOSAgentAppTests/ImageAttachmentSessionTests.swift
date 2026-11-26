@@ -181,4 +181,17 @@ struct StandInPasteboard: ImagePasteboard {
         #expect(ImageThumbnails.image(for: other.attachment, points: points, data: readOther) != nil)
         #expect(reads == 4)
     }
+
+    @Test func aDropWithNoImageSaysSo() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (session, _, _) = try makeSession()
+        session.attachDropped([])
+        #expect(session.attachments.isEmpty)
+        #expect(session.attachmentNotice == "That is not an image the app can read.")
+        // A drop with an image in it attaches it, and the line goes.
+        let image = Self.image()
+        await session.attach([.data(StandInImages.png(.errorDialog))]).value
+        #expect(session.attachments.map(\.id) == [image.id])
+        #expect(session.attachmentNotice == nil)
+    }
 }

@@ -48,7 +48,9 @@ extension NSPasteboard: ImagePasteboard {
 @MainActor
 enum ImageDrop {
     /// Reads the dropped files and image data and attaches the images among them. Returns
-    /// false when nothing dropped can be an image, so the drop is refused.
+    /// false when nothing dropped is a file or an image, so the drop is refused. A file's kind is
+    /// known only once it is read, so a drop of files none of which is an image is taken, and
+    /// the row above the field says nothing was attached.
     static func attach(_ providers: [NSItemProvider], to session: AgentSession) -> Bool {
         let usable = providers.filter {
             $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
@@ -60,7 +62,7 @@ enum ImageDrop {
             for provider in usable {
                 if let source = await source(from: provider) { sources.append(source) }
             }
-            if !sources.isEmpty { session.attach(sources) }
+            session.attachDropped(sources)
         }
         return true
     }
