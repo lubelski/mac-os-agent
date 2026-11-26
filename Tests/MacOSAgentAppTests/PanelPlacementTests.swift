@@ -711,6 +711,40 @@ final class WindowRecorder {
             "Centered", "Slide Over Left", "Slide Over Right", "", PanelMenu.keepOnTopTitle, "", PanelMenu.hideTitle])
     }
 
+    /// In a build with an update feed, Check for Updates has its own group above Hide Panel,
+    /// with the menu bar menu's title, and runs the check it is given.
+    @Test func withAnUpdateFeedTheMainPanelsMenuHasCheckForUpdatesAboveHide() throws {
+        var checks = 0
+        let layout = PanelMenu(
+            current: .centered, setKeepsOnTop: { _ in },
+            updateCheck: .init(canCheck: { true }, check: { checks += 1 }))
+        let items = layout.menu.items
+        #expect(items.map(\.title) == [
+            "Centered", "Slide Over Left", "Slide Over Right", "", PanelMenu.keepOnTopTitle,
+            "", "Check for Updates…", "", PanelMenu.hideTitle])
+        let item = try #require(items.first { $0.title == AppUpdater.checkTitle })
+        #expect(item.isEnabled && item.keyEquivalent.isEmpty)
+        layout.checkedForUpdates(item)
+        #expect(checks == 1)
+    }
+
+    /// While a check runs, the item shows disabled, as the menu bar menu's does.
+    @Test func checkForUpdatesIsDisabledWhileACheckRuns() throws {
+        let layout = PanelMenu(current: .centered, updateCheck: .init(canCheck: { false }, check: {}))
+        let item = try #require(layout.menu.items.first { $0.title == AppUpdater.checkTitle })
+        #expect(!item.isEnabled)
+    }
+
+    /// A build with no feed sets no update check, so neither panel's menu has the item, as the
+    /// menu bar menu has none.
+    @Test func aPanelHasNoUpdateCheckUntilTheAppShellGivesItOne() throws {
+        let (panel, defaults) = try makePanel()
+        defer { cleanUp(defaults) }
+        #expect(panel.placement.updateCheck == nil)
+        let layout = PanelMenu(current: .centered, updateCheck: panel.placement.updateCheck)
+        #expect(!layout.menu.items.map(\.title).contains(AppUpdater.checkTitle))
+    }
+
     /// The incognito window has no layouts, and Escape never closes it, so its menu holds only
     /// Close and Discard.
     @Test func theIncognitoMenuHasOnlyCloseAndDiscard() {

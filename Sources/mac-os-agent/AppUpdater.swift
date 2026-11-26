@@ -12,6 +12,10 @@ final class AppUpdater {
     /// Whether this build can update itself.
     let isAvailable: Bool
 
+    /// The title of every Check for Updates item: the menu bar menu's, the panel menu's, and
+    /// the button in Settings, General.
+    static let checkTitle = "Check for Updates…"
+
     private let controller: SPUStandardUpdaterController?
     private let delegate: Delegate
 

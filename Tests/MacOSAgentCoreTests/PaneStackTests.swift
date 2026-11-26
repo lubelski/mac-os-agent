@@ -85,6 +85,64 @@ import Testing
     }
 }
 
+@Suite struct PaneStackChangeTests {
+    /// A stand-in list for every pane: the same five rows at each depth.
+    private let rows: (PaneStackPath) -> [String] = { _ in ["a", "b", "c", "d", "e"] }
+
+    private func change(_ old: [String], _ new: [String]) -> PaneStackChange {
+        PaneStackChange(from: PaneStackPath(old), to: PaneStackPath(new), rows: rows)
+    }
+
+    @Test func openingIsNotASwap() {
+        #expect(change([], ["a"]) == .open)
+        #expect(change(["a"], ["a", "c"]) == .open)
+        #expect(change(["a"], ["a", "c", "d"]) == .open)
+    }
+
+    @Test func goingBackIsNotASwap() {
+        #expect(change(["a", "c"], ["a"]) == .back)
+        #expect(change(["a", "c", "d"], []) == .back)
+        #expect(change(["a"], ["a"]) == PaneStackChange.none)
+    }
+
+    @Test func anotherItemAtTheSameDepthIsASwap() {
+        // A different tool in the open group.
+        #expect(change(["a", "b"], ["a", "d"]) == .swap(depth: 2, direction: .fromBelow))
+        // A different group from the base's strip, while a tool was open: the tool closes.
+        #expect(change(["c", "b"], ["a"]) == .swap(depth: 1, direction: .fromAbove))
+        #expect(change(["c", "b"], ["a"]).swapDepth == 1)
+        #expect(change(["a"], ["a", "b"]).swapDepth == nil)
+    }
+
+    @Test func theDirectionFollowsTheList() {
+        // Lower in the list rises from below, higher comes down from above.
+        #expect(change(["a"], ["e"]).swapDirection == .fromBelow)
+        #expect(change(["e"], ["a"]).swapDirection == .fromAbove)
+        #expect(change(["b", "a"], ["b", "b"]).swapDirection == .fromBelow)
+    }
+
+    @Test func theListAskedIsThePaneTheItemWasPickedFrom() {
+        var asked: [PaneStackPath] = []
+        _ = PaneStackChange(from: PaneStackPath(["g", "t1"]), to: PaneStackPath(["g", "t2"])) { path in
+            asked.append(path)
+            return ["t1", "t2"]
+        }
+        #expect(asked == [PaneStackPath(["g"])])
+        // Opening and going back ask nothing.
+        _ = PaneStackChange(from: PaneStackPath(["g"]), to: PaneStackPath(["g", "t1"])) { _ in
+            Issue.record("asked for rows on an open")
+            return []
+        }
+    }
+
+    @Test func anItemMissingFromTheListSwapsInPlace() {
+        #expect(change(["a"], ["gone"]) == .swap(depth: 1, direction: .inPlace))
+        #expect(change(["gone"], ["a"]) == .swap(depth: 1, direction: .inPlace))
+        let none = PaneStackChange(from: PaneStackPath(["a"]), to: PaneStackPath(["b"])) { _ in [] }
+        #expect(none == .swap(depth: 1, direction: .inPlace))
+    }
+}
+
 @Suite struct PaneStackLayoutTests {
     @Test func stripsKeepTheirWidthWhenTheTopPaneHasRoom() {
         let widths = PaneStackLayout.stripWidths(preferred: [56, 170], available: 700)
@@ -150,6 +208,23 @@ import Testing
         #expect(groups.pane(at: 2, of: PaneStackPath([calendar.id, "find_files"])) == nil)
         #expect(groups.pane(at: 1, of: path)?.title == "Calendar")
         #expect(groups.pane(at: 0, of: path)?.title == "all tool groups")
+    }
+
+    @Test func eachPaneListsItsRowsInTheOrderItShowsThem() throws {
+        let groups = registry().groups
+        let base = groups.rows(of: PaneStackPath())
+        #expect(base == (groups.builtIn + groups.fromMCPServers).map(\.id))
+        #expect(base.last == "mcp:weather")
+        let calendar = try #require(groups.first { $0.source == .calendar })
+        #expect(groups.rows(of: PaneStackPath([calendar.id])) == calendar.tools.map(\.id))
+        #expect(groups.rows(of: PaneStackPath([calendar.id, "read_events"])) == [])
+        #expect(groups.rows(of: PaneStackPath(["mcp:gone"])) == [])
+
+        // Picking a later tool of the group rises from below.
+        let tools = calendar.tools.map(\.id)
+        let change = PaneStackChange(
+            from: PaneStackPath([calendar.id, tools[0]]), to: PaneStackPath([calendar.id, tools[1]]), rows: groups.rows)
+        #expect(change == .swap(depth: 2, direction: .fromBelow))
     }
 
     @Test func aPathThatNamesWhatIsGoneFallsBackToWhatIsThere() {

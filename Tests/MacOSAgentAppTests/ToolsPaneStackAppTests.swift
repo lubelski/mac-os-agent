@@ -118,6 +118,19 @@ enum ToolsSettingsStandIns {
         tools.showInStack("no_such_thing")
         #expect(tools.stack.path.entries == ["calendar"])
     }
+
+    @Test func aChangeCountsOnlyForThePathItLedTo() {
+        // The panes' transitions read the change the stack recorded. A path set from outside
+        // the stack afterward, such as by a preview, reads as no change, so its panes slide.
+        let state = PaneStackState(path: PaneStackPath(["system", "find_files"]))
+        #expect(state.change == .none)
+        let swap = PaneStackChange.swap(depth: 2, direction: .fromBelow)
+        state.record(swap, leadingTo: PaneStackPath(["system", "read_file"]))
+        state.path = PaneStackPath(["system", "read_file"])
+        #expect(state.change == swap)
+        state.path = PaneStackPath(["calendar"])
+        #expect(state.change == .none)
+    }
 }
 
 /// Renders the pane stack offscreen, for a pull request: Tools in the real Settings window at
@@ -171,6 +184,7 @@ struct PaneStackRenders {
     /// A stand-in section of folders, any depth, built only from the stack's parts, as another
     /// section would adopt it.
     struct DeepStandIn: View {
+        static let folders = ["Documents", "Projects", "Garden", "Plans", "2026", "Spring", "Notes"]
         let state: PaneStackState
 
         var body: some View {
@@ -178,10 +192,12 @@ struct PaneStackRenders {
                 strip.isNearest ? 170 : 56
             } title: { level in
                 level.item ?? "Home"
+            } rows: { _ in
+                Self.folders
             } pane: { level in
                 StackPane(title: Text(level.item ?? "Home").font(.headline), subtitle: "Level \(level.depth)") {
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(["Documents", "Projects", "Garden", "Plans", "2026", "Spring", "Notes"], id: \.self) { name in
+                        ForEach(Self.folders, id: \.self) { name in
                             PaneStackLink(id: name) {
                                 HStack {
                                     Image(systemName: "folder")

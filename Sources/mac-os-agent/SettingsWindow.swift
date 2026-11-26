@@ -626,7 +626,56 @@ enum SettingsPreview {
                     }
                     try? await store.append(.assistantMessage(.init(text: reply, provider: "openai", model: "gpt-6-luna")), date: tick())
                 }
+                // Between the battery and the receipts: an episode that is only apps opened
+                // from the instant row, as the panel with bars experiment logs them.
+                if minutesAgo == 95 {
+                    var clock = now.addingTimeInterval(-50 * 60)
+                    try? await store.append(.episodeStart(.init(reason: .timeout)), date: clock)
+                    for (name, id, path) in [("Calendar", "com.apple.iCal", "/System/Applications/Calendar.app"),
+                                             ("Notes", "com.apple.Notes", "/System/Applications/Notes.app")] {
+                        clock = clock.addingTimeInterval(40)
+                        try? await store.append(.appOpened(.init(
+                            name: name, bundleIdentifier: id, path: path,
+                            message: ThreadItem.AppOpening.message(name: name, bundleIdentifier: id))), date: clock)
+                    }
+                }
             }
+            // The newest episode, asked for with /new: a hosted web search, a quick action that
+            // failed at its second step, and an app opened from the instant row.
+            var clock = now.addingTimeInterval(-4 * 60)
+            func tick() -> Date { clock = clock.addingTimeInterval(20); return clock }
+            try? await store.append(.episodeStart(.init(reason: .requested)), date: clock)
+            try? await store.append(.userMessage(text: "will it rain in Lisbon tomorrow"), date: tick())
+            let search: JSONValue = [
+                "type": "web_search_call", "id": "ws_preview_1", "status": "completed",
+                "action": ["type": "search", "query": "Lisbon weather tomorrow"],
+            ]
+            try? await store.append(.providerItem(.init(provider: "openai", model: "gpt-6-luna", payload: search)), date: tick())
+            try? await store.append(.assistantMessage(.init(text: "Light rain after 3 PM, about 70% chance. Mornings stay dry.", provider: "openai", model: "gpt-6-luna")), date: tick())
+            let runID = UUID()
+            let focus = QuickAction(
+                id: "focus-mode", name: "Focus Mode", description: "Quits Mail and turns on Do Not Disturb.",
+                steps: [.init(tool: "quit_or_hide_application", arguments: ["application": "Mail", "action": "quit"]),
+                        .init(tool: "run_shell_command", arguments: ["command": "shortcuts run \"Do Not Disturb On\"", "destructive": false])])
+            let steps = [
+                ThreadItem.QuickActionRun.Step(
+                    callID: QuickActionRunStart.callID(entryID: runID, index: 0), tool: "quit_or_hide_application",
+                    arguments: focus.steps[0].arguments.encodedString(), output: "Mail quit."),
+                ThreadItem.QuickActionRun.Step(
+                    callID: QuickActionRunStart.callID(entryID: runID, index: 1), tool: "run_shell_command",
+                    arguments: focus.steps[1].arguments.encodedString(),
+                    output: "Error: no shortcut named Do Not Disturb On.\n[exit status 1]"),
+            ]
+            try? await store.append(.userMessage(text: "focus", action: .init(
+                id: focus.id, name: focus.name, stepCount: 2, steps: steps, failedStep: 1,
+                message: ThreadItem.QuickActionRun.message(typed: "focus", action: focus, steps: steps, failedStep: 1))),
+                date: tick(), id: runID)
+            try? await store.append(.appOpened(.init(
+                name: "Slack", bundleIdentifier: "com.tinyspeck.slackmacgap", path: "/Applications/Slack.app",
+                message: ThreadItem.AppOpening.message(name: "Slack", bundleIdentifier: "com.tinyspeck.slackmacgap"))), date: tick())
+            // The list may have been read while the episodes were still being written, and
+            // selected the oldest. Select the newest once they are all there.
+            controller?.models.history.selection = nil
             controller?.models.history.reload()
         }
         return store

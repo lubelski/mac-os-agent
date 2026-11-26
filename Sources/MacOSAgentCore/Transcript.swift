@@ -255,8 +255,7 @@ public struct Transcript: Equatable, Sendable {
         case .appOpened(let opening):
             // With the experiment off an opening shows nothing, as before it was logged.
             guard showsLines else { break }
-            append(TranscriptRow(id: entry.id.uuidString, kind: .line(TranscriptLine(
-                verb: TranscriptLine.opened, name: opening.name, icon: .application(path: opening.path), date: entry.date))))
+            append(TranscriptRow(id: entry.id.uuidString, kind: .line(.opened(opening, date: entry.date))))
         }
     }
 
@@ -266,9 +265,7 @@ public struct Transcript: Equatable, Sendable {
         let id = entry.id.uuidString
         if runningActionID == entry.id { runningActionID = nil }
         lastUserDate = entry.date
-        let line = TranscriptLine(
-            verb: TranscriptLine.ran, name: action.name, icon: .quickAction, failure: action.failureReason,
-            typed: text, date: entry.date)
+        let line = TranscriptLine.ran(action, typed: text, date: entry.date)
         if let index = indexByID[id] {
             rows[index].kind = .line(line)
         } else {
