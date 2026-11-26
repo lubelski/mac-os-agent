@@ -32,14 +32,14 @@ struct MessageQueueRows: View {
                         Text(verbatim: "queued \(index + 1)")
                             .foregroundStyle(.tertiary)
                             .monospacedDigit()
-                        Text(verbatim: item.text.replacingOccurrences(of: "\n", with: " "))
+                        Text(verbatim: item.shownText.replacingOccurrences(of: "\n", with: " "))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Button("Edit") { session.editQueued(item.id) }
-                            .disabled(!session.draft.isEmpty)
-                            .help(session.draft.isEmpty
+                            .disabled(!session.draft.isEmpty || !session.attachments.isEmpty)
+                            .help(session.draft.isEmpty && session.attachments.isEmpty
                                   ? "Take this message back into the field to edit it"
                                   : "Empty the field first to edit this message")
                         Button("Remove") { session.removeQueued(item.id) }

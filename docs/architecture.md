@@ -31,12 +31,12 @@ A change should be resisted when it makes the instant path wait, changes the sta
 | **Incognito window** | A second panel over a conversation held in memory. | `IncognitoWindow.swift` | Nothing the main panel keeps. It gets its own loop, its own store, and three tools. |
 | **Session** | One conversation window's state: what Return does, the running task, the go-ahead card, the queue. | `AgentSession.swift` | How a reply is produced. It calls the loop and listens to its events. |
 | **Instant path** | Matching the draft to an app or a quick action, and ranking by what the owner picked before. | `InstantActions/`, `Applications/ApplicationMatcher.swift`, `InstantActionsModel.swift` | The model. |
-| **Agent loop** | One instruction from start to finish, and every write to the thread. | `AgentLoop.swift`, `ThreadStore.swift`, `Episodes.swift` | Any provider's API, any tool's purpose, and the window. |
+| **Agent loop** | One instruction from start to finish, every write to the thread, and keeping a message's images before the line that points to them. | `AgentLoop.swift`, `ThreadStore.swift`, `Episodes.swift`, `Images/ImageStorage.swift` | Any provider's API, any tool's purpose, and the window. |
 | **Prompt** | The instructions at the head of a request. | `AgentInstructions.swift`, `Skills.swift`, `Memory/MemoryBlock.swift` | The conversation. |
 | **Model provider** | Turning a request into one provider's API call and its stream back into events. Sign-in. | `ModelProvider.swift`, `OpenAI/`, `Ollama/` | Tools' behavior and the thread's storage. |
 | **Tools** | Everything the agent can do, each as one `AgentTool`. | `AgentTool.swift`, `ToolRegistry.swift`, and a folder per family: `Applications/`, `System/`, `PersonalData/`, `Memory/`, `Themes/`, `QuickActions/`, `WebSearch/`, `ToolGroups/`, `MCP/`, `Scripts/` | The window and the model. |
 | **Settings window** | Showing and changing what the agent keeps and how this run is set up. | `SettingsWindow.swift`, the `*Settings.swift` files | Nothing of its own. It uses the same library types the tools use. |
-| **What the agent keeps** | The thread, memory, skills, quick actions, themes, MCP files, the usage log, preferences, secrets. | `AgentPaths.swift`, `SecretStorage.swift`, each library type | Who is reading it. |
+| **What the agent keeps** | The thread, attached images, memory, skills, quick actions, themes, MCP files, the usage log, preferences, secrets. | `AgentPaths.swift`, `SecretStorage.swift`, `Images/`, each library type | Who is reading it. |
 
 Paths under **Where** are in `Sources/mac-os-agent/` for the first four rows and the Settings window, and in `Sources/MacOSAgentCore/` for the rest. `InstantActionsModel.swift` is the instant path's one file in the app target.
 
@@ -70,6 +70,7 @@ Rule 2 above is the one that shapes the most code, so here is when each thing is
 | Once, at launch | The tool list: built-in tools, MCP tools from their cache, `run_script`. Which web search is on. The experiments that add a tool or a line to the instructions. | A change would move every byte after it in the request. |
 | Once per episode | The memory block at the end of the instructions. | The agent changes memory while it works. The block it started with has to hold for the episode. |
 | Once per message | The editable instructions and the list of skills. | An edit should apply soon, and never in the middle of a turn. |
+| Once per image, per episode | An attached image's bytes, made once when it was attached, read from its file the first time a request carries it. | The same image has to be the same bytes in every request of its episode. |
 | Every time | Quick actions, themes, the list of apps, Settings switches that only change how the panel behaves. | None of these is in the request. |
 
 A new feature that changes the tool list or the instructions is read at launch. One that does not can be live.
@@ -78,10 +79,10 @@ A new feature that changes the tool list or the instructions is read at launch. 
 
 | Kept in | What | Rule |
 |---|---|---|
-| The data folder, `~/Library/Application Support/mac-os-agent/` | The thread and its search index, memory and its journal, skills, quick actions, themes, the MCP files, the usage log, task links, the edited instructions. | Plain files. The thread and the journal are only ever added to. `--data-folder` points a run at another folder. |
+| The data folder, `~/Library/Application Support/mac-os-agent/` | The thread and its search index, the images attached to messages (`images/`, one file each, named by the hash of its bytes), memory and its journal, skills, quick actions, themes, the MCP files, the usage log, task links, the edited instructions. | Plain files. The thread and the journal are only ever added to. The thread points to an image's file and never holds its bytes. `--data-folder` points a run at another folder. |
 | Preferences | The model, the summon shortcut, behaviors, experiments, web search, the active theme, the episode timeout. | Small choices with no content in them. |
 | Secrets | The sign-in and API keys. | The Keychain in a release build, `secrets.json` in the data folder otherwise. See `SecretStorage`. Never in the preferences and never logged. |
-| Memory only | An incognito conversation, the access token, the message queue, the problem log. | Gone when the window closes or the app quits. |
+| Memory only | An incognito conversation and its images, the access token, the message queue, the problem log. | Gone when the window closes or the app quits. |
 
 ## Where the code does not match this yet
 

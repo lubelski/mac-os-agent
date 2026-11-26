@@ -224,7 +224,13 @@ final class StubResponsesServer: Sendable {
             if let string = item["content"]?.stringValue {
                 text = string
             } else {
-                text = (item["content"]?.arrayValue ?? []).compactMap { $0["text"]?.stringValue }.joined()
+                // An image reads as its bytes would to the model: the same bytes, the same image.
+                text = (item["content"]?.arrayValue ?? []).compactMap { part in
+                    if part["type"]?.stringValue == "input_image" {
+                        return "<image \(RequestDigest.digest(part["image_url"] ?? .null))>" + String(repeating: ".", count: 340)
+                    }
+                    return part["text"]?.stringValue
+                }.joined()
             }
             let phase = item["phase"]?.stringValue.map { " phase=\($0)" } ?? ""
             return "<\(role)\(phase)>\(text)</\(role)>"

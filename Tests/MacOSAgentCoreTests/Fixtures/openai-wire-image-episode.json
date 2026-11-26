@@ -1,0 +1,234 @@
+[
+  {
+    "body" : {
+      "include" : [
+        "reasoning.encrypted_content"
+      ],
+      "input" : [
+        {
+          "content" : "<instructions: 5870 characters, 97b4e3>",
+          "role" : "developer"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:06 GMT] what does this error mean",
+              "type" : "input_text"
+            },
+            {
+              "detail" : "auto",
+              "image_url" : "<data URL: 706 characters, f054df>",
+              "type" : "input_image"
+            }
+          ],
+          "role" : "user"
+        }
+      ],
+      "model" : "gpt-6.2-astra",
+      "prompt_cache_key" : "mac-os-agent-wire-test",
+      "reasoning" : {
+        "effort" : "low",
+        "summary" : "auto"
+      },
+      "store" : false,
+      "stream" : true,
+      "tools" : [
+        {
+          "description" : "Records calls.",
+          "name" : "record",
+          "parameters" : {
+            "type" : "object"
+          },
+          "strict" : true,
+          "type" : "function"
+        }
+      ]
+    },
+    "headers" : {
+      "Accept" : "text/event-stream",
+      "Content-Type" : "application/json",
+      "User-Agent" : "mac-os-agent",
+      "session-id" : "mac-os-agent-wire-test",
+      "x-client-request-id" : "mac-os-agent-wire-test"
+    }
+  },
+  {
+    "body" : {
+      "include" : [
+        "reasoning.encrypted_content"
+      ],
+      "input" : [
+        {
+          "content" : "<instructions: 5870 characters, 97b4e3>",
+          "role" : "developer"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:06 GMT] what does this error mean",
+              "type" : "input_text"
+            },
+            {
+              "detail" : "auto",
+              "image_url" : "<data URL: 706 characters, f054df>",
+              "type" : "input_image"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "encrypted_content" : "encrypted-1",
+          "id" : "rs_1",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "arguments" : "{\"q\":\"disk\"}",
+          "call_id" : "call_2",
+          "id" : "fc_2",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_2",
+          "output" : "done",
+          "type" : "function_call_output"
+        }
+      ],
+      "model" : "gpt-6.2-astra",
+      "prompt_cache_key" : "mac-os-agent-wire-test",
+      "reasoning" : {
+        "effort" : "low",
+        "summary" : "auto"
+      },
+      "store" : false,
+      "stream" : true,
+      "tools" : [
+        {
+          "description" : "Records calls.",
+          "name" : "record",
+          "parameters" : {
+            "type" : "object"
+          },
+          "strict" : true,
+          "type" : "function"
+        }
+      ]
+    },
+    "headers" : {
+      "Accept" : "text/event-stream",
+      "Content-Type" : "application/json",
+      "User-Agent" : "mac-os-agent",
+      "session-id" : "mac-os-agent-wire-test",
+      "x-client-request-id" : "mac-os-agent-wire-test"
+    }
+  },
+  {
+    "body" : {
+      "include" : [
+        "reasoning.encrypted_content"
+      ],
+      "input" : [
+        {
+          "content" : "<instructions: 5870 characters, 97b4e3>",
+          "role" : "developer"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:06 GMT] what does this error mean",
+              "type" : "input_text"
+            },
+            {
+              "detail" : "auto",
+              "image_url" : "<data URL: 706 characters, f054df>",
+              "type" : "input_image"
+            }
+          ],
+          "role" : "user"
+        },
+        {
+          "encrypted_content" : "encrypted-1",
+          "id" : "rs_1",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "arguments" : "{\"q\":\"disk\"}",
+          "call_id" : "call_2",
+          "id" : "fc_2",
+          "name" : "record",
+          "type" : "function_call"
+        },
+        {
+          "call_id" : "call_2",
+          "output" : "done",
+          "type" : "function_call_output"
+        },
+        {
+          "encrypted_content" : "encrypted-3",
+          "id" : "rs_3",
+          "summary" : [
+
+          ],
+          "type" : "reasoning"
+        },
+        {
+          "content" : [
+            {
+              "annotations" : [
+
+              ],
+              "text" : "The backup disk is full.",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_4",
+          "phase" : "final_answer",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        },
+        {
+          "content" : [
+            {
+              "text" : "[2026-11-18 11:07 GMT] what should I delete",
+              "type" : "input_text"
+            }
+          ],
+          "role" : "user"
+        }
+      ],
+      "model" : "gpt-6.2-astra",
+      "prompt_cache_key" : "mac-os-agent-wire-test",
+      "reasoning" : {
+        "effort" : "low",
+        "summary" : "auto"
+      },
+      "store" : false,
+      "stream" : true,
+      "tools" : [
+        {
+          "description" : "Records calls.",
+          "name" : "record",
+          "parameters" : {
+            "type" : "object"
+          },
+          "strict" : true,
+          "type" : "function"
+        }
+      ]
+    },
+    "headers" : {
+      "Accept" : "text/event-stream",
+      "Content-Type" : "application/json",
+      "User-Agent" : "mac-os-agent",
+      "session-id" : "mac-os-agent-wire-test",
+      "x-client-request-id" : "mac-os-agent-wire-test"
+    }
+  }
+]

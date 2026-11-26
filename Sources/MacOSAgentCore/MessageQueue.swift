@@ -13,6 +13,11 @@ public struct MessageQueue: Sendable, Equatable {
         /// The images attached to it, already reduced and encoded, which go with it when it is sent.
         public var images: [PreparedImage]
 
+        /// What its row shows: the text, and a note on its images, such as "[with 1 image]".
+        public var shownText: String {
+            ImageAttachment.historyText(text, images: images.map(\.attachment))
+        }
+
         public init(id: UUID = UUID(), text: String, images: [PreparedImage] = []) {
             self.id = id
             self.text = text
