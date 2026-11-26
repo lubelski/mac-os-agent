@@ -38,6 +38,7 @@ struct ToolsPaneStackView: View {
                         .padding(20)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                // Another tool starts with its own state, such as the Copy button's.
                 .id(tool.id)
             case nil:
                 Color.clear

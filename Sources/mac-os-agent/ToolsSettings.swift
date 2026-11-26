@@ -248,15 +248,23 @@ enum ToolTextTab: String, CaseIterable {
     }
 }
 
-/// Everything about a tool under its name: first what the owner decides (its access and its
-/// go-ahead), then where it runs, then what the agent sends it, and last the long texts the
-/// model is sent, its description and its schema, one at a time.
+/// Everything about a tool under its name: what it is for in a sentence, then what the owner
+/// decides (its access and its go-ahead), then where it runs, then what the agent sends it, and
+/// last the long texts the model is sent, its description and its schema, one at a time.
 struct ToolDetailSections: View {
     let tool: ToolSummary
     let model: ToolsSettingsModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
+            // What the tool is for, in its own first sentence, before anything about it.
+            if !tool.shortDescription.isEmpty {
+                Text(tool.shortDescription)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 2)
+            }
             if let kind = tool.source.privacyAccess {
                 PrivacyAccessView(kind: kind, status: model.access[kind] ?? .notDetermined) {
                     model.requestAccess(kind)
