@@ -29,6 +29,17 @@ final class PanelPlacement {
     /// never writes it.
     var setKeepsOnTop: ((Bool) -> Void)?
 
+    /// Check for Updates in the panel menu, as the menu bar menu has it.
+    struct UpdateCheck {
+        /// False while a check is already running, so the item shows disabled.
+        var canCheck: () -> Bool
+        /// Runs the same check as the menu bar menu's item.
+        var check: () -> Void
+    }
+    /// Nil in a build with no update feed, which has no item, and in the incognito window. The
+    /// app shell sets it, since it owns the updater.
+    var updateCheck: UpdateCheck?
+
     /// The glass's frame when in place, in screen coordinates.
     var panelFrame: CGRect = .zero
     /// The visible area of the screen the panel is on.
@@ -357,7 +368,8 @@ struct KeepOnTopMark: View {
 }
 
 /// The panel menu's control: an ellipsis that opens a standard menu under it. In the main
-/// panel the menu has the layouts, Keep on Top, and Hide Panel. In the incognito window it has
+/// panel the menu has the layouts, Keep on Top, Check for Updates in a build with a feed, and
+/// Hide Panel. In the incognito window it has
 /// only Close and Discard, which the close button also does, since Escape never closes it.
 struct PanelMenuButton: View {
     static let symbol = "ellipsis"
@@ -373,7 +385,7 @@ struct PanelMenuButton: View {
                 anchor.popUp(PanelMenu(
                     current: placement.offersLayouts ? placement.preset : nil, choose: placement.choose,
                     keepsOnTop: placement.keepsOnTop, setKeepsOnTop: placement.setKeepsOnTop,
-                    close: placement.close))
+                    updateCheck: placement.updateCheck, close: placement.close))
             })
             .background { if PanelTopBar.hostsAppKitViews { MenuAnchorView(anchor: anchor) } }
             .accessibilityValue(placement.offersLayouts ? placement.preset.title : "")
@@ -384,7 +396,9 @@ struct PanelMenuButton: View {
 /// The panel menu. In the main panel: one item per preset, in `PanelPreset.allCases` order,
 /// with a check on the current one, so a new preset shows up here on its own. Below a
 /// separator, Keep on Top, checked while it is on. It is one setting for every preset. Below
-/// another, Hide Panel, which does what Command-W and Escape do.
+/// another, in a build with an update feed, Check for Updates, the same check as the menu bar
+/// menu's, disabled while one runs. A build with no feed has no item, as in the menu bar menu.
+/// Below another, Hide Panel, which does what Command-W and Escape do.
 ///
 /// In the incognito window, which has no layouts and never writes Keep on Top, only Close and
 /// Discard, which does what Command-W does: it closes at once with no task running, and asks
@@ -399,6 +413,7 @@ final class PanelMenu: NSObject {
     private let choose: (PanelPreset) -> Void
     private let keepsOnTop: Bool
     private let setKeepsOnTop: ((Bool) -> Void)?
+    private let updateCheck: PanelPlacement.UpdateCheck?
     private let close: () -> Void
     static let keepOnTopTitle = "Keep on Top"
     static let hideTitle = "Hide Panel"
@@ -408,11 +423,13 @@ final class PanelMenu: NSObject {
     init(
         current: PanelPreset?, choose: @escaping (PanelPreset) -> Void = { _ in },
         keepsOnTop: Bool = false, setKeepsOnTop: ((Bool) -> Void)? = nil,
+        updateCheck: PanelPlacement.UpdateCheck? = nil,
         close: @escaping () -> Void = {}
     ) {
         self.choose = choose
         self.keepsOnTop = keepsOnTop
         self.setKeepsOnTop = setKeepsOnTop
+        self.updateCheck = updateCheck
         self.close = close
         super.init()
         menu.autoenablesItems = false
@@ -434,6 +451,14 @@ final class PanelMenu: NSObject {
             item.toolTip = "Stay above other apps' windows without focus. Settings still comes in front."
             menu.addItem(item)
         }
+        // Read each time the menu opens, as the menu bar menu reads it.
+        if let updateCheck {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            let item = NSMenuItem(title: AppUpdater.checkTitle, action: #selector(checkedForUpdates(_:)), keyEquivalent: "")
+            item.target = self
+            item.isEnabled = updateCheck.canCheck()
+            menu.addItem(item)
+        }
         if !menu.items.isEmpty { menu.addItem(.separator()) }
         let item = NSMenuItem(
             title: current == nil ? Self.closeAndDiscardTitle : Self.hideTitle,
@@ -453,6 +478,10 @@ final class PanelMenu: NSObject {
     @objc func chosen(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let preset = PanelPreset(rawValue: raw) else { return }
         choose(preset)
+    }
+
+    @objc func checkedForUpdates(_ sender: NSMenuItem) {
+        updateCheck?.check()
     }
 
     @objc func closed(_ sender: NSMenuItem) {
