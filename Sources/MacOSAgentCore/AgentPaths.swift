@@ -28,6 +28,13 @@ public enum AgentPaths {
         applicationSupport.appending(path: "history-index.sqlite")
     }
 
+    /// The images the owner attached to messages, one file each, named by the SHA-256 of its
+    /// bytes, such as `images/3f9a…c1.png`. The thread's entries point to them. Missing until
+    /// the first image. An incognito window never writes here. See `ImageFolder`.
+    public static var imagesFolder: URL {
+        applicationSupport.appending(path: "images", directoryHint: .isDirectory)
+    }
+
     /// The agent's standing instructions as the person edited them. Missing until the first edit.
     public static var instructionsFile: URL {
         applicationSupport.appending(path: "instructions.md")

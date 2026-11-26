@@ -17,13 +17,14 @@ The agent has no name of its own. The app, the repo, the bundle, and its folders
 - Typing a quick action's name and pressing Return runs it at once, without the model. A quick action is a fixed tool call, or a few, kept in `quick-actions/`. Ask the agent to "make that instant" to save one.
 - Up Arrow on the field's first line recalls your earlier messages, as in a terminal. Settings, Behaviors turns it off, and has other habits from terminal coding agents.
 - Delete twice quickly in an empty field starts a new episode, as `/new` does.
+- Command-V with a screenshot on the clipboard, or dropping an image on the panel, attaches it to your next message, so the agent can see it. Thumbnails above the field show what is attached.
 - Typing a slash lists the panel's commands and the skills you can invoke. `/skill-name` and some text asks the agent to use that skill for the text.
 - Settings opens from the menu bar menu, or with Command-comma while the panel is in front.
 - Web search is off unless you choose OpenAI's hosted search or Brave Search in Settings, General. Brave needs an API key, saved there. A change takes effect at the next launch.
 
 MCP servers are an experiment: turn them on in Settings > Experiments. They go in `mcp-servers.json` in the same folder, in the `mcpServers` shape other apps use. Settings > MCP Servers shows them, and a new server's tools join at the next launch. With the "Settings the agent can change" experiment also on, you can ask the agent to add, remove, or turn off a server, or to turn an experiment on or off. It asks before every change and never sees a server's secret values.
 
-Settings > Appearance picks the panel's theme. Everything the agent keeps (the thread, memory, skills, quick actions, instructions, themes, usage log) is in `~/Library/Application Support/mac-os-agent/`.
+Settings > Appearance picks the panel's theme. Everything the agent keeps (the thread, the images you attach, memory, skills, quick actions, instructions, themes, usage log) is in `~/Library/Application Support/mac-os-agent/`.
 
 ## Working on it
 

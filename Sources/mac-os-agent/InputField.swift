@@ -59,6 +59,9 @@ struct InputField: NSViewRepresentable {
     /// The font and the height of one line's row: `.standard`, or `.pill` with the panel with
     /// bars experiment on.
     var metrics: InputFieldMetrics = .standard
+    /// A paste or a drop that carries images, by `ImagePaste`'s rule: attaches them and returns
+    /// true. Text is still pasted as text. Nil leaves pasting as the text view does it.
+    var onAttachImages: (([ImagePaste.Source]) -> Bool)? = nil
 
     static let font = InputFieldMetrics.standard.font
     static let maximumLines = 8
@@ -105,6 +108,10 @@ struct InputField: NSViewRepresentable {
         textView.onCommandNumber = { [weak coordinator = context.coordinator] in coordinator?.parent.onCommandNumber($0) ?? false }
         textView.onDoubleDelete = { [weak coordinator = context.coordinator] in coordinator?.parent.onDoubleDelete() ?? false }
         textView.onComposingChange = { [weak coordinator = context.coordinator] in coordinator?.parent.onComposingChange($0) }
+        textView.onAttachImages = { [weak coordinator = context.coordinator] in coordinator?.parent.onAttachImages?($0) ?? false }
+        // Graphics stay off, so the text never holds an image. Images dropped on the field are
+        // taken here and attached beside it instead.
+        textView.registerForDraggedTypes(textView.registeredDraggedTypes + [.fileURL] + NSPasteboard.imageTypes)
         return scrollView
     }
 
@@ -371,6 +378,72 @@ final class InputTextView: NSTextView {
     var onDoubleDelete: (() -> Bool)?
     /// An input method started (true) or stopped (false) composing.
     var onComposingChange: ((Bool) -> Void)?
+    /// Images a paste or a drop carries. Returns true when it attached them.
+    var onAttachImages: (([ImagePaste.Source]) -> Bool)?
+    /// The pasteboard Paste reads. Tests stand one in, so they never touch the clipboard.
+    var pasteboardForPaste: () -> any ImagePasteboard = { NSPasteboard.general }
+
+    /// Attaches the images a pasteboard carries, when `ImagePaste` says it carries images.
+    func attachImages(from pasteboard: any ImagePasteboard) -> Bool {
+        guard let onAttachImages, case .images(let sources) = pasteboard.imageChoice else { return false }
+        return onAttachImages(sources)
+    }
+
+    override func paste(_ sender: Any?) {
+        if attachImages(from: pasteboardForPaste()) { return }
+        super.paste(sender)
+    }
+
+    override func pasteAsPlainText(_ sender: Any?) {
+        if attachImages(from: pasteboardForPaste()) { return }
+        super.pasteAsPlainText(sender)
+    }
+
+    override func pasteAsRichText(_ sender: Any?) {
+        if attachImages(from: pasteboardForPaste()) { return }
+        super.pasteAsRichText(sender)
+    }
+
+    /// A plain text view turns Paste off for a clipboard with only an image on it. Here it
+    /// stays on, since the image is attached.
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(paste(_:)) || item.action == #selector(pasteAsPlainText(_:)),
+           onAttachImages != nil, pasteboardForPaste().attachesImages
+        {
+            return isEditable
+        }
+        return super.validateUserInterfaceItem(item)
+    }
+
+    /// Whether the drag in progress, by its sequence number, carries images. Reading the
+    /// pasteboard reads its file URLs, image data, and text, so it is read once per drag rather
+    /// than on every update while the pointer moves.
+    private var dragAttachesImages: (sequence: Int, attaches: Bool)?
+
+    private func dropAttachesImages(_ sender: any NSDraggingInfo) -> Bool {
+        guard onAttachImages != nil, isEditable else { return false }
+        if let known = dragAttachesImages, known.sequence == sender.draggingSequenceNumber { return known.attaches }
+        let attaches = sender.draggingPasteboard.attachesImages
+        dragAttachesImages = (sender.draggingSequenceNumber, attaches)
+        return attaches
+    }
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        dropAttachesImages(sender) ? .copy : super.draggingEntered(sender)
+    }
+
+    override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        dropAttachesImages(sender) ? .copy : super.draggingUpdated(sender)
+    }
+
+    override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        dropAttachesImages(sender) ? true : super.prepareForDragOperation(sender)
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        if dropAttachesImages(sender) { return attachImages(from: sender.draggingPasteboard) }
+        return super.performDragOperation(sender)
+    }
     private var wasComposing = false
     /// How close two presses of Delete have to be. The system's double-click interval, read at
     /// each press so a change in System Settings applies at once.

@@ -19,11 +19,14 @@ final class HistorySettingsModel {
         didSet { if selection != oldValue { readSelected() } }
     }
     @ObservationIgnored let history: ThreadStore?
+    /// Where the thread's images are kept, for the thumbnails beside a message's line.
+    @ObservationIgnored let images: any ImageStorage
     @ObservationIgnored private var contents = ThreadContents()
     @ObservationIgnored private var searchTask: Task<Void, Never>?
 
-    init(history: ThreadStore?) {
+    init(history: ThreadStore?, images: any ImageStorage = ImageFolder()) {
         self.history = history
+        self.images = images
     }
 
     var selectedItem: EpisodeListItem? { items.first { $0.id == selection } }
@@ -79,6 +82,10 @@ struct HistorySettingsView: View {
     @Bindable var model: HistorySettingsModel
 
     var body: some View {
+        content.environment(\.imageData) { [images = model.images] in images.data(for: $0) }
+    }
+
+    private var content: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
                 FilterField(prompt: "Search All History", text: $model.query)
@@ -191,7 +198,17 @@ private struct LineView: View {
     var body: some View {
         switch line.kind {
         case .owner:
-            labeled("You", Text(line.text))
+            VStack(alignment: .leading, spacing: 6) {
+                labeled("You", Text(line.text))
+                if !line.images.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(line.images, id: \.self) { image in
+                            ImageThumbnail(attachment: image, size: 40)
+                                .accessibilityLabel(ImageThumbnail.spokenText(image))
+                        }
+                    }
+                }
+            }
         case .agent:
             labeled("Agent", Text(line.text))
         case .command(let outcome):

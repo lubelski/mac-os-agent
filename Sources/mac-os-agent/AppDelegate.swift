@@ -114,7 +114,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 usageLog: usageLog,
                 episodeTimeout: timeout,
                 webSearch: webSearch.launched.usesHostedSearch,
-                instructionsForNewEpisode: { prompt.forNewEpisode() })
+                instructionsForNewEpisode: { prompt.forNewEpisode() },
+                // The main panel keeps attached images in the images folder. The incognito
+                // window's loop keeps them in memory, its default.
+                images: ImageFolder())
         }
         // The incognito window has a provider of its own with its own cache key, so its
         // requests, with their own instructions and tools, are a separate cached prefix.
@@ -129,6 +132,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         session = AgentSession(
             loop: loop, authenticator: authenticator, signedIn: modelAccess == .gateway, problems: problems)
         session.modelAccess = modelAccess
+        // Read at each send: the model setting, and what Ollama last said about a local model.
+        let imageInputSupported: () -> Bool? = { [localModels] in
+            ImageInput.isSupported(modelID: ModelSetting.effective(), localCapabilities: localModels.capabilities)
+        }
+        session.imageInputSupported = imageInputSupported
         session.onStatusChange = { [weak self] in self?.statusDidChange() }
         session.toolSources = tools.sourceTitles
         session.instantActions = .live(summaries: tools.summaries)
@@ -151,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 incognito.toolSources = main.toolSources
                 incognito.instantActions = main.instantActions.incognitoCopy()
             }
+            incognito.imageInputSupported = imageInputSupported
             return incognito
         })
         incognito.mainPanelFrame = { [weak self] in self?.panel.placedFrame }

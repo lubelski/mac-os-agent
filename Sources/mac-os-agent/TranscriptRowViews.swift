@@ -14,7 +14,7 @@ struct RowView: View {
         case .episodeStart(let date):
             EpisodeSeparator(date: date, now: now)
         case .user(let text, let date, let showsTime):
-            OwnerMessage(text: text, date: date, showsTime: showsTime, now: now)
+            OwnerMessage(text: text, date: date, showsTime: showsTime, now: now, images: row.images)
         case .assistant(let text):
             AgentMessage(text: text)
         case .tool(let command, let status, let output):
@@ -48,6 +48,9 @@ struct OwnerMessage: View {
     let date: Date
     let showsTime: Bool
     let now: Date
+    /// The images sent with it, drawn as thumbnails above the box. A message of images alone
+    /// has no box.
+    var images: [ImageAttachment] = []
     @Environment(\.panelPalette) private var palette
     @State private var hovering = false
 
@@ -59,6 +62,15 @@ struct OwnerMessage: View {
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity)
             }
+            if !images.isEmpty {
+                MessageImages(images: images)
+                    .help(TranscriptTimeLabel.fullText(for: date))
+            }
+            if !text.isEmpty { textBox }
+        }
+    }
+
+    private var textBox: some View {
             HStack(spacing: 0) {
                 Spacer(minLength: MessageStyle.farSideInset)
                 Text(verbatim: text)
@@ -91,7 +103,6 @@ struct OwnerMessage: View {
             .onHover { hovering = $0 }
             .accessibilityElement(children: .contain)
             .accessibilityAction(named: "Copy") { MessageActions.copy(text) }
-        }
     }
 }
 

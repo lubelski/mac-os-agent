@@ -208,7 +208,7 @@ private func step(_ tool: String, _ value: String) -> QuickAction.Step {
         #expect(first.received == [["value": "a", "count": nil]])
         #expect(second.received.count == 1)
         #expect(third.received.isEmpty, "nothing runs after a failed step")
-        guard case .userMessage(let text, nil, let record?) = entry.item else { Issue.record("not an action's record"); return }
+        guard case .userMessage(let text, nil, let record?, _) = entry.item else { Issue.record("not an action's record"); return }
         #expect(text == "three")
         #expect(record.steps.map(\.tool) == ["first", "second"])
         #expect(record.failedStep == 1)
@@ -225,7 +225,7 @@ private func step(_ tool: String, _ value: String) -> QuickAction.Step {
         let action = QuickAction(id: "ask", name: "Ask", description: "Asks.", steps: [step("asking", "x")])
         let entry = try await loop(tools: [asking]).runQuickAction(action, typed: "ask", onEvent: { _ in })
         #expect(asking.goAheadAnswers == [true])
-        guard case .userMessage(_, _, let record?) = entry.item else { Issue.record("no record"); return }
+        guard case .userMessage(_, _, let record?, _) = entry.item else { Issue.record("no record"); return }
         #expect(record.failedStep == nil)
         #expect(record.steps[0].goAheadReason == "deletes files")
         #expect(record.steps[0].details?.goAhead == .preapproved)
@@ -242,7 +242,7 @@ private func step(_ tool: String, _ value: String) -> QuickAction.Step {
             .init(tool: "change_theme", arguments: ["action": "delete", "theme_id": "glass", "file": nil]),
         ])
         let entry = try await loop(tools: [change]).runQuickAction(action, typed: "bad theme", onEvent: { _ in })
-        guard case .userMessage(_, _, let record?) = entry.item else { Issue.record("no record"); return }
+        guard case .userMessage(_, _, let record?, _) = entry.item else { Issue.record("no record"); return }
         #expect(record.failedStep == 0)
         #expect(record.steps[0].output.hasPrefix("Error: Glass is a built-in theme"))
     }
@@ -285,7 +285,7 @@ private func step(_ tool: String, _ value: String) -> QuickAction.Step {
         let stored = await reopened.entries
         #expect(stored.map(\.id) == [entry.id])
         // Dates are kept to the second, so compare what the record says.
-        guard case .userMessage("two", nil, let record?) = stored.first?.item else { Issue.record("no record"); return }
+        guard case .userMessage("two", nil, let record?, _) = stored.first?.item else { Issue.record("no record"); return }
         #expect(record.steps.map(\.output) == ["done", "Error: no."])
         let transcript = Transcript(entries: stored)
         #expect(transcript.rows.count == 5)
@@ -328,7 +328,7 @@ private func step(_ tool: String, _ value: String) -> QuickAction.Step {
         #expect(call.name == "change_action")
         #expect(ToolCallSummaries.builtIn.summary(of: call) == "Save the quick action Start Screensaver",
                 "a call under the old name reads as the renamed tool's summary")
-        guard case .userMessage("screensaver", nil, let record?) = entries[2].item else { Issue.record("no record"); return }
+        guard case .userMessage("screensaver", nil, let record?, _) = entries[2].item else { Issue.record("no record"); return }
         #expect(record.failedStep == nil)
         let sent = ThreadItem.modelText(text: "screensaver", skill: nil, action: record)
         #expect(sent.hasPrefix("<action_run>\nThe person typed \"screensaver\" and ran their saved action"), "the model is sent the note as it was stored")

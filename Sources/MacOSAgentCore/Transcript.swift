@@ -39,10 +39,13 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
 
     public var id: String
     public var kind: Kind
+    /// The images on the owner's message, which the row shows as thumbnails. None on any other row.
+    public var images: [ImageAttachment]
 
-    public init(id: String, kind: Kind) {
+    public init(id: String, kind: Kind, images: [ImageAttachment] = []) {
         self.id = id
         self.kind = kind
+        self.images = images
     }
 
     public var isTool: Bool {
@@ -212,7 +215,7 @@ public struct Transcript: Equatable, Sendable {
         switch entry.item {
         case .episodeStart:
             break
-        case .userMessage(let text, _, let action):
+        case .userMessage(let text, _, let action, let images):
             if let action {
                 if showsLines {
                     applyActionLine(action, text: text, entry: entry)
@@ -224,7 +227,8 @@ public struct Transcript: Equatable, Sendable {
             let showsTime = lastUserDate != nil
                 && Self.startsNewStretch(previous: lastUserDate, current: entry.date, calendar: calendar)
             lastUserDate = entry.date
-            append(TranscriptRow(id: entry.id.uuidString, kind: .user(text: text, date: entry.date, showsTime: showsTime)))
+            append(TranscriptRow(
+                id: entry.id.uuidString, kind: .user(text: text, date: entry.date, showsTime: showsTime), images: images))
         case .assistantMessage(let message):
             if !message.text.isEmpty {
                 append(TranscriptRow(id: entry.id.uuidString, kind: .assistant(message.text)))

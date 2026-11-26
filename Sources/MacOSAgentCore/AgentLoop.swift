@@ -64,6 +64,12 @@ public final class AgentLoop: Sendable {
     /// episode's memory snapshot, so warming never changes what the real request sends. Nil
     /// leaves a timed-out episode unwarmed.
     public let instructionsForNewEpisode: (@Sendable () async -> String)?
+    /// Where the bytes of the owner's attached images are kept: the images folder for the kept
+    /// thread, memory for an incognito conversation, which is the default so nothing is
+    /// written unless asked.
+    public let images: any ImageStorage
+    /// The bytes each request sends for the episode's images, read once per image.
+    private let sentImages = SentImages()
 
     public convenience init(
         provider: any ModelProvider,
@@ -73,12 +79,13 @@ public final class AgentLoop: Sendable {
         maximumModelReplies: Int = 40,
         usageLog: UsageLog? = nil,
         episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) },
-        webSearch: Bool = false
+        webSearch: Bool = false,
+        images: any ImageStorage = InMemoryImageStore()
     ) {
         self.init(
             provider: provider, thread: thread, tools: tools, instructionsForEpisode: { _ in await instructions() },
             maximumModelReplies: maximumModelReplies, usageLog: usageLog, episodeTimeout: episodeTimeout,
-            webSearch: webSearch)
+            webSearch: webSearch, images: images)
     }
 
     /// - Parameter instructionsForEpisode: The instructions for a request in the episode with
@@ -92,9 +99,11 @@ public final class AgentLoop: Sendable {
         usageLog: UsageLog? = nil,
         episodeTimeout: @escaping @Sendable () -> TimeInterval = { TimeInterval(EpisodeTimeoutSetting.defaultMinutes * 60) },
         webSearch: Bool = false,
-        instructionsForNewEpisode: (@Sendable () async -> String)? = nil
+        instructionsForNewEpisode: (@Sendable () async -> String)? = nil,
+        images: any ImageStorage = InMemoryImageStore()
     ) {
         self.instructionsForNewEpisode = instructionsForNewEpisode
+        self.images = images
         self.provider = provider
         self.thread = thread
         self.tools = tools
@@ -131,8 +140,14 @@ public final class AgentLoop: Sendable {
             instructions = await self.instructions(episode?.id)
             entries = await thread.contents.currentEpisodeEntries
         }
-        await provider.prepare(ModelRequest(
-            instructions: instructions, entries: entries, tools: tools.map(\.definition), webSearch: webSearch))
+        await provider.prepare(request(instructions: instructions, entries: entries, definitions: tools.map(\.definition)))
+    }
+
+    /// A request for these entries, with the bytes of their images as this episode first read them.
+    private func request(instructions: String, entries: [ThreadEntry], definitions: [ToolDefinition]) -> ModelRequest {
+        ModelRequest(
+            instructions: instructions, entries: entries, tools: definitions, webSearch: webSearch,
+            images: sentImages.bytes(for: entries, from: images))
     }
 
     /// Handles one instruction from the person. Returns when the model has finished, and
@@ -151,13 +166,14 @@ public final class AgentLoop: Sendable {
     public func run(
         _ userText: String,
         skill: ThreadItem.SkillInvocation? = nil,
+        images: [PreparedImage] = [],
         startsNewEpisode: Bool = false,
         now: Date = Date(),
         onEvent: @escaping @Sendable (AgentEvent) async -> Void,
         confirm: @escaping @Sendable (ConfirmationRequest) async -> Bool
     ) async throws {
         try await run(
-            userText, skill: skill, startsNewEpisode: startsNewEpisode, now: now, onEvent: onEvent,
+            userText, skill: skill, images: images, startsNewEpisode: startsNewEpisode, now: now, onEvent: onEvent,
             answer: { request in await confirm(request) ? .allowOnce : .deny })
     }
 
@@ -166,13 +182,18 @@ public final class AgentLoop: Sendable {
     public func run(
         _ userText: String,
         skill: ThreadItem.SkillInvocation? = nil,
+        images prepared: [PreparedImage] = [],
         startsNewEpisode: Bool = false,
         now: Date = Date(),
         onEvent: @escaping @Sendable (AgentEvent) async -> Void,
         answer confirm: @escaping @Sendable (ConfirmationRequest) async -> ConfirmationAnswer
     ) async throws {
+        // The bytes are kept before the message that points to them, so the thread never holds
+        // an image that was not kept. Nothing is written when keeping one fails.
+        for image in prepared { try images.keep(image) }
         try await prepareForOwnerEntry(startsNewEpisode: startsNewEpisode, now: now, onEvent: onEvent)
-        await onEvent(.entryAdded(try await thread.append(.userMessage(text: userText, skill: skill), date: now)))
+        let message = ThreadItem.userMessage(text: userText, skill: skill, images: prepared.map(\.attachment))
+        await onEvent(.entryAdded(try await thread.append(message, date: now)))
         let definitions = tools.map(\.definition)
         let episodeID = await thread.currentEpisode?.id
         let instructions = await self.instructions(episodeID)
@@ -209,9 +230,8 @@ public final class AgentLoop: Sendable {
             try Task.checkCancellation()
             // Only the current episode goes to the model. Within it the request only grows at
             // the end, so the prompt cache holds from one request to the next.
-            let request = ModelRequest(
-                instructions: instructions, entries: await thread.contents.currentEpisodeEntries, tools: definitions,
-                webSearch: webSearch)
+            let request = request(
+                instructions: instructions, entries: await thread.contents.currentEpisodeEntries, definitions: definitions)
             var calls: [ThreadItem.ToolCall] = []
             var sentItems: [String]?
             let started = ContinuousClock.now

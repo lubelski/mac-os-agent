@@ -186,7 +186,7 @@ struct QueuedMessagesInConversation: View {
             }
             ForEach(Array(queue.items.enumerated()), id: \.element.id) { index, item in
                 QueuedMessage(
-                    text: item.text, position: index + 1, canEdit: session.draft.isEmpty,
+                    text: item.shownText, position: index + 1, canEdit: session.draft.isEmpty && session.attachments.isEmpty,
                     forcesHover: session.previewHoversQueuedMessage,
                     edit: { session.editQueued(item.id) }, remove: { session.removeQueued(item.id) })
             }

@@ -11,12 +11,20 @@ public struct ModelRequest: Sendable {
     /// Whether the provider's own hosted web search is offered beside the tools. It is fixed
     /// for a run, like the tool list. False sends the request exactly as before web search.
     public var webSearch: Bool
+    /// The bytes of each image the entries' messages hold, by `ImageAttachment.id`, read once
+    /// per episode by the loop. An image missing here is one whose bytes are gone, which the
+    /// provider sends as `ImageAttachment.missingNote`.
+    public var images: [String: Data]
 
-    public init(instructions: String, entries: [ThreadEntry], tools: [ToolDefinition], webSearch: Bool = false) {
+    public init(
+        instructions: String, entries: [ThreadEntry], tools: [ToolDefinition], webSearch: Bool = false,
+        images: [String: Data] = [:]
+    ) {
         self.instructions = instructions
         self.entries = entries
         self.tools = tools
         self.webSearch = webSearch
+        self.images = images
     }
 }
 

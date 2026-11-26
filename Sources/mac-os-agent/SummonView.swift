@@ -58,6 +58,7 @@ struct SummonView: View {
                     PanelDivider()
                     InputBand {
                         TaskLinksRow(links: session.taskLinks, clear: session.clearTaskLinks)
+                        attachmentRow
                     } field: {
                         InputPill(card: session.matchCardSide) { field(metrics: .pill) }
                             .overlay(alignment: .top) { matchCardAbove }
@@ -75,6 +76,7 @@ struct SummonView: View {
                 // The suggestions are in the field and the footer, so nothing is added above it.
                 VStack(spacing: 0) {
                     PanelDivider()
+                    attachmentRow.background(PanelBarFill())
                     inputRow
                 }
                 .overlay(alignment: .top) { overlaidList }
@@ -86,10 +88,18 @@ struct SummonView: View {
                     suggestions: session.commandSuggestions, selection: session.hintSelection,
                     incognito: session.isIncognito, choose: session.complete)
                 PanelDivider()
+                attachmentRow.background(PanelBarFill())
                 inputRow
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // The conversation's images are read from the session, for every thumbnail in it.
+        .environment(\.imageData) { [session] in session.imageData(for: $0) }
+        // An image file dropped anywhere on the panel is attached, as one dropped on the field is.
+        .onDrop(of: [.fileURL, .image], isTargeted: nil) { providers in
+            guard !session.isRunning || session.queuesWhileRunning else { return false }
+            return ImageDrop.attach(providers, to: session)
+        }
         .coordinateSpace(.named(Self.panelSpace))
         // A faint tint on the surface, with the label in the top bar, keeps the incognito window
         // apart from the main panel for its whole life.
@@ -135,6 +145,14 @@ struct SummonView: View {
     /// a reply on its way, or a draft.
     private var canClear: Bool {
         session.transcript.rows.contains { !$0.isEpisodeStart } || session.isRunning || !session.draft.isEmpty
+            || !session.attachments.isEmpty
+    }
+
+    /// The images attached to the next message, above the field, in the band with it.
+    private var attachmentRow: some View {
+        AttachmentRow(
+            attachments: session.attachments, notice: session.attachmentNotice, remove: session.removeAttachment,
+            revealsControls: session.previewRevealsAttachmentControls)
     }
 
     private var inputRow: some View {
@@ -176,7 +194,11 @@ struct SummonView: View {
                 onDoubleDelete: session.startNewEpisodeFromKeys,
                 onComposingChange: session.composingChanged,
                 inlineCompletion: session.inlineCompletion,
-                metrics: metrics)
+                metrics: metrics,
+                onAttachImages: { sources in
+                    session.attach(sources)
+                    return true
+                })
                 .overlay(alignment: .topLeading) {
                     if session.draft.isEmpty {
                         Text(placeholder)

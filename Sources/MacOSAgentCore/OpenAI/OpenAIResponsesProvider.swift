@@ -19,7 +19,8 @@ public struct OpenAIResponsesProvider: ModelProvider {
         public var errorDescription: String? {
             switch self {
             case .http(let status, let body):
-                OpenAIResponsesProvider.explain("OpenAI API error (\(status)): \(body)")
+                OpenAIResponsesProvider.explain(
+                    "OpenAI API error (\(status)): \(OpenAIResponsesProvider.withoutImageData(body))", status: status)
             case .ollamaNotRunning(let url):
                 "Ollama is not running at \(url.host() ?? "localhost"):\(url.port ?? 11434). Open Ollama, or choose an OpenAI model."
             case .gatewayNotRunning(let url):
@@ -234,6 +235,30 @@ public struct OpenAIResponsesProvider: ModelProvider {
     static func sessionHeaders(promptCacheKey: String) -> [(String, String)] {
         let key = String(promptCacheKey.prefix(64))
         return [("session-id", key), ("x-client-request-id", key)]
+    }
+
+    /// The hint after an error about an attached image, such as from a local model that cannot
+    /// read one.
+    public static let imageErrorHint = "The model could not take the attached image. Choose a model that reads images, or send the message without it."
+
+    /// An error body with any image data in it cut down to its type, so an image the owner
+    /// attached never reaches the problem log or the panel's error line, whatever a provider
+    /// echoes back.
+    static func withoutImageData(_ text: String) -> String {
+        text.replacing(/data:image\/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+\/=]+/) { match in
+            let prefix = match.output.prefix { $0 != "," }
+            return "\(prefix),…"
+        }
+    }
+
+    /// Adds a hint to errors that mean the ChatGPT plan's shared usage limit was reached, and to
+    /// a refused request that names an image.
+    static func explain(_ message: String, status: Int) -> String {
+        let explained = explain(message)
+        if explained == message, (400..<500).contains(status), message.lowercased().contains("image") {
+            return message + "\n" + imageErrorHint
+        }
+        return explained
     }
 
     /// Adds a hint to errors that mean the ChatGPT plan's shared usage limit was reached.

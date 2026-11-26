@@ -247,6 +247,8 @@ public struct EpisodeLine: Sendable, Equatable, Identifiable {
     public var text: String
     /// A quick action's steps that ran, each as a command's line.
     public var steps: [EpisodeLine] = []
+    /// The images on an owner's message, which History shows as thumbnails beside its text.
+    public var images: [ImageAttachment] = []
 
     /// The lines of an episode. Each command takes its outcome from its result, which may be
     /// in the next episode when the app quit while it ran. A tool call reads as its row in
@@ -268,8 +270,9 @@ public struct EpisodeLine: Sendable, Equatable, Identifiable {
     ) -> EpisodeLine? {
         let id = entry.id.uuidString
         switch HistoryReading.of(entry.item) {
-        case .owner(let text):
-            return EpisodeLine(id: id, date: entry.date, kind: .owner, text: text)
+        case .owner(let text, let images):
+            return EpisodeLine(
+                id: id, date: entry.date, kind: .owner, text: ImageAttachment.historyText(text, images: images), images: images)
         case .agent(let text):
             return EpisodeLine(id: id, date: entry.date, kind: .agent, text: text)
         case .command(let call):

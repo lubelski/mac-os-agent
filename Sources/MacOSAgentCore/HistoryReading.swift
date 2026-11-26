@@ -8,8 +8,8 @@ import Foundation
 /// An entry either reads as something that happened, or folds into one that does, for a
 /// stated reason.
 enum HistoryReading: Equatable {
-    /// What the owner typed and sent.
-    case owner(String)
+    /// What the owner typed and sent, with the images they attached to it.
+    case owner(String, images: [ImageAttachment])
     /// The agent's reply.
     case agent(String)
     /// A tool the model called, which ran here.
@@ -37,9 +37,9 @@ enum HistoryReading: Equatable {
 
     static func of(_ item: ThreadItem) -> HistoryReading {
         switch item {
-        case .userMessage(let text, _, let action):
+        case .userMessage(let text, _, let action, let images):
             if let action { return .quickAction(typed: text, run: action) }
-            return .owner(text)
+            return .owner(text, images: images)
         case .assistantMessage(let message):
             return message.text.isEmpty ? .folded(.emptyReply) : .agent(message.text)
         case .providerItem(let item):

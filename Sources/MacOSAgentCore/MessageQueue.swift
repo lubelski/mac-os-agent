@@ -10,10 +10,18 @@ public struct MessageQueue: Sendable, Equatable {
     public struct Item: Sendable, Equatable, Identifiable {
         public var id: UUID
         public var text: String
+        /// The images attached to it, already reduced and encoded, which go with it when it is sent.
+        public var images: [PreparedImage]
 
-        public init(id: UUID = UUID(), text: String) {
+        /// What its row shows: the text, and a note on its images, such as "[with 1 image]".
+        public var shownText: String {
+            ImageAttachment.historyText(text, images: images.map(\.attachment))
+        }
+
+        public init(id: UUID = UUID(), text: String, images: [PreparedImage] = []) {
             self.id = id
             self.text = text
+            self.images = images
         }
     }
 
@@ -33,8 +41,13 @@ public struct MessageQueue: Sendable, Equatable {
 
     public var isEmpty: Bool { items.isEmpty }
 
-    public mutating func append(_ text: String) {
-        items.append(Item(text: text))
+    public mutating func append(_ text: String, images: [PreparedImage] = []) {
+        items.append(Item(text: text, images: images))
+    }
+
+    /// Puts a message back at the front, such as one that could not be sent.
+    public mutating func putBack(_ item: Item) {
+        items.insert(item, at: 0)
     }
 
     public mutating func remove(_ id: UUID) {
@@ -45,10 +58,15 @@ public struct MessageQueue: Sendable, Equatable {
     /// Takes a message out of the queue to edit it in the field: the one with this id, or
     /// without one the newest, as Up Arrow does.
     public mutating func pullBack(_ id: UUID? = nil) -> String? {
+        pullBackItem(id)?.text
+    }
+
+    /// The same, with the message's images.
+    public mutating func pullBackItem(_ id: UUID? = nil) -> Item? {
         guard let index = id.map({ id in items.firstIndex { $0.id == id } }) ?? items.indices.last else { return nil }
         let item = items.remove(at: index)
         if items.isEmpty { pauseReason = nil }
-        return item.text
+        return item
     }
 
     /// The next message to send when a turn finishes normally, or nil when the queue is empty or paused.

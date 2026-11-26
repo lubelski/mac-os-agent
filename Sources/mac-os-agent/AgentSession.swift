@@ -61,11 +61,35 @@ final class AgentSession {
     var draft = "" {
         didSet {
             syncInstantActionMode()
-            instantActions.draftChanged(draft)
+            instantActions.draftChanged(instantActionDraft)
             if draft != oldValue { draftChangedForHint() }
             suggestionListFollowsDraft()
         }
     }
+    /// The images attached to the next message, reduced and encoded already, in the order they
+    /// were attached. They show as thumbnails above the text field. See `AttachmentRow`.
+    private(set) var attachments: [PreparedImage] = [] {
+        didSet {
+            guard attachments != oldValue else { return }
+            attachmentNotice = nil
+            // With an image attached, Return sends to the agent, so no instant action is offered.
+            instantActions.draftChanged(instantActionDraft)
+            suggestionListFollowsDraft()
+        }
+    }
+    /// A line in the row of attached images: why an image was not attached, or that the
+    /// model cannot read images. It goes when the images change.
+    private(set) var attachmentNotice: String?
+    /// Whether the model the next reply goes to reads images: true, false, or nil when it is not
+    /// known. Set by the app from the model setting and what Ollama says. See `ImageInput`.
+    @ObservationIgnored var imageInputSupported: () -> Bool? = { true }
+    /// For previews: draws the attached images' remove controls as if the pointer were over them.
+    @ObservationIgnored var previewRevealsAttachmentControls = false
+    /// For previews: where the conversation's images are read when there is no loop.
+    @ObservationIgnored var previewImages: (any ImageStorage)?
+
+    /// What the instant actions match: the draft, or nothing while an image is attached.
+    private var instantActionDraft: String { attachments.isEmpty ? draft : "" }
     /// The skills the main panel offers as slash commands, kept live. Nil in the incognito
     /// window, which has no skills, and where nothing set one up.
     var skillCommands: SkillCommandsModel?
@@ -236,6 +260,11 @@ final class AgentSession {
     /// For previews: adds a row for a call whose arguments have not arrived.
     func previewToolStarted(_ callID: String) {
         transcript.toolStarted(callID)
+    }
+
+    /// For previews: the line in the row of attached images.
+    func previewAttachmentNotice(_ notice: String) {
+        attachmentNotice = notice
     }
 
     /// For previews: shows the question asked when the owner closes or clears while a task runs.
@@ -470,6 +499,7 @@ final class AgentSession {
         loop = nil
         transcript = Transcript()
         draft = ""
+        attachments = []
         recall.reset()
         queue.clear()
         conversation += 1
@@ -489,6 +519,11 @@ final class AgentSession {
     /// the text to the agent.
     func submit() {
         guard !isRunning || queuesWhileRunning else { return }
+        // With an image attached, Return sends to the agent and takes no instant action.
+        if !attachments.isEmpty {
+            submitToAgent()
+            return
+        }
         // The switch may have changed in Settings since the last keystroke.
         syncInstantActionMode()
         // With the list under the field open, Return acts on its highlighted row.
@@ -610,7 +645,7 @@ final class AgentSession {
                 let entry = try await loop.runQuickAction(
                     action, typed: text, startsNewEpisode: startsNew, now: clock(),
                     onEvent: { event in await self.handle(event, in: conversation) })
-                if case .userMessage(_, _, let record?) = entry.item, let failed = record.failedStep {
+                if case .userMessage(_, _, let record?, _) = entry.item, let failed = record.failedStep {
                     let output = record.steps[failed].output
                     problems.record("Quick action", "\(action.name) stopped at step \(failed + 1): \(output.prefix(200))")
                     if draft.isEmpty { draft = text }
@@ -634,7 +669,10 @@ final class AgentSession {
     /// task runs with the queue experiment on, the message waits in the queue instead.
     func submitToAgent() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        let images = attachments
+        // A message with images and no text can be sent.
+        guard !text.isEmpty || !images.isEmpty else { return }
+        // The app's own commands keep the images for the next message.
         if case .builtIn(let command) = slashMenu.parse(text) {
             if submitCommand(command, typed: text) {
                 draft = ""
@@ -644,15 +682,89 @@ final class AgentSession {
         }
         if isRunning {
             guard queuesWhileRunning else { return }
-            queue.append(text)
+            queue.append(text, images: images)
             draft = ""
+            attachments = []
             recall.reset()
             return
         }
-        if send(text) {
+        if send(text, images: images) {
             draft = ""
+            attachments = []
             recall.reset()
         }
+    }
+
+    // MARK: - Attached images
+
+    /// Attaches images from a paste or a drop. Each is reduced and encoded once, here, off the
+    /// main thread. Those past `ImageAttachment.limit`, and any that cannot be read, are left
+    /// out with a line saying so.
+    @discardableResult
+    func attach(_ sources: [ImagePaste.Source]) -> Task<Void, Never> {
+        let conversation = conversation
+        return Task {
+            let results = await Task.detached(priority: .userInitiated) {
+                sources.map { source in
+                    Result { () throws -> PreparedImage in
+                        switch source {
+                        case .file(let url): try ImagePreparation.prepare(contentsOf: url)
+                        case .data(let data): try ImagePreparation.prepare(data)
+                        }
+                    }
+                }
+            }.value
+            guard conversation == self.conversation else { return }
+            var prepared: [PreparedImage] = []
+            var problem: String?
+            for result in results {
+                switch result {
+                case .success(let image): prepared.append(image)
+                case .failure(let error): problem = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                }
+            }
+            attach(prepared: prepared)
+            if let problem { attachmentNotice = problem }
+        }
+    }
+
+    /// What a drop on the panel carried that can be an image. A drop of only other files, such
+    /// as a PDF, attaches nothing and says why, since the drop was taken before its files were read.
+    func attachDropped(_ sources: [ImagePaste.Source]) {
+        if sources.isEmpty {
+            attachmentNotice = ImagePreparation.PreparationError.notAnImage.errorDescription
+        } else {
+            attach(sources)
+        }
+    }
+
+    /// Attaches images already prepared. The same picture twice is attached once.
+    func attach(prepared images: [PreparedImage]) {
+        let new = images.reduce(into: [PreparedImage]()) { kept, image in
+            if !attachments.contains(where: { $0.id == image.id }), !kept.contains(where: { $0.id == image.id }) {
+                kept.append(image)
+            }
+        }
+        let room = ImagePaste.room(attached: attachments.count, adding: new.count)
+        attachments += new.prefix(room)
+        if room < new.count { attachmentNotice = ImagePaste.limitNotice(leftOut: new.count - room) }
+        focusRequest += 1
+    }
+
+    /// The remove control on an attached image's thumbnail.
+    func removeAttachment(_ id: String) {
+        attachments.removeAll { $0.id == id }
+        focusRequest += 1
+    }
+
+    /// The bytes of an image the conversation shows: one attached or queued, or one in the
+    /// thread, read from where the loop keeps them. Nil when they are gone.
+    func imageData(for image: ImageAttachment) -> Data? {
+        if let attached = attachments.first(where: { $0.id == image.id }) { return attached.data }
+        for item in queue.items {
+            if let queued = item.images.first(where: { $0.id == image.id }) { return queued.data }
+        }
+        return (loop?.images ?? previewImages)?.data(for: image)
     }
 
     /// One of the app's own commands, typed and sent, or from keys, such as Delete twice for
@@ -689,8 +801,13 @@ final class AgentSession {
     /// Sends one message to the agent as its own turn: the field's text, or a queued message.
     /// Returns false when nothing was sent and the text should stay where it was.
     @discardableResult
-    private func send(_ text: String) -> Bool {
+    private func send(_ text: String, images: [PreparedImage] = []) -> Bool {
         guard !isRunning else { return false }
+        // A model known not to read images is not sent them. The text and images stay.
+        if !images.isEmpty, imageInputSupported() == false {
+            attachmentNotice = ImageInput.unsupportedMessage(modelID: ModelSetting.effective(preferences))
+            return false
+        }
         // A known command is the app's to handle. It is never sent or written down.
         var skill: ThreadItem.SkillInvocation?
         switch slashMenu.parse(text) {
@@ -739,6 +856,7 @@ final class AgentSession {
                 try await loop.run(
                     text,
                     skill: skill,
+                    images: images,
                     startsNewEpisode: startsNew,
                     onEvent: { event in await self.handle(event, in: conversation) },
                     answer: { request in await self.requestConfirmation(request, in: conversation) })
@@ -837,18 +955,11 @@ final class AgentSession {
     }
 
     private func sendQueued(_ item: MessageQueue.Item) {
-        if !send(item.text) {
+        if !send(item.text, images: item.images) {
             // It could not go out, such as when signed out. It goes back to the front, paused.
-            queue = Self.requeued(queue, puttingBack: item)
+            queue.putBack(item)
+            queue.pause(.failed)
         }
-    }
-
-    private static func requeued(_ queue: MessageQueue, puttingBack item: MessageQueue.Item) -> MessageQueue {
-        var rebuilt = MessageQueue()
-        rebuilt.append(item.text)
-        for other in queue.items { rebuilt.append(other.text) }
-        rebuilt.pause(.failed)
-        return rebuilt
     }
 
     /// Send in the paused queue's line: sends the next message and resumes the queue.
@@ -868,8 +979,9 @@ final class AgentSession {
     /// Edit on a queued row: takes it out of the queue and into the field, when the field is
     /// empty, so nothing typed is lost.
     func editQueued(_ id: UUID) {
-        guard draft.isEmpty, let text = queue.pullBack(id) else { return }
-        draft = text
+        guard draft.isEmpty, attachments.isEmpty, let item = queue.pullBackItem(id) else { return }
+        draft = item.text
+        attachments = item.images
         recall.reset()
         focusRequest += 1
     }
@@ -881,8 +993,11 @@ final class AgentSession {
     /// with the behavior on, it moves through the owner's earlier messages in this window.
     /// Returns false when it did nothing, so the key does what it always does.
     func recallMessage(by offset: Int) -> Bool {
-        if offset < 0, draft.isEmpty, !recall.isRecalling, let text = queue.pullBack() {
-            draft = text
+        if offset < 0, draft.isEmpty, attachments.isEmpty, !recall.isRecalling, let item = queue.pullBackItem() {
+            // A queued message comes back whole, with its images. Recalling a sent one brings
+            // back its text only.
+            draft = item.text
+            attachments = item.images
             return true
         }
         guard HarnessBehavior.recallEarlierMessages.isOn(preferences), !isRunning || queuesWhileRunning else { return false }

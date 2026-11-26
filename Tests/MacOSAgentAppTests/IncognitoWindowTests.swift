@@ -47,7 +47,9 @@ private func snapshot(of folder: URL) throws -> [String: Data] {
             instructions: InstructionsStore(fileURL: folder.appending(path: "instructions.md")),
             skills: SkillLibrary(folder: folder.appending(path: "skills"), settingsFile: folder.appending(path: "skill-settings.json")))
         let main = AgentSession(
-            loop: AgentLoop(provider: keptProvider, thread: thread, tools: [], usageLog: usageLog, episodeTimeout: { 1800 }),
+            loop: AgentLoop(
+                provider: keptProvider, thread: thread, tools: [], instructionsForEpisode: { _ in AgentInstructions.defaultPrompt },
+                usageLog: usageLog, episodeTimeout: { 1800 }, images: ImageFolder(folder: folder.appending(path: "images"))),
             authenticator: nil, episodeTimeout: { 1800 }, signedIn: true)
         let store = InstantActionHistoryStore(fileURL: folder.appending(path: "instant-actions.json"))
         final class Opened { var names: [String] = [] }
@@ -157,6 +159,42 @@ private func snapshot(of folder: URL) throws -> [String: Data] {
         // The main panel is exactly as it was.
         #expect(harness.main.transcript.rows == mainRows)
         #expect(harness.main.kind == .kept)
+    }
+
+    /// An image in the incognito window is held in memory with the conversation. The model gets
+    /// it, and no file is written: the data folder is byte for byte as it was, apart from the
+    /// usage log's token counts.
+    @Test func anImageInTheIncognitoWindowWritesNothing() async throws {
+        defer { cleanUp() }
+        let harness = try makeHarness()
+        // A kept message with an image first, so the images folder exists with one file.
+        let kept = StandInImages.prepared(.chart)
+        harness.main.attach(prepared: [kept])
+        await send("kept with a picture", in: harness.main)
+        let before = try snapshot(of: folder)
+        #expect(before[kept.attachment.fileName] != nil)
+
+        await send("/incognito", in: harness.main)
+        let session = try #require(harness.controller.session)
+        let secret = StandInImages.prepared(.errorDialog)
+        session.attach(prepared: [secret])
+        await send("what does this say", in: session)
+        // The model was sent it, and the follow-up sends it again, from memory.
+        await send("and in short?", in: session)
+        #expect(incognitoProvider.requests.count == 2)
+        #expect(incognitoProvider.requests.allSatisfy { $0.images == [secret.id: secret.data] })
+        #expect(session.transcript.rows.contains { $0.images == [secret.attachment] })
+        #expect(session.imageData(for: secret.attachment) == secret.data)
+
+        var after = try snapshot(of: folder)
+        after.removeValue(forKey: "usage.jsonl")
+        var beforeWithoutUsage = before
+        beforeWithoutUsage.removeValue(forKey: "usage.jsonl")
+        #expect(after == beforeWithoutUsage)
+        #expect(after[secret.attachment.fileName] == nil)
+        for (_, data) in after { #expect(data.range(of: Data(secret.attachment.id.utf8)) == nil) }
+        harness.controller.requestClose()
+        #expect(!harness.controller.isOpen)
     }
 
     @Test func openingAgainBringsTheSameWindowForward() async throws {
