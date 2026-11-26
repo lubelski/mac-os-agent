@@ -163,4 +163,15 @@ private func pairs(_ text: String, _ spans: [CodeHighlighting.Span], _ kind: Cod
         #expect(parameters.first { $0.name == "city" }?.defaultValue == nil)
         #expect(ToolParameter.inCallOrder(parameters).map(\.name) == ["city", "units", "days", "kinds"])
     }
+
+    @Test func aDescriptionGoesOnOnlyPastItsFirstSentence() {
+        struct Stub: AgentTool {
+            var text: String
+            var definition: ToolDefinition { ToolDefinition(name: "stub", description: text, parameters: ["type": "object"]) }
+            func summary(arguments: JSONValue) -> String { "" }
+            func run(arguments: JSONValue, context: ToolRunContext) async -> String { "" }
+        }
+        #expect(!ToolSummary(Stub(text: "Lists the apps.")).descriptionGoesOn)
+        #expect(ToolSummary(Stub(text: "Lists the apps. Then more.")).descriptionGoesOn)
+    }
 }

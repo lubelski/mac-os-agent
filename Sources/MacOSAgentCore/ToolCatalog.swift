@@ -157,6 +157,11 @@ public struct ToolSummary: Sendable, Equatable, Identifiable {
         guard let end = text.range(of: ". ") else { return text }
         return String(text[..<end.lowerBound]) + "."
     }
+
+    /// Whether the description goes on past its first sentence.
+    public var descriptionGoesOn: Bool {
+        shortDescription != AgentInstructions.singleLine(description)
+    }
 }
 
 /// An MCP tool by its server and the name its server gave it.

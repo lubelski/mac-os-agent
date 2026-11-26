@@ -257,8 +257,9 @@ struct ToolDetailSections: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            // What the tool is for, in its own first sentence, before anything about it.
-            if !tool.shortDescription.isEmpty {
+            // What the tool is for, in its own first sentence, before anything about it. A
+            // description of one sentence is left to its box at the end, so it shows once.
+            if !tool.shortDescription.isEmpty, tool.descriptionGoesOn {
                 Text(tool.shortDescription)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
