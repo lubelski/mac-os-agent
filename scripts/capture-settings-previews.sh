@@ -90,44 +90,7 @@ cat > "$DATA/quick-actions/focus-music.json" <<'JSON'
 JSON
 
 # MCP servers, with cached tool lists for all but clock, one turned off, and one with a bad name.
-# Previews use stand-in connections, so none of these commands runs.
-cat > "$DATA/mcp-servers.json" <<'JSON'
-{
-  "mcpServers": {
-    "weather": { "command": "npx", "args": ["-y", "@example/weather-mcp"], "env": { "WEATHER_API_KEY": "placeholder" } },
-    "files": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "~/Documents"] },
-    "notes": { "command": "uvx", "args": ["notes-mcp"], "env": { "NOTES_API_TOKEN": "", "NOTES_FOLDER": "~/Notes" } },
-    "calendar-sync": { "command": "/usr/local/bin/calendar-sync-mcp" },
-    "clock": { "command": "npx", "args": ["-y", "@example/clock-mcp"] },
-    "my server": { "command": "npx", "args": ["my-server"] }
-  }
-}
-JSON
-printf '{"disabled":["calendar-sync"]}\n' > "$DATA/mcp-settings.json"
-cat > "$DATA/mcp-tools-cache.json" <<'JSON'
-{
-  "servers": {
-    "weather": { "updated": "2026-11-21T09:00:00Z", "tools": [
-      { "name": "get_forecast", "description": "The forecast for a city for the next few days.", "readOnly": true,
-        "inputSchema": { "type": "object", "properties": { "city": { "type": "string", "description": "A city name, such as Lisbon." }, "days": { "type": "integer", "description": "How many days, 1 to 7." } }, "required": ["city"] } },
-      { "name": "add_alert", "description": "Adds an alert for severe weather in a city. The alert is kept on the weather service.", "readOnly": false,
-        "inputSchema": { "type": "object", "properties": { "city": { "type": "string" }, "kinds": { "type": "array", "items": { "type": "string", "enum": ["storm", "heat", "frost"] } } }, "required": ["city"] } }
-    ] },
-    "files": { "updated": "2026-11-21T09:00:00Z", "tools": [
-      { "name": "read_file", "description": "Read a file in an allowed folder.", "readOnly": true, "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
-      { "name": "write_file", "description": "Write a file in an allowed folder.", "readOnly": false, "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } }, "required": ["path", "content"] } },
-      { "name": "list_directory", "description": "List a folder.", "readOnly": true, "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } }
-    ] },
-    "notes": { "updated": "2026-11-20T18:00:00Z", "tools": [
-      { "name": "search_notes", "description": "Search notes by text.", "readOnly": true, "inputSchema": { "type": "object", "properties": { "query": { "type": "string" } } } },
-      { "name": "create_note", "description": "Create a note.", "readOnly": false, "inputSchema": { "type": "object", "properties": { "title": { "type": "string" }, "body": { "type": "string" } } } }
-    ] },
-    "calendar-sync": { "updated": "2026-11-19T08:00:00Z", "tools": [
-      { "name": "sync_now", "description": "Sync the calendars now.", "readOnly": false, "inputSchema": { "type": "object" } }
-    ] }
-  }
-}
-JSON
+scripts/write-sample-mcp-data.sh "$DATA"
 
 # Usage lines from the last hour, and a thread file with a few entries that hold no real content.
 for minutes in 52 47 31 30 12 3; do

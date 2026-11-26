@@ -61,15 +61,21 @@ public struct ToolParameter: Sendable, Equatable, Identifiable {
     public var type: String
     public var description: String
     public var isRequired: Bool
-    /// The allowed values, when the schema lists them.
+    /// The allowed values, when the schema lists them, for the value or for an array's items.
     public var allowedValues: [String]
+    /// The value the tool uses when the parameter is left out, when the schema gives one.
+    public var defaultValue: String?
 
-    public init(name: String, type: String, description: String, isRequired: Bool, allowedValues: [String] = []) {
+    public init(
+        name: String, type: String, description: String, isRequired: Bool, allowedValues: [String] = [],
+        defaultValue: String? = nil
+    ) {
         self.name = name
         self.type = type
         self.description = description
         self.isRequired = isRequired
         self.allowedValues = allowedValues
+        self.defaultValue = defaultValue
     }
 
     /// The top-level properties of an object schema, in the order the model sees them. Requests
@@ -84,8 +90,16 @@ public struct ToolParameter: Sendable, Equatable, Identifiable {
                 type: typeName(of: property),
                 description: property["description"]?.stringValue ?? "",
                 isRequired: required.contains(name),
-                allowedValues: (property["enum"]?.arrayValue ?? []).map { $0.stringValue ?? $0.encodedString() })
+                allowedValues: (property["enum"]?.arrayValue ?? property["items"]?["enum"]?.arrayValue ?? [])
+                    .map { $0.stringValue ?? $0.encodedString() },
+                defaultValue: property["default"].map { $0.stringValue ?? $0.encodedString() })
         }
+    }
+
+    /// The parameters as Settings lists them: the required ones first, then the optional
+    /// ones, each in the order the model sees them.
+    public static func inCallOrder(_ parameters: [ToolParameter]) -> [ToolParameter] {
+        parameters.filter(\.isRequired) + parameters.filter { !$0.isRequired }
     }
 
     static func typeName(of property: JSONValue) -> String {
@@ -131,6 +145,11 @@ public struct ToolSummary: Sendable, Equatable, Identifiable {
             mcp = MCPToolReference(server: tool.server, tool: tool.info.name, readOnly: tool.info.readOnly)
         }
     }
+
+    /// The tool's name where its group is already shown: an MCP tool's name on its server,
+    /// such as `create_attachment` for `tracker__create_attachment`, and a built-in tool's
+    /// name as the model sees it.
+    public var nameInGroup: String { mcp?.tool ?? name }
 
     /// The first sentence of the description, for a list row.
     public var shortDescription: String {
