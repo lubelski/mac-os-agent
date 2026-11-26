@@ -152,7 +152,7 @@ struct SummonView: View {
     private var attachmentRow: some View {
         AttachmentRow(
             attachments: session.attachments, notice: session.attachmentNotice, remove: session.removeAttachment,
-            revealsControls: session.previewRevealsControls)
+            revealsControls: session.previewRevealsAttachmentControls)
     }
 
     private var inputRow: some View {

@@ -83,6 +83,8 @@ final class AgentSession {
     /// Whether the model the next reply goes to reads images: true, false, or nil when it is not
     /// known. Set by the app from the model setting and what Ollama says. See `ImageInput`.
     @ObservationIgnored var imageInputSupported: () -> Bool? = { true }
+    /// For previews: draws the attached images' remove controls as if the pointer were over them.
+    @ObservationIgnored var previewRevealsAttachmentControls = false
     /// For previews: where the conversation's images are read when there is no loop.
     @ObservationIgnored var previewImages: (any ImageStorage)?
 

@@ -36,7 +36,7 @@ enum ImagePreview {
             session.attach(prepared: [screenshot, chart])
             session.draft = "why is the second bar so tall"
             // A render has no pointer, so the remove controls are drawn as if it were over them.
-            session.previewRevealsControls = true
+            session.previewRevealsAttachmentControls = true
         case "images-unsupported":
             session.attach(prepared: [screenshot])
             session.draft = "what does this error mean"
