@@ -22,6 +22,8 @@ struct ToolsPaneStackView: View {
             }
         } title: { level in
             model.groups.pane(at: level.depth, of: level.path)?.title ?? ""
+        } rows: { path in
+            model.groups.rows(of: path)
         } pane: { level in
             switch model.groups.pane(at: level.depth, of: level.path) {
             case .groups:

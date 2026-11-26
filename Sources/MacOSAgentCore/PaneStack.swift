@@ -139,6 +139,25 @@ public enum PaneStackChange: Equatable, Sendable {
     }
 }
 
+/// Every motion value a pane stack uses, in one place, so they can be tuned together.
+public struct PaneStackMotion: Equatable, Sendable {
+    /// How long a pane takes to slide in from the right or back out, in seconds.
+    public var slideDuration: Double = 0.28
+    /// The slide's spring bounce. 0 has none.
+    public var slideBounce: Double = 0
+    /// How long any change takes with Reduce Motion on, where panes and swaps only fade.
+    public var reduceMotionFadeDuration: Double = 0.2
+    /// How far a swap's content moves up or down while it crossfades, in points.
+    public var swapDistance: CGFloat = 16
+    /// How long a swap takes, in seconds, on an ease out.
+    public var swapDuration: Double = 0.2
+
+    public init() {}
+
+    /// The values the stack uses.
+    public static let standard = PaneStackMotion()
+}
+
 /// Which way a swap's new content comes in.
 public enum PaneSwapDirection: Equatable, Sendable {
     /// The new item is lower in the list, so its content rises from below.
