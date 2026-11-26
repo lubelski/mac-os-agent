@@ -217,7 +217,7 @@ final class InstructionsSettingsModel {
     var fullPrompt: String {
         AgentInstructions.assemble(
             editable: draft,
-            skills: prompt.skills.skills().filter(\.isAvailable).map { .init(name: $0.name, description: $0.description) },
+            skills: prompt.skills.skills().filter(\.isAvailable).map(AgentInstructions.SkillSummary.init),
             skillsFolder: prompt.skills.folder,
             memoryBlock: prompt.latestMemoryContents().map(MemoryBlock.placeholder))
     }

@@ -50,12 +50,12 @@ private func command(_ name: String, _ description: String = "Does a thing.") ->
         let skills = library(root)
         try writeSkill("agent-only", in: skills.folder, skillText("agent-only", "For the agent.", extra: "user-invocable: false\n"))
         try writeSkill("open-notes", in: skills.folder, skillText("open-notes", "Opens notes."))
-        let first = skills.skills()
+        let first = skills.folderSkills()
         #expect(first.map(\.isUserInvocable) == [false, true])
         #expect(first.allSatisfy { $0.revision != nil })
 
         try writeSkill("open-notes", in: skills.folder, skillText("open-notes", "Opens notes.", body: "New steps."))
-        let second = skills.skills()
+        let second = skills.folderSkills()
         #expect(second[0].revision == first[0].revision)
         #expect(second[1].revision != first[1].revision)
     }
@@ -77,9 +77,10 @@ private func command(_ name: String, _ description: String = "Does a thing.") ->
 
     @Test func theMenuHasTheAppsCommandsThenEachSkillTheOwnerCanInvoke() throws {
         let menu = try menuFromFolder()
-        #expect(menu.items.map(\.name) == ["/new", "/incognito", "/rename-photos", "/resize-images"])
-        #expect(menu.items[2].summary() == "Renames photos by date.")
-        #expect(menu.items[2].completion == "/rename-photos ")
+        // The skill that is part of the app is listed with the rest, in name order.
+        #expect(menu.items.map(\.name) == ["/new", "/incognito", "/file-issue-about-this-app", "/rename-photos", "/resize-images"])
+        #expect(menu.items[3].summary() == "Renames photos by date.")
+        #expect(menu.items[3].completion == "/rename-photos ")
         #expect(menu.items[0].completion == "/new")
     }
 
@@ -94,7 +95,7 @@ private func command(_ name: String, _ description: String = "Does a thing.") ->
 
     @Test func suggestionsFilterAsTheOwnerTypes() throws {
         let menu = try menuFromFolder()
-        #expect(menu.suggestions(for: "/").map(\.name) == ["/new", "/incognito", "/rename-photos", "/resize-images"])
+        #expect(menu.suggestions(for: "/").map(\.name) == ["/new", "/incognito", "/file-issue-about-this-app", "/rename-photos", "/resize-images"])
         #expect(menu.suggestions(for: "/re").map(\.name) == ["/rename-photos", "/resize-images"])
         #expect(menu.suggestions(for: "/REN").map(\.name) == ["/rename-photos"])
         #expect(menu.suggestions(for: "/rename-photos").map(\.name) == ["/rename-photos"])
@@ -181,7 +182,7 @@ private func command(_ name: String, _ description: String = "Does a thing.") ->
         try writeSkill("rename-photos", in: skills.folder, skillText("rename-photos", "Renames photos.", body: "1. Read the dates.\n2. Rename."),
                        files: ["rename.sh"])
         let menu = SlashCommandMenu(skills: skills.skills())
-        return (skills, try #require(menu.skills.first))
+        return (skills, try #require(menu.skills.first { $0.name == "rename-photos" }))
     }
 
     @Test func theMessageIsTheTypedLineThenTheSkillsInstructions() throws {
@@ -332,7 +333,7 @@ private func command(_ name: String, _ description: String = "Does a thing.") ->
 
         // A new skill folder, then its SKILL.md, as the agent writes them.
         try writeSkill("rename-photos", in: skills.folder, skillText("rename-photos", "Renames."))
-        #expect(await eventually { changes > 0 && SlashCommandMenu(skills: skills.skills()).skills.count == 1 })
+        #expect(await eventually { changes > 0 && SlashCommandMenu(skills: skills.folderSkills()).skills.count == 1 })
 
         // An edit inside the skill's own folder is seen too, since that folder is watched now.
         let seen = changes
@@ -343,7 +344,7 @@ private func command(_ name: String, _ description: String = "Does a thing.") ->
         let beforeRemoval = changes
         try FileManager.default.removeItem(at: skills.folder.appending(path: "rename-photos"))
         #expect(await eventually { changes > beforeRemoval })
-        #expect(SlashCommandMenu(skills: skills.skills()).skills.isEmpty)
+        #expect(SlashCommandMenu(skills: skills.folderSkills()).skills.isEmpty)
     }
 
     @Test func aFolderMadeLaterIsWatchedOnceRearmed() async throws {

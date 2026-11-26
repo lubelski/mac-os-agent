@@ -306,7 +306,7 @@ private func write(_ text: String, _ path: String, in library: MemoryLibrary) th
         #expect(instructions.hasSuffix("\n\n" + block))
         // Everything before it is the instructions without memory, so it stays a cached prefix.
         #expect(instructions == prompt(library).current() + "\n\n" + block)
-        #expect(prompt(library).current().contains("There are no skills yet."))
+        #expect(prompt(library).current().contains("Skills you have:\n- file-issue-about-this-app (part of the app): "))
     }
 
     @Test func anEmptyMemorySaysSo() {

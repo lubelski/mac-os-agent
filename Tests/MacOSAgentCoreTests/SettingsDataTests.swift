@@ -100,7 +100,7 @@ private struct GoAheadTool: AgentTool {
         try Data().write(to: folder.appending(path: "rename.sh"))
         try Data().write(to: folder.appending(path: "tests/sample.jpg"))
         try Data().write(to: folder.appending(path: ".hidden"))
-        let skill = try #require(library.skills().first)
+        let skill = try #require(library.folderSkills().first)
         let contents = library.contents(of: skill)
         #expect(contents.hasFile)
         #expect(contents.files == ["rename.sh", "tests/sample.jpg"])

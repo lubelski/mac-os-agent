@@ -32,7 +32,7 @@ A change should be resisted when it makes the instant path wait, changes the sta
 | **Session** | One conversation window's state: what Return does, the running task, the go-ahead card, the queue. | `AgentSession.swift` | How a reply is produced. It calls the loop and listens to its events. |
 | **Instant path** | Matching the draft to an app or a quick action, and ranking by what the owner picked before. | `InstantActions/`, `Applications/ApplicationMatcher.swift`, `InstantActionsModel.swift` | The model. |
 | **Agent loop** | One instruction from start to finish, every write to the thread, and keeping a message's images before the line that points to them. | `AgentLoop.swift`, `ThreadStore.swift`, `Episodes.swift`, `Images/ImageStorage.swift` | Any provider's API, any tool's purpose, and the window. |
-| **Prompt** | The instructions at the head of a request. | `AgentInstructions.swift`, `Skills.swift`, `Memory/MemoryBlock.swift` | The conversation. |
+| **Prompt** | The instructions at the head of a request, and the skills: the owner's, in the skills folder, and the ones that are part of the app. | `AgentInstructions.swift`, `Skills.swift`, `AppSkills.swift`, `Memory/MemoryBlock.swift` | The conversation. |
 | **Model provider** | Turning a request into one provider's API call and its stream back into events. Sign-in. | `ModelProvider.swift`, `OpenAI/`, `Ollama/` | Tools' behavior and the thread's storage. |
 | **Tools** | Everything the agent can do, each as one `AgentTool`. | `AgentTool.swift`, `ToolRegistry.swift`, and a folder per family: `Applications/`, `System/`, `PersonalData/`, `Memory/`, `Themes/`, `QuickActions/`, `WebSearch/`, `ToolGroups/`, `MCP/`, `Scripts/` | The window and the model. |
 | **Settings window** | Showing and changing what the agent keeps and how this run is set up. | `SettingsWindow.swift`, the `*Settings.swift` files | Nothing of its own. It uses the same library types the tools use. |
@@ -47,7 +47,7 @@ These are easy to confuse, and each new capability has to pick one.
 - **A built-in tool** is in the tool list of every request. It costs the prompt its description and schema every time. Use it for what the agent does often.
 - **A tool in a group** is left out of the list. The instructions name the group in one line, and the model reaches the tool through `find_tools` and `use_tool`. Use it for what the agent does rarely. See `ToolGroups/OnDemandTools.swift`.
 - **An MCP server's tool** comes from a program the owner listed in `mcp-servers.json`. It joins the list at launch from a cached copy, so launch never waits for a server.
-- **A skill** is prose the model reads, in a folder the agent can write to. A **quick action** is data the app runs, with no model. A skill teaches. A quick action repeats.
+- **A skill** is prose the model reads, in a folder the agent can write to. A **quick action** is data the app runs, with no model. A skill teaches. A quick action repeats. A skill can also be **part of the app** (`AppSkills`): the same to the model, but it ships in the app and nothing in the skills folder can change it. Use one for guidance the app depends on that the owner should not edit, such as how to file an issue about the app. Its name and description join the skills list in the instructions, so adding or changing one changes the start of every request, once, at the update that ships it.
 
 ## What Return does
 
@@ -69,7 +69,7 @@ Rule 2 above is the one that shapes the most code, so here is when each thing is
 |---|---|---|
 | Once, at launch | The tool list: built-in tools, MCP tools from their cache, `run_script`. Which web search is on. The experiments that add a tool or a line to the instructions. | A change would move every byte after it in the request. |
 | Once per episode | The memory block at the end of the instructions. | The agent changes memory while it works. The block it started with has to hold for the episode. |
-| Once per message | The editable instructions and the list of skills. | An edit should apply soon, and never in the middle of a turn. |
+| Once per message | The editable instructions and the list of skills, including the skills that are part of the app, whose lines are fixed in the build. | An edit should apply soon, and never in the middle of a turn. |
 | Once per image, per episode | An attached image's bytes, made once when it was attached, read from its file the first time a request carries it. | The same image has to be the same bytes in every request of its episode. |
 | Every time | Quick actions, themes, the list of apps, Settings switches that only change how the panel behaves. | None of these is in the request. |
 
