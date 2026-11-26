@@ -653,11 +653,11 @@ enum SettingsPreview {
             let runID = UUID()
             let focus = QuickAction(
                 id: "focus-mode", name: "Focus Mode", description: "Quits Mail and turns on Do Not Disturb.",
-                steps: [.init(tool: "quit_application", arguments: ["name": "Mail"]),
+                steps: [.init(tool: "quit_or_hide_application", arguments: ["application": "Mail", "action": "quit"]),
                         .init(tool: "run_shell_command", arguments: ["command": "shortcuts run \"Do Not Disturb On\"", "destructive": false])])
             let steps = [
                 ThreadItem.QuickActionRun.Step(
-                    callID: QuickActionRunStart.callID(entryID: runID, index: 0), tool: "quit_application",
+                    callID: QuickActionRunStart.callID(entryID: runID, index: 0), tool: "quit_or_hide_application",
                     arguments: focus.steps[0].arguments.encodedString(), output: "Mail quit."),
                 ThreadItem.QuickActionRun.Step(
                     callID: QuickActionRunStart.callID(entryID: runID, index: 1), tool: "run_shell_command",
