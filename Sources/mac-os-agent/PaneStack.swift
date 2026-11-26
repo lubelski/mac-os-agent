@@ -220,6 +220,7 @@ private struct PaneLeaving: ViewModifier {
         content
             .opacity(isActive && fades ? 0 : 1)
             .offset(x: isActive && !fades ? width : 0)
+            .allowsHitTesting(!isActive)
     }
 }
 
@@ -239,6 +240,7 @@ private struct PaneSwapping: ViewModifier {
         content
             .opacity(phase == .identity ? 1 : 0)
             .offset(y: offset)
+            .allowsHitTesting(phase != .leaving)
     }
 
     private var offset: CGFloat {
@@ -455,12 +457,35 @@ struct CoveredPane: ViewModifier {
                                 click(anchors.first { proxy[$0.value].contains(tap.location) }?.key)
                             })
                     }
-                    .transition(.opacity)
+                    .transition(.opacity.ignoringClicksWhileLeaving)
                     .accessibilityElement()
                     .accessibilityLabel(Text(backLabel))
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { click(nil) }
                 }
             }
+    }
+}
+
+extension AnyTransition {
+    /// The same transition, except that a leaving view stops taking clicks as soon as it starts
+    /// to leave. SwiftUI keeps a leaving view in place until its animation settles: about half
+    /// a second for the stack's spring, well after it stops showing. A click on a row just
+    /// after its pane closed could land on the pane's fading dimming, or on the pane sliding
+    /// out, and do nothing (MAC-49).
+    var ignoringClicksWhileLeaving: AnyTransition {
+        .asymmetric(
+            insertion: self,
+            removal: combined(with: .modifier(active: IgnoringClicks(isOn: true), identity: IgnoringClicks(isOn: false))))
+    }
+}
+
+/// Turns hit testing off. As a transition's active state it takes effect when the view starts
+/// to leave, since it does not animate.
+private struct IgnoringClicks: ViewModifier {
+    let isOn: Bool
+
+    func body(content: Content) -> some View {
+        content.allowsHitTesting(!isOn)
     }
 }
