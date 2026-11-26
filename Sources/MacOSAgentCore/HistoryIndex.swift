@@ -15,8 +15,9 @@ enum HistorySearchText {
 
     static func of(_ item: ThreadItem) -> (kind: Kind, text: String)? {
         switch HistoryReading.of(item) {
-        case .owner(let text):
-            return (.owner, text)
+        case .owner(let text, let images):
+            // A message's images are not read. They are found by the note that says they were there.
+            return (.owner, ImageAttachment.historyText(text, images: images))
         case .agent(let text):
             return (.agent, text)
         case .command(let call):
@@ -79,8 +80,9 @@ enum HistorySearchText {
 final class HistoryIndex: @unchecked Sendable {
     /// What the index holds. A change to what it reads from an entry (`HistorySearchText`)
     /// changes this, and an index of another version is rebuilt from the thread once, on the
-    /// next open. 2: quick action steps, apps opened, and hosted tool calls (MAC-50).
-    static let formatVersion = "2"
+    /// next open. 2: quick action steps, apps opened, and hosted tool calls (MAC-50). 3: the
+    /// note on a message's images (MAC-54).
+    static let formatVersion = "3"
 
     private var database: OpaquePointer?
 

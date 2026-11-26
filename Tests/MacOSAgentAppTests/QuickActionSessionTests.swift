@@ -107,7 +107,7 @@ private final class QuickActionSavingProvider: ModelProvider, @unchecked Sendabl
         #expect(session.draft == "")
         let entries = await thread.entries
         #expect(entries.count == 1)
-        guard case .userMessage("screensaver", nil, let record?) = entries.first?.item else { Issue.record("no record"); return }
+        guard case .userMessage("screensaver", nil, let record?, _) = entries.first?.item else { Issue.record("no record"); return }
         #expect(record.id == "start-screensaver")
         #expect(record.failedStep == nil)
         let kinds = session.transcript.rows.map(\.kind)

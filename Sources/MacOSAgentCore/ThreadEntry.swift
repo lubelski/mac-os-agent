@@ -23,8 +23,10 @@ public enum ThreadItem: Sendable, Equatable, Codable {
     /// `/rename-photos the trip folder`, `text` is the line as typed, which is what the panel and
     /// search show, and `skill` holds the message the model was sent for it. When they ran a
     /// quick action from the instant row, `text` is what they typed for it and `action` is the
-    /// record of the run, with the note the model is sent in place of the typed text.
-    case userMessage(text: String, skill: SkillInvocation? = nil, action: QuickActionRun? = nil)
+    /// record of the run, with the note the model is sent in place of the typed text. `images`
+    /// are the pictures they attached, which point to their bytes and never hold them.
+    case userMessage(
+        text: String, skill: SkillInvocation? = nil, action: QuickActionRun? = nil, images: [ImageAttachment] = [])
     /// Text the model wrote.
     case assistantMessage(AssistantMessage)
     /// Model output that only the provider understands, such as an encrypted reasoning item.
@@ -168,13 +170,15 @@ public enum ThreadItem: Sendable, Equatable, Codable {
         }
     }
 
-    /// A user message's value. `skill` and `action` are left out when there is none, so a plain
-    /// message's line is the same as before they existed, and older lines load unchanged. An
-    /// older build reads an action's line as a plain message of the typed text.
+    /// A user message's value. `skill`, `action`, and `images` are left out when there is none,
+    /// so a plain message's line is the same as before they existed, and older lines load
+    /// unchanged. An older build reads an action's line as a plain message of the typed text,
+    /// and a message with images as its text alone.
     private struct UserText: Codable {
         var text: String
         var skill: SkillInvocation?
         var action: QuickActionRun?
+        var images: [ImageAttachment]?
     }
 
     public init(from decoder: Decoder) throws {
@@ -182,7 +186,7 @@ public enum ThreadItem: Sendable, Equatable, Codable {
         switch try container.decode(Kind.self, forKey: .type) {
         case .userMessage:
             let value = try container.decode(UserText.self, forKey: .value)
-            self = .userMessage(text: value.text, skill: value.skill, action: value.action)
+            self = .userMessage(text: value.text, skill: value.skill, action: value.action, images: value.images ?? [])
         case .assistantMessage: self = .assistantMessage(try container.decode(AssistantMessage.self, forKey: .value))
         case .providerItem: self = .providerItem(try container.decode(ProviderItem.self, forKey: .value))
         case .toolCall: self = .toolCall(try container.decode(ToolCall.self, forKey: .value))
@@ -195,9 +199,10 @@ public enum ThreadItem: Sendable, Equatable, Codable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case .userMessage(let text, let skill, let action):
+        case .userMessage(let text, let skill, let action, let images):
             try container.encode(Kind.userMessage, forKey: .type)
-            try container.encode(UserText(text: text, skill: skill, action: action), forKey: .value)
+            try container.encode(
+                UserText(text: text, skill: skill, action: action, images: images.isEmpty ? nil : images), forKey: .value)
         case .assistantMessage(let value):
             try container.encode(Kind.assistantMessage, forKey: .type)
             try container.encode(value, forKey: .value)

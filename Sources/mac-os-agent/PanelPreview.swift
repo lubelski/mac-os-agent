@@ -13,7 +13,7 @@ enum PanelPreview {
         "fresh-start", "scrollback", "command-hint", "tool-states", "first-message", "streaming",
         "fresh-start-slot", "markdown", "markdown-streaming", "markdown-code-streaming", "controls",
     ] + goAheadStates + incognitoStates + inspectorStates + InstantActionPreview.names + FooterPreview.names
-        + PanelWithBarsPreview.names
+        + PanelWithBarsPreview.names + ImagePreview.names
 
     /// The states shown in the incognito window rather than the main panel. `incognito-beside`
     /// shows the main panel too, with the incognito window beside it.
@@ -73,6 +73,7 @@ enum PanelPreview {
         if let session = InstantActionPreview.session(named: name) { return session }
         if let session = FooterPreview.session(named: name) { return session }
         if let session = PanelWithBarsPreview.session(named: name) { return session }
+        if let session = ImagePreview.session(named: name) { return session }
         switch name {
         case "empty":
             return AgentSession(previewEntries: [])

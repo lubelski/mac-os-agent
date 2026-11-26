@@ -156,9 +156,11 @@ public struct ThreadContents: Sendable, Equatable {
         switch HistoryReading.of(entry.item) {
         case .episodeStart(let reason):
             episode.startReason = reason
-        case .owner(let text):
+        case .owner(let text, let images):
             episode.messageCount += 1
-            if episode.messagePreview.isEmpty { episode.messagePreview = Self.firstLine(text) }
+            if episode.messagePreview.isEmpty {
+                episode.messagePreview = Self.firstLine(ImageAttachment.historyText(Self.firstLine(text), images: images))
+            }
         case .agent:
             episode.messageCount += 1
         case .command, .hostedCommand:

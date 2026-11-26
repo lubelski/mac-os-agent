@@ -31,12 +31,56 @@ public enum Ollama {
     public static func installedModels(
         baseURL: URL = baseURL, transport: any HTTPTransport = URLSessionTransport()
     ) async -> [String] {
+        names(fromTags: await tags(baseURL: baseURL, transport: transport))
+    }
+
+    /// `/api/tags` as read, or nil when Ollama is not running.
+    static func tags(baseURL: URL = baseURL, transport: any HTTPTransport) async -> JSONValue? {
         var request = URLRequest(url: baseURL.appending(path: "api/tags"))
         request.timeoutInterval = 3
-        guard let (data, response) = try? await transport.send(request), response.statusCode == 200,
-              let tags = JSONValue.parse(String(decoding: data, as: UTF8.self))
-        else { return [] }
-        return (tags["models"]?.arrayValue ?? []).compactMap { $0["name"]?.stringValue }.sorted()
+        guard let (data, response) = try? await transport.send(request), response.statusCode == 200 else { return nil }
+        return JSONValue.parse(String(decoding: data, as: UTF8.self))
+    }
+
+    static func names(fromTags tags: JSONValue?) -> [String] {
+        (tags?["models"]?.arrayValue ?? []).compactMap { $0["name"]?.stringValue }.sorted()
+    }
+
+    /// What each installed model says it can do, from the `capabilities` that `/api/tags` lists
+    /// beside each model, such as `["completion", "vision", "tools"]`. Checked against Ollama
+    /// 0.40.17 on 2026-11-25 (MAC-54). A model listed without any is left out, as unknown.
+    public static func capabilities(
+        baseURL: URL = baseURL, transport: any HTTPTransport = URLSessionTransport()
+    ) async -> [String: [String]] {
+        capabilities(fromTags: await tags(baseURL: baseURL, transport: transport))
+    }
+
+    static func capabilities(fromTags tags: JSONValue?) -> [String: [String]] {
+        var found: [String: [String]] = [:]
+        for model in tags?["models"]?.arrayValue ?? [] {
+            guard let name = model["name"]?.stringValue, let list = model["capabilities"]?.arrayValue else { continue }
+            found[name] = list.compactMap(\.stringValue)
+        }
+        return found
+    }
+
+    /// The capability Ollama names for reading images.
+    public static let visionCapability = "vision"
+}
+
+/// Whether the model the next reply goes to can read images. OpenAI's models here all can. A
+/// local model can when Ollama lists `vision` for it, cannot when Ollama lists its capabilities
+/// without it, and is not known otherwise, as when Ollama is not running or is too old to say.
+public enum ImageInput {
+    public static func isSupported(modelID: String, localCapabilities: [String: [String]]) -> Bool? {
+        guard let name = Ollama.modelName(fromID: modelID) else { return true }
+        guard let capabilities = localCapabilities[name] else { return nil }
+        return capabilities.contains(Ollama.visionCapability)
+    }
+
+    /// What the panel says by the field when the model cannot read images, and nothing is sent.
+    public static func unsupportedMessage(modelID: String) -> String {
+        "\(ModelSetting.displayName(id: modelID)) cannot read images. Remove them, or choose another model."
     }
 }
 
@@ -44,6 +88,7 @@ public enum Ollama {
 /// waiting. `refresh()` reads them again.
 public final class LocalModelList: Sendable {
     private let names = Mutex<[String]>([])
+    private let capabilityLists = Mutex<[String: [String]]>([:])
     private let transport: any HTTPTransport
 
     public init(transport: any HTTPTransport = URLSessionTransport()) {
@@ -51,11 +96,16 @@ public final class LocalModelList: Sendable {
     }
 
     public var models: [String] { names.withLock { $0 } }
+    /// What each model said it can do when the list was last read. See `Ollama.capabilities`.
+    public var capabilities: [String: [String]] { capabilityLists.withLock { $0 } }
 
     @discardableResult
     public func refresh() async -> [String] {
-        let found = await Ollama.installedModels(transport: transport)
+        let tags = await Ollama.tags(transport: transport)
+        let found = Ollama.names(fromTags: tags)
+        let capabilities = Ollama.capabilities(fromTags: tags)
         names.withLock { $0 = found }
+        capabilityLists.withLock { $0 = capabilities }
         return found
     }
 }

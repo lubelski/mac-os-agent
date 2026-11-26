@@ -113,7 +113,7 @@ private final class FixedStepTool: AgentTool, @unchecked Sendable {
         #expect(!session.transcript.rows.contains { $0.isTool || $0.isUser })
         #expect(session.recallHistory == ["balcony"])
         // What is stored is as before.
-        guard case .userMessage("balcony", nil, let record?) = await thread.entries.last?.item else { Issue.record("no record"); return }
+        guard case .userMessage("balcony", nil, let record?, _) = await thread.entries.last?.item else { Issue.record("no record"); return }
         #expect(record.failedStep == nil)
     }
 

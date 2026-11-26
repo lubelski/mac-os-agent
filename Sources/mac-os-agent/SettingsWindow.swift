@@ -227,7 +227,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// - Parameter remembersFrame: False for previews, so they never write the owner's saved frame.
     init(
         session: AgentSession, prompt: AgentPrompt, usageLog: UsageLog, tools: ToolRegistry,
-        history: ThreadStore?, problems: ProblemLog, signInStatus: @escaping @Sendable () async -> SignInStatus?,
+        history: ThreadStore?, historyImages: any ImageStorage = ImageFolder(), problems: ProblemLog, signInStatus: @escaping @Sendable () async -> SignInStatus?,
         secretStorage: SecretStorage.Status? = nil, modelAccess: ModelAccess = .signIn,
         summonTrigger: SummonTriggerController, defaults: UserDefaults = .standard, remembersFrame: Bool = true,
         privacyAccess: any PrivacyAccessGate = EventKitStore.shared,
@@ -246,7 +246,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             quickActions: QuickActionsSettingsModel(library: quickActions, tools: tools.definitions, summaries: tools.summaries),
             tools: ToolsSettingsModel(registry: tools, access: privacyAccess, mcpSettings: mcp.settings),
             mcpServers: MCPServersSettingsModel(pool: mcp),
-            history: HistorySettingsModel(history: history),
+            history: HistorySettingsModel(history: history, images: historyImages),
             debugging: DebuggingSettingsModel(
                 prompt: prompt, usageLog: usageLog, tools: tools, problems: problems,
                 signInStatus: signInStatus, secretStorage: secretStorage, modelAccess: modelAccess,
@@ -395,7 +395,7 @@ enum SettingsPreview {
         problems.record(
             "Request", "OpenAI API error (429): The usage limit for this plan was reached. Try again in 12 minutes.",
             date: Date().addingTimeInterval(-40 * 60))
-        let history = standInHistory()
+        let (history, historyImages) = standInHistory()
         // A stand-in hotkey that never registers, so a preview cannot take the installed app's.
         let hotKey = StandInHotKey()
         let summonTrigger = SettingsPreview.summonTrigger(hotKey: hotKey, defaults: defaults, state: section == .general ? item : nil)
@@ -428,6 +428,7 @@ enum SettingsPreview {
                 // experiment on has it, without reading or writing its preference.
             ).addingRunScript(toolWords.contains(RunScriptTool.name)),
             history: history,
+            historyImages: historyImages,
             problems: problems,
             signInStatus: {
                 SignInStatus(
@@ -594,10 +595,11 @@ enum SettingsPreview {
     }
 
     /// A few episodes of stand-in conversation in a temporary folder, never the real thread.
-    private static func standInHistory() -> ThreadStore? {
+    private static func standInHistory() -> (ThreadStore?, any ImageStorage) {
         let folder = FileManager.default.temporaryDirectory
             .appending(path: "mac-os-agent-preview-\(UUID().uuidString)", directoryHint: .isDirectory)
-        guard let store = try? ThreadStore(fileURL: folder.appending(path: "thread.jsonl")) else { return nil }
+        let images = InMemoryImageStore()
+        guard let store = try? ThreadStore(fileURL: folder.appending(path: "thread.jsonl")) else { return (nil, images) }
         let now = Date()
         let episodes: [(Double, [(String, String?, String)])] = [
             (6 * 24 * 60, [("what's eating my disk space", "du -sh ~/Library/Caches ~/Downloads ~/Movies 2>/dev/null | sort -hr", "Movies is the big one at 38 GB, then Downloads at 12 GB.")]),
@@ -643,6 +645,12 @@ enum SettingsPreview {
             var clock = now.addingTimeInterval(-4 * 60)
             func tick() -> Date { clock = clock.addingTimeInterval(20); return clock }
             try? await store.append(.episodeStart(.init(reason: .requested)), date: clock)
+            // A screenshot drawn in code, sent with a question.
+            let screenshot = StandInImages.prepared(.errorDialog)
+            images.keep(screenshot)
+            try? await store.append(
+                .userMessage(text: "what does this error mean", images: [screenshot.attachment]), date: tick())
+            try? await store.append(.assistantMessage(.init(text: "The disk named Backup is full, so Time Machine stopped. Delete old backups or use a larger disk.", provider: "openai", model: "gpt-6-luna")), date: tick())
             try? await store.append(.userMessage(text: "will it rain in Lisbon tomorrow"), date: tick())
             let search: JSONValue = [
                 "type": "web_search_call", "id": "ws_preview_1", "status": "completed",
@@ -676,6 +684,6 @@ enum SettingsPreview {
             controller?.models.history.selection = nil
             controller?.models.history.reload()
         }
-        return store
+        return (store, images)
     }
 }

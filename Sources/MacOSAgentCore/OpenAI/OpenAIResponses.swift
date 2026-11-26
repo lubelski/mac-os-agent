@@ -48,10 +48,14 @@ public enum OpenAIResponses {
         var items: [JSONValue] = [["role": "developer", "content": .string(request.instructions)]]
         for (index, entry) in request.entries.enumerated() {
             switch entry.item {
-            case .userMessage(let text, let skill, let action):
+            case .userMessage(let text, let skill, let action, let images):
                 let sent = ThreadItem.modelText(text: text, skill: skill, action: action)
                 let stamped = "[\(timestamp(entry.date, timeZone: timeZone))] \(sent)"
-                items.append(["role": "user", "content": [["type": "input_text", "text": .string(stamped)]]])
+                // The text first, then the images, as OpenAI's examples place them. A message
+                // without images is one text part, as it always was.
+                let content: [JSONValue] = [["type": "input_text", "text": .string(stamped)]]
+                    + images.map { imagePart($0, bytes: request.images[$0.id]) }
+                items.append(["role": "user", "content": .array(content)])
             case .assistantMessage(let message):
                 var item: [String: JSONValue] = [
                     "type": "message",
@@ -102,6 +106,18 @@ public enum OpenAIResponses {
             }
         }
         return items
+    }
+
+    /// One attached image as a Responses content part: a base64 data URL with `detail` "auto",
+    /// the shape OpenAI documents and pi sends. An image whose bytes are gone is a fixed text
+    /// part in its place, so the request stays valid and the same from one request to the next.
+    static func imagePart(_ image: ImageAttachment, bytes: Data?) -> JSONValue {
+        guard let bytes else { return ["type": "input_text", "text": .string(ImageAttachment.missingNote)] }
+        return [
+            "type": "input_image",
+            "detail": "auto",
+            "image_url": .string("data:\(image.type);base64,\(bytes.base64EncodedString())"),
+        ]
     }
 
     static func messageID(_ message: ThreadItem.AssistantMessage, index: Int, provider: String = providerName) -> String {
@@ -205,11 +221,11 @@ public enum OpenAIResponses {
                 let error = event["response"]?["error"]
                 let code = error?["code"]?.stringValue ?? "unknown"
                 let message = error?["message"]?.stringValue ?? "no message"
-                throw StreamError.failed(OpenAIResponsesProvider.explain("\(code): \(message)"))
+                throw StreamError.failed(OpenAIResponsesProvider.explain(OpenAIResponsesProvider.withoutImageData("\(code): \(message)"), status: 400))
             case "error":
                 let code = event["code"]?.stringValue ?? "unknown"
                 let message = event["message"]?.stringValue ?? "no message"
-                throw StreamError.failed(OpenAIResponsesProvider.explain("Error code \(code): \(message)"))
+                throw StreamError.failed(OpenAIResponsesProvider.explain(OpenAIResponsesProvider.withoutImageData("Error code \(code): \(message)"), status: 400))
             default:
                 break
             }

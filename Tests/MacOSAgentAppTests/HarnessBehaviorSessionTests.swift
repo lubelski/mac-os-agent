@@ -27,7 +27,7 @@ final class GateProvider: ModelProvider, @unchecked Sendable {
 
     func streamReply(to request: ModelRequest) -> AsyncThrowingStream<ModelStreamEvent, Error> {
         let text = request.entries.reversed().lazy.compactMap { entry -> String? in
-            if case .userMessage(let text, _, _) = entry.item { text } else { nil }
+            if case .userMessage(let text, _, _, _) = entry.item { text } else { nil }
         }.first ?? ""
         lock.withLock { recorded.append(text) }
         return AsyncThrowingStream { continuation in
