@@ -55,7 +55,7 @@ final class ToolInspector {
 /// Its glass sits in a container, as the panel's does, so it can slide with the panel's glass
 /// in slide over and be cut off at the same screen edge. See `place(_:clip:)`.
 @MainActor
-final class ToolInspectorWindow: NSPanel {
+final class ToolInspectorWindow: ActiveAppearancePanel {
     static let defaultWidth: CGFloat = 440
     static let widthKey = "ToolInspectorWidth"
 
