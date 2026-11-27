@@ -50,6 +50,7 @@ struct ExperimentsSettingsView: View {
     @AppStorage(Experiment.scripts.key) private var scripts = false
     @AppStorage(Experiment.settingsTools.key) private var settingsTools = false
     @AppStorage(Experiment.settingsPaneStack.key) private var settingsPaneStack = false
+    @AppStorage(Experiment.firstClickActsOnPanel.key) private var firstClickActsOnPanel = false
 
     var body: some View {
         Form {
@@ -81,6 +82,10 @@ struct ExperimentsSettingsView: View {
                 Toggle(isOn: $settingsPaneStack) {
                     Text(Experiment.settingsPaneStack.title)
                     Text("Tools shows its groups, a group's tools, and a tool's details as panes that slide in from the right over each other, each leaving a strip of the one under it showing. History does the same with its episodes, an episode, and a command's input and output. Click a strip or press Escape to go back. Read-only, as both are today.")
+                }
+                Toggle(isOn: $firstClickActsOnPanel) {
+                    Text(Experiment.firstClickActsOnPanel.title)
+                    Text("While another app has focus, one click on the panel or the incognito window gives it focus and does what you clicked: a link in a reply opens, a button or a tool row acts, and the top bar's close button and menu work. Off, the first click only gives the panel focus, except on the top bar, which drags.")
                 }
             } header: {
                 Text("Features being tried. They may change or go.")
