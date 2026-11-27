@@ -193,6 +193,71 @@ private func entries(_ messages: [String]) -> [ThreadEntry] {
         #expect(harness.session.draft == "cal", "nothing was recalled")
     }
 
+    @Test func aSingleInstantMatchKeepsTheArrowsFromRecall() async throws {
+        let (harness, preferences) = try harness(recall: true)
+        defer { preferences.forget() }
+        harness.session.instantActions = InstantActions(applications: InstantActionPreview.applications)
+        harness.type("xcode")
+        await harness.settle()
+        #expect(harness.session.instantActions.suggestion?.choices.count == 1)
+        harness.press(up.0, code: up.1, arrowFlags)
+        #expect(harness.session.draft == "xcode", "Up does not recall while the row shows")
+        harness.press(down.0, code: down.1, arrowFlags)
+        #expect(harness.session.draft == "xcode", "nor does Down")
+        harness.type("zzz")
+        await harness.settle()
+        #expect(harness.session.instantActions.suggestion == nil)
+        harness.press(up.0, code: up.1, arrowFlags)
+        #expect(harness.session.draft == "third", "with no suggestion Up recalls as before")
+    }
+
+    @Test func aSingleSlashCommandKeepsTheArrowsFromRecall() async throws {
+        let (harness, preferences) = try harness(recall: true)
+        defer { preferences.forget() }
+        harness.session.skillCommands = SkillCommandsModel(menu: FooterPreview.skills)
+        harness.type("/tidy")
+        await harness.settle()
+        #expect(harness.session.commandSuggestions.count == 1)
+        harness.press(up.0, code: up.1, arrowFlags)
+        #expect(harness.session.draft == "/tidy", "Up does not recall while the command is listed")
+        harness.press(down.0, code: down.1, arrowFlags)
+        #expect(harness.session.draft == "/tidy", "nor does Down")
+    }
+
+    /// With suggestions in the field, and with the panel with bars, which turns them on.
+    @Test(arguments: [false, true]) func suggestionsInTheFieldKeepTheArrowsFromRecall(bars: Bool) async throws {
+        let preferences = StandInPreferences(recall: true)
+        defer { preferences.forget() }
+        let session = AgentSession(previewEntries: entries(["first", "second"]))
+        if bars { PanelWithBarsPreview.configure(session) } else { FooterPreview.configure(session) }
+        session.preferences = preferences.defaults
+        let harness = try PanelHarness(session: session)
+        await harness.settle()
+        for input in ["xcode", "chr"] {
+            harness.session.draft = ""
+            await harness.settle()
+            harness.type(input)
+            await harness.settle()
+            #expect(session.returnTarget != nil, "\(input) shows a suggestion")
+            if input == "xcode" { #expect(session.instantActions.suggestion?.choices.count == 1) }
+            harness.press(up.0, code: up.1, arrowFlags)
+            #expect(session.draft == input, "Up with the list closed does not recall (\(input), bars \(bars))")
+            harness.press(down.0, code: down.1, arrowFlags)
+            #expect(session.suggestionList.isOpen, "Down opens the list")
+            for _ in 0..<8 { harness.press(down.0, code: down.1, arrowFlags) }
+            for _ in 0..<10 { harness.press(up.0, code: up.1, arrowFlags) }
+            #expect(session.draft == input, "moving through and out of the list never recalls (\(input), bars \(bars))")
+            _ = session.closeSuggestionList()
+        }
+        harness.session.draft = ""
+        await harness.settle()
+        harness.type("zzz")
+        await harness.settle()
+        #expect(session.returnTarget == nil)
+        harness.press(up.0, code: up.1, arrowFlags)
+        #expect(session.draft == "second", "with no suggestion Up recalls as before (bars \(bars))")
+    }
+
     @Test func withTheSwitchOffUpMovesTheInsertionPointAsBefore() async throws {
         let (harness, preferences) = try harness(recall: false)
         defer { preferences.forget() }

@@ -992,7 +992,12 @@ final class AgentSession {
     /// empty field while messages are queued takes the newest back into the field. Otherwise,
     /// with the behavior on, it moves through the owner's earlier messages in this window.
     /// Returns false when it did nothing, so the key does what it always does.
+    ///
+    /// While a suggestion shows for typed text, the arrows never recall: they belong to the
+    /// suggestion, and with nothing to move between they move the insertion point. Recall that
+    /// is already under way goes on, even when a recalled message shows a suggestion.
     func recallMessage(by offset: Int) -> Bool {
+        guard recall.isRecalling || !isShowingSuggestion else { return false }
         if offset < 0, draft.isEmpty, attachments.isEmpty, !recall.isRecalling, let item = queue.pullBackItem() {
             // A queued message comes back whole, with its images. Recalling a sent one brings
             // back its text only.
