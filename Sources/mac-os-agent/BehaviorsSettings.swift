@@ -52,7 +52,21 @@ struct ExperimentsSettingsView: View {
     @AppStorage(Experiment.settingsPaneStack.key) private var settingsPaneStack = false
     @AppStorage(Experiment.firstClickActsOnPanel.key) private var firstClickActsOnPanel = false
 
+    /// An experiment's key (`Experiment.rawValue`) to scroll to when the section appears, for
+    /// `--preview-settings experiments --preview-item <key>`. Used by previews only.
+    @MainActor static var previewScrollTarget: String?
+
     var body: some View {
+        ScrollViewReader { proxy in
+            form
+                .task {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    if let target = Self.previewScrollTarget { proxy.scrollTo(target, anchor: .top) }
+                }
+        }
+    }
+
+    private var form: some View {
         Form {
             Section {
                 Toggle(isOn: $queuesMessages) {
@@ -87,6 +101,7 @@ struct ExperimentsSettingsView: View {
                     Text(Experiment.firstClickActsOnPanel.title)
                     Text("While another app has focus, one click on the panel or the incognito window gives it focus and does what you clicked: a link in a reply opens, a button or a tool row acts, and the top bar's close button and menu work. Off, the first click only gives the panel focus, except on the top bar, which drags.")
                 }
+                .id(Experiment.firstClickActsOnPanel.rawValue)
             } header: {
                 Text("Features being tried. They may change or go.")
                     .font(.body)
