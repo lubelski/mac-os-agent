@@ -107,8 +107,9 @@ done
 if [[ -n "$PR" ]]; then
   # The renders go in the pull request's body, in a section of their own between two marker
   # comments named for the title. A run with a title that already has a section replaces that
-  # section where it stands. Any other title gets a new section at the end. The rest of the body
-  # is kept as it is. `gh pr edit --attach` uploads each file and rewrites the `./<file>.png`
+  # section where it stands. Any other title gets a new section at the end, above a closing
+  # "🤖 Generated with" line if there is one, so that line stays last. The rest of the body is
+  # kept as it is. `gh pr edit --attach` uploads each file and rewrites the `./<file>.png`
   # reference to point at the upload. The body file sits in the output folder, since gh reads
   # those references relative to the body file's folder.
   BODY="$OUT/.pull-request-body-$$.md"
@@ -130,11 +131,24 @@ if [[ -n "$PR" ]]; then
   } >"$SECTION"
   gh pr view "$PR" --json body --jq .body \
     | START="<!-- render-previews: $TITLE -->" END="<!-- /render-previews: $TITLE -->" SECTION="$SECTION" awk '
-        function put_section(   line) { while ((getline line < ENVIRON["SECTION"]) > 0) print line; close(ENVIRON["SECTION"]) }
+        BEGIN { while ((getline line < ENVIRON["SECTION"]) > 0) section[m++] = line }
         { bare = $0; sub(/\r$/, "", bare) }
         skipping { if (bare == ENVIRON["END"]) skipping = 0; next }
-        bare == ENVIRON["START"] && !done { put_section(); done = 1; skipping = 1; next }
-        { print }
-        END { if (!done) { print ""; put_section() } }' >"$BODY"
+        bare == ENVIRON["START"] { for (j = 0; j < m; j++) out[n++] = section[j]; found = 1; skipping = 1; next }
+        { out[n++] = $0 }
+        END {
+          while (n > 0 && out[n - 1] ~ /^[ \t\r]*$/) n--
+          at = n
+          if (!found) for (i = 0; i < n; i++) if (out[i] ~ /^🤖 Generated with/) at = i
+          k = at
+          if (!found) while (k > 0 && out[k - 1] ~ /^[ \t\r]*$/) k--
+          for (i = 0; i < k; i++) print out[i]
+          if (!found) {
+            if (k > 0) print ""
+            for (j = 0; j < m; j++) print section[j]
+            if (at < n) print ""
+          }
+          for (i = at; i < n; i++) print out[i]
+        }' >"$BODY"
   (cd "$OUT" && gh pr edit "$PR" --body-file "$(basename "$BODY")" "${ATTACH[@]}")
 fi
