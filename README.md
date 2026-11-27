@@ -14,7 +14,7 @@ The agent has no name of its own. The app, the repo, the bundle, and its folders
 - Choose "Sign in with ChatGPT" in the menu bar menu or in Settings. A development build has no sign-in. It reaches its models through [inference-gateway](https://github.com/lubelski/inference-gateway) on this Mac, which has to be running and signed in.
 - Press the summon shortcut, Option-Shift-Space unless you change it in Settings, General, or click the menu bar icon, to show or hide the panel, and type what you want done. Right-click or Control-click the icon for its menu.
 - Typing an app's name, or part of it, and pressing Return opens the app at once, without the model. Command-Return sends the text to the agent instead.
-- Typing a quick action's name and pressing Return runs it at once, without the model. A quick action is a fixed tool call, or a few, kept in `quick-actions/`. Ask the agent to "make that instant" to save one.
+- Typing a quick action's name and pressing Return runs it at once, without the model. A quick action is a fixed tool call, or a few, kept in `quick-actions/`. Ask the agent to "make that instant" to save one. [docs/quick-action-recipes.md](docs/quick-action-recipes.md) has files to copy, such as one that opens a Slack channel.
 - Up Arrow on the field's first line recalls your earlier messages, as in a terminal. Settings, Behaviors turns it off, and has other habits from terminal coding agents.
 - Delete twice quickly in an empty field starts a new episode, as `/new` does.
 - Command-V with a screenshot on the clipboard, or dropping an image on the panel, attaches it to your next message, so the agent can see it. Thumbnails above the field show what is attached.
