@@ -562,6 +562,15 @@ struct WindowDragArea: NSViewRepresentable {
         }
 
         override var mouseDownCanMoveWindow: Bool { true }
+
+        /// The panel stays up while the owner works in other apps, so it is usually moved while
+        /// another window has focus. Without this, AppKit spends the first press on a window
+        /// that is not key on giving it focus and never sends it here, so a second press was
+        /// needed to drag. With it, one press gives the panel focus and drags it in the same
+        /// gesture, as a title bar does. A press that does not move leaves the window where it
+        /// is. Only this view takes the first press: the bar's controls lie on top of it and
+        /// keep their own answer, so a first click on one still only gives the panel focus.
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     }
 
     func makeNSView(context: Context) -> DragView {

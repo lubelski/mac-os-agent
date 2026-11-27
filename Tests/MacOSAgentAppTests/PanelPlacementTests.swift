@@ -807,6 +807,34 @@ final class WindowRecorder {
         #expect(view !== drag)
     }
 
+    /// The first press on the bar of a panel without focus reaches the drag area, so one press
+    /// gives the panel focus and moves it. The bar's controls, which lie on top of the drag
+    /// area, do not take a first press, so a first click on one only gives the panel focus.
+    @Test func theFirstPressOnTheBarOfAPanelWithoutFocusDragsButNotOnItsControls() async throws {
+        let harness = try PanelHarness(draft: "")
+        await harness.settle()
+        let panel = try #require(harness.panel as? SummonPanel)
+        let content = try #require(panel.contentView)
+        let drag = try #require(harness.views(named: "DragView").first as? WindowDragArea.DragView)
+        let press = try #require(NSEvent.mouseEvent(
+            with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
+            windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        #expect(drag.acceptsFirstMouse(for: press))
+        func hit(x: CGFloat) -> NSView? {
+            let y = content.isFlipped ? PanelTopBar.height / 2 : content.bounds.height - PanelTopBar.height / 2
+            return content.hitTest(content.convert(CGPoint(x: x, y: y), to: content.superview))
+        }
+        // The middle of the bar is the drag area, which takes the first press.
+        #expect(hit(x: content.bounds.midX)?.acceptsFirstMouse(for: press) == true)
+        // The close button and the menu do not.
+        let close = try #require(hit(x: PanelTopBar.sidePadding + TopBarButton.size / 2))
+        #expect(close !== drag)
+        #expect(!close.acceptsFirstMouse(for: press))
+        let menu = try #require(hit(x: content.bounds.maxX - PanelTopBar.sidePadding - TopBarButton.size / 2))
+        #expect(menu !== drag)
+        #expect(!menu.acceptsFirstMouse(for: press))
+    }
+
     /// A double click on the bar puts the panel back in its layout's default frame.
     @Test func aDoubleClickOnTheBarResetsThePanel() async throws {
         let harness = try PanelHarness(draft: "")
