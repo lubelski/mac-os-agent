@@ -20,6 +20,9 @@ import MacOSAgentCore
 ///   quick action that ran, and one that failed.
 /// - `bars-lines-off`: the same thread with the experiment off, as the panel draws it today: the
 ///   typed text and a row per step for each run, and nothing for the opening.
+/// - `bars-layout`: owner messages, a long reply and a short one, a time label after a pause,
+///   and the three lines, to compare the message layouts with `--preview-message-layout`.
+/// - `bars-layout-copy`: the same, with every copy control showing, as under the pointer.
 /// - `bars-links`: three task links above the pill. `bars-rest` is the same panel with none.
 /// - `bars-links-more`: five, so two go into the overflow menu at the row's end.
 /// - `bars-card-down`: "chr", with the match card open downward past the panel's bottom edge,
@@ -31,7 +34,7 @@ import MacOSAgentCore
 enum PanelWithBarsPreview {
     static let names = [
         "bars-rest", "bars-typing", "bars-long", "bars-match", "bars-slash", "bars-running", "bars-working-hover",
-        "bars-queued", "bars-lines", "bars-lines-off", "bars-links", "bars-links-more",
+        "bars-queued", "bars-lines", "bars-lines-off", "bars-layout", "bars-layout-copy", "bars-links", "bars-links-more",
         "bars-card-down", "bars-card-up", "bars-card-slash",
     ]
 
@@ -48,7 +51,11 @@ enum PanelWithBarsPreview {
             session.forcedPanelWithBars = false
             return session
         }
-        let entries = name == "bars-lines" ? thread() + linesThread() : thread()
+        let entries = switch name {
+        case "bars-lines": thread() + linesThread()
+        case "bars-layout", "bars-layout-copy": layoutThread() + linesThread()
+        default: thread()
+        }
         let session = AgentSession(previewEntries: entries, isRunning: runs(name))
         configure(session)
         switch name {
@@ -68,6 +75,8 @@ enum PanelWithBarsPreview {
                 session.draft = text
                 session.submitToAgent()
             }
+        case "bars-layout-copy":
+            session.previewRevealsControls = true
         case "bars-links":
             session.taskLinks = Array(links.prefix(3))
         case "bars-links-more":
@@ -124,6 +133,24 @@ enum PanelWithBarsPreview {
             ThreadEntry(date: now.addingTimeInterval(-115), item: reply("For the whole Mac or just this panel?")),
             ThreadEntry(date: now.addingTimeInterval(-60), item: .userMessage(text: "dark mode")),
             ThreadEntry(date: now.addingTimeInterval(-55), item: reply("Done. The panel is dark now.")),
+        ]
+    }
+
+    /// A long reply and a short one, with a pause of over half an hour between them, so the
+    /// second stretch has a time label. It starts with an episode marker, so the pause does not
+    /// start a new episode, as with a longer episode timeout. The people and plans are made up.
+    static func layoutThread() -> [ThreadEntry] {
+        let now = Date()
+        func reply(_ text: String) -> ThreadItem {
+            .assistantMessage(.init(text: text, provider: "openai", model: "gpt-6-luna"))
+        }
+        return [
+            ThreadEntry(date: now.addingTimeInterval(-7210), item: .episodeStart(.init(reason: .requested))),
+            ThreadEntry(date: now.addingTimeInterval(-7200), item: .userMessage(text: "what's on my calendar tomorrow")),
+            ThreadEntry(date: now.addingTimeInterval(-7195), item: reply(
+                "Tomorrow has three things:\n\n- 9:00 Standup with the design team\n- 12:30 Lunch with Alex Example\n- 16:00 Dentist, about 40 minutes away\n\nThe dentist is the only one with travel. I can remind you to leave at 15:15.")),
+            ThreadEntry(date: now.addingTimeInterval(-600), item: .userMessage(text: "yes please, and turn on dark mode")),
+            ThreadEntry(date: now.addingTimeInterval(-595), item: reply("Done. Both are set.")),
         ]
     }
 

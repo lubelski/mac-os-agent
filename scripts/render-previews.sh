@@ -14,6 +14,8 @@
 #   --out <folder>          where the PNGs go, build/renders by default
 #   --appearances "dark"    dark and light by default
 #   --theme <id>            the panel in a theme, without saving it
+#   --message-layout full-width
+#                           the panel with the full width message layout, without saving it
 #   --glass on              keep glass on. Off by default: offscreen, glass and the vibrant
 #                           colors drawn on it come out missing, most of all in light mode, while
 #                           the theme's opaque fallback draws every box, line, and mark
@@ -35,6 +37,7 @@ cd "$(dirname "$0")/.."
 OUT="build/renders"
 APPEARANCES=(dark light)
 THEME=()
+LAYOUT=()
 GLASS=(--preview-glass off)
 PR=""
 TITLE="Renders"
@@ -44,6 +47,7 @@ while [[ $# -gt 0 ]]; do
     --out) OUT="$2"; shift 2 ;;
     --appearances) read -r -a APPEARANCES <<<"$2"; shift 2 ;;
     --theme) THEME=(--preview-theme "$2"); shift 2 ;;
+    --message-layout) LAYOUT=(--preview-message-layout "$2"); shift 2 ;;
     --glass) [[ "$2" == "on" ]] && GLASS=(); shift 2 ;;
     --pr) PR="$2"; shift 2 ;;
     --title) TITLE="$2"; shift 2 ;;
@@ -90,7 +94,7 @@ for state in "${STATES[@]}"; do
     case "$kind" in
       panel)
         file="$OUT/panel-$name-$appearance.png"
-        args=(--preview-panel "$name" ${THEME[@]+"${THEME[@]}"} ${GLASS[@]+"${GLASS[@]}"}) ;;
+        args=(--preview-panel "$name" ${THEME[@]+"${THEME[@]}"} ${LAYOUT[@]+"${LAYOUT[@]}"} ${GLASS[@]+"${GLASS[@]}"}) ;;
       settings)
         file="$OUT/settings-$name${item:+-$item}-$appearance.png"
         args=(--preview-settings "$name")

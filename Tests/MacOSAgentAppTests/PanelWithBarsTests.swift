@@ -247,6 +247,36 @@ import Testing
         }
         #expect(try #require(PanelWithBarsPreview.session(named: "bars-working-hover")).previewHoversWorkingRow)
     }
+
+    /// The message layout preview has what a comparison of the layouts needs: a time label,
+    /// a long reply and a short one, and the lines for an app opened and quick actions run.
+    @Test func theLayoutPreviewHasEveryKindOfRowTheLayoutMoves() throws {
+        let rows = try #require(PanelWithBarsPreview.session(named: "bars-layout")).transcript.rows
+        #expect(rows.contains { if case .user(_, _, true) = $0.kind { true } else { false } })
+        #expect(rows.filter { if case .assistant = $0.kind { true } else { false } }.count == 2)
+        #expect(rows.filter { if case .line = $0.kind { true } else { false } }.count == 3)
+        #expect(try #require(PanelWithBarsPreview.session(named: "bars-layout-copy")).previewRevealsControls)
+    }
+
+    /// The theme model reads the message layout, keeps a change, and lets a preview show the
+    /// other layout without saving it.
+    @Test func theThemeModelKeepsTheMessageLayout() throws {
+        let themes = FileManager.default.temporaryDirectory
+            .appending(path: "mac-os-agent-message-layout-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let suiteName = "mac-os-agent-message-layout-\(UUID().uuidString)"
+        defer {
+            try? FileManager.default.removeItem(at: themes)
+            UserDefaults().removePersistentDomain(forName: suiteName)
+        }
+        let model = ThemeModel(library: ThemeLibrary(folder: themes), preferences: ThemePreferences(suiteName: suiteName))
+        #expect(model.messageLayout == .sides)
+        model.setMessageLayout(.fullWidth)
+        #expect(model.messageLayout == .fullWidth)
+        #expect(ThemePreferences(suiteName: suiteName).messageLayout == .fullWidth)
+        model.previewMessageLayout = .sides
+        #expect(model.messageLayout == .sides)
+        #expect(ThemePreferences(suiteName: suiteName).messageLayout == .fullWidth)
+    }
 }
 
 /// Renders the panel with bars offscreen, for a pull request when screen capture is not

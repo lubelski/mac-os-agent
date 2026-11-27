@@ -80,7 +80,7 @@ A new feature that changes the tool list or the instructions is read at launch. 
 | Kept in | What | Rule |
 |---|---|---|
 | The data folder, `~/Library/Application Support/mac-os-agent/` | The thread and its search index, the images attached to messages (`images/`, one file each, named by the hash of its bytes), memory and its journal, skills, quick actions, themes, the MCP files, the usage log, task links, the edited instructions. | Plain files. The thread and the journal are only ever added to. The thread points to an image's file and never holds its bytes. `--data-folder` points a run at another folder. |
-| Preferences | The model, the summon shortcut, behaviors, experiments, web search, the active theme, the episode timeout. | Small choices with no content in them. |
+| Preferences | The model, the summon shortcut, behaviors, experiments, web search, the active theme, the message layout, the episode timeout. | Small choices with no content in them. |
 | Secrets | The sign-in and API keys. | The Keychain in a release build, `secrets.json` in the data folder otherwise. See `SecretStorage`. Never in the preferences and never logged. |
 | Memory only | An incognito conversation and its images, the access token, the message queue, the problem log. | Gone when the window closes or the app quits. |
 

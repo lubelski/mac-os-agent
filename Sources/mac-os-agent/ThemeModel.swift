@@ -2,8 +2,8 @@ import AppKit
 import MacOSAgentCore
 import Observation
 
-/// The panel's themes as the app holds them: the list, the active theme, and the Use Glass
-/// switch. The panel and Settings both read the one shared model, so a choice in either, or
+/// The panel's themes as the app holds them: the list, the active theme, the Use Glass
+/// switch, and the message layout. The panel and Settings both read the one shared model, so a choice in either, or
 /// one the agent makes with its tools, shows everywhere at once.
 ///
 /// It reads the themes folder again whenever a file in it changes, so a theme the owner or the
@@ -23,6 +23,14 @@ final class ThemeModel {
     var usesGlass: Bool { previewUsesGlass ?? storedUsesGlass }
     /// Use Glass for a preview, never saved.
     var previewUsesGlass: Bool?
+    private(set) var storedMessageLayout: MessageLayout
+    /// How the panel lays out messages, or a preview's choice in place of it.
+    var messageLayout: MessageLayout { previewMessageLayout ?? storedMessageLayout }
+    /// The message layout for a preview, never saved.
+    var previewMessageLayout: MessageLayout?
+    /// A part of Settings, Appearance to scroll to when it appears, such as "messages". Used by
+    /// previews.
+    @ObservationIgnored var previewScrollTarget: String?
     var errorMessage: String?
     /// A theme to show in place of the active one, for a preview. Never saved.
     var previewOverride: Theme?
@@ -34,13 +42,14 @@ final class ThemeModel {
         self.preferences = preferences
         activeID = preferences.themeID
         storedUsesGlass = preferences.usesGlass
+        storedMessageLayout = preferences.messageLayout
         reload()
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: ThemeLibrary.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.reload() }
         })
         // Any preference change in the app posts this, such as the panel's frame, so it only
-        // reads the two theme preferences again, not the folder.
+        // reads the theme preferences again, not the folder.
         observers.append(center.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.reloadPreferences() }
         })
@@ -69,6 +78,8 @@ final class ThemeModel {
         if id != activeID { activeID = id }
         let glass = preferences.usesGlass
         if glass != storedUsesGlass { storedUsesGlass = glass }
+        let layout = preferences.messageLayout
+        if layout != storedMessageLayout { storedMessageLayout = layout }
     }
 
     func select(_ id: String) {
@@ -80,6 +91,11 @@ final class ThemeModel {
     func setUsesGlass(_ value: Bool) {
         preferences.setUsesGlass(value)
         reload()
+    }
+
+    func setMessageLayout(_ layout: MessageLayout) {
+        preferences.setMessageLayout(layout)
+        reloadPreferences()
     }
 
     /// Copies a theme into a new file and makes the copy the active theme.

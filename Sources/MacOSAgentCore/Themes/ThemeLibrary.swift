@@ -174,10 +174,12 @@ public struct ThemeLibrary: Sendable {
     }
 }
 
-/// The active theme and the Use Glass switch, kept in the app's preferences.
+/// The active theme, the Use Glass switch, and the message layout, kept in the app's
+/// preferences.
 public struct ThemePreferences: Sendable {
     public static let themeKey = "panelTheme"
     public static let usesGlassKey = "panelUsesGlass"
+    public static let messageLayoutKey = "panelMessageLayout"
 
     /// The preferences suite, or nil for the app's standard preferences. Previews and tests use
     /// a suite of their own.
@@ -208,6 +210,17 @@ public struct ThemePreferences: Sendable {
 
     public func setUsesGlass(_ value: Bool) {
         defaults.set(value, forKey: Self.usesGlassKey)
+        ThemeLibrary.postChange()
+    }
+
+    /// How the panel lays out messages. On opposite sides until the owner picks full width. A
+    /// value this build does not know reads as the default.
+    public var messageLayout: MessageLayout {
+        defaults.string(forKey: Self.messageLayoutKey).flatMap(MessageLayout.init(rawValue:)) ?? .sides
+    }
+
+    public func setMessageLayout(_ layout: MessageLayout) {
+        defaults.set(layout.rawValue, forKey: Self.messageLayoutKey)
         ThemeLibrary.postChange()
     }
 }

@@ -463,6 +463,8 @@ enum SettingsPreview {
             }
             if section == .mcpServers { controller.models.mcpServers.selection = item }
             controller.models.debugging.scrollTarget = item == "gateway" ? "sign-in" : item
+            // `--preview-item messages` in Appearance scrolls to the message layout.
+            if section == .appearance { ThemeModel.shared.previewScrollTarget = item }
         }
         controller.models.debugging.reload()
         if PreviewRender.isRendering, let window = controller.window {

@@ -24,7 +24,7 @@ The agent has no name of its own. The app, the repo, the bundle, and its folders
 
 MCP servers are an experiment: turn them on in Settings > Experiments. They go in `mcp-servers.json` in the same folder, in the `mcpServers` shape other apps use. Settings > MCP Servers shows them, and a new server's tools join at the next launch. With the "Settings the agent can change" experiment also on, you can ask the agent to add, remove, or turn off a server, or to turn an experiment on or off. It asks before every change and never sees a server's secret values.
 
-Settings > Appearance picks the panel's theme. Everything the agent keeps (the thread, the images you attach, memory, skills, quick actions, instructions, themes, usage log) is in `~/Library/Application Support/mac-os-agent/`.
+Settings > Appearance picks the panel's theme, and whether messages sit on opposite sides or run the full width at the left. Everything the agent keeps (the thread, the images you attach, memory, skills, quick actions, instructions, themes, usage log) is in `~/Library/Application Support/mac-os-agent/`.
 
 ## Working on it
 
