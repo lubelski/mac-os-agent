@@ -115,8 +115,11 @@ public enum ScriptRunner {
         let timedOut = Flag()
         let watchdog = Task {
             while !Task.isCancelled {
+                // Read the time before the paused total. A wait still going counts up to when
+                // the total is read, so read in this order the limit can never pass during one.
+                let now = ContinuousClock.now
                 let deadline = started + timeout + paused()
-                if ContinuousClock.now >= deadline {
+                if now >= deadline {
                     timedOut.set()
                     process.kill()
                     return
