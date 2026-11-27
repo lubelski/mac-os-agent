@@ -325,6 +325,45 @@ final class SummonPanel: ActiveAppearancePanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
+    /// With the first click experiment on, a click on the panel while it does not have focus
+    /// gives it focus and then does what the click would do with focus. Without it, AppKit
+    /// spends the click on giving the panel focus, and passes it on only to a view that accepts
+    /// the first click, such as the top bar's drag area. The selectable text of a reply does
+    /// not, so a link in it does nothing. Off, nothing is done before AppKit handles the event,
+    /// so the panel behaves as it did before the experiment. See
+    /// `Experiment.firstClickActsOnPanel`.
+    override func sendEvent(_ event: NSEvent) {
+        takeFocusBeforeAFirstClick(event.type)
+        super.sendEvent(event)
+    }
+
+    /// Whether the panel is on screen, for the first click experiment. Tests stand in their own,
+    /// so nothing has to show.
+    var isOnScreenForAFirstClick: (SummonPanel) -> Bool = { $0.isVisible }
+    /// Gives the panel focus before a first click is handled. Tests stand in a recorder, so
+    /// nothing takes focus.
+    var takeFocusForAFirstClick: (SummonPanel) -> Void = { $0.makeKey() }
+
+    /// The step `sendEvent` takes before AppKit handles an event: with the experiment on, a
+    /// press of the main button while the panel is on screen without focus gives it focus. The
+    /// switch is read from the session's preferences at each press, so turning it on or off
+    /// takes effect at the next click.
+    func takeFocusBeforeAFirstClick(_ type: NSEvent.EventType) {
+        let takesFocus = Self.takesFocusFirst(
+            for: type, hasFocus: isKeyWindow, isVisible: isOnScreenForAFirstClick(self),
+            actsOnFirstClick: Experiment.firstClickActsOnPanel.isOn(session.preferences))
+        if takesFocus { takeFocusForAFirstClick(self) }
+    }
+
+    /// Whether an event makes the panel take focus before it is handled: with the experiment
+    /// on, a press of the main button on the panel while it is on screen without focus. A right
+    /// click keeps opening its menu without taking focus, as before.
+    nonisolated static func takesFocusFirst(
+        for type: NSEvent.EventType, hasFocus: Bool, isVisible: Bool, actsOnFirstClick: Bool
+    ) -> Bool {
+        actsOnFirstClick && type == .leftMouseDown && !hasFocus && isVisible
+    }
+
     /// The glass's frame on screen when it is in place: the window's frame less any strip on
     /// the edge side, and less the room it grew downward for the list under the text field.
     /// Everything that remembers or reasons about the panel's place reads this, so the growth

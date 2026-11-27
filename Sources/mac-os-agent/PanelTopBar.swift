@@ -569,7 +569,8 @@ struct WindowDragArea: NSViewRepresentable {
         /// needed to drag. With it, one press gives the panel focus and drags it in the same
         /// gesture, as a title bar does. A press that does not move leaves the window where it
         /// is. Only this view takes the first press: the bar's controls lie on top of it and
-        /// keep their own answer, so a first click on one still only gives the panel focus.
+        /// keep their own answer, so a first click on one still only gives the panel focus,
+        /// unless the first click experiment is on (`SummonPanel.sendEvent`).
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     }
 
