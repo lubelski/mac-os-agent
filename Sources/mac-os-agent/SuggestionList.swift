@@ -94,6 +94,15 @@ extension AgentSession {
         instantActions.setMode(suggestionsInFooter ? .inField : .row)
     }
 
+    /// True while the panel shows a suggestion for the draft: slash commands, the instant action
+    /// row, or with suggestions in the field, the gray completion or the list under the field.
+    /// Up and Down never recall an earlier message then. See `recallMessage(by:)`.
+    var isShowingSuggestion: Bool {
+        if !commandSuggestions.isEmpty { return true }
+        if suggestionsInFooter { return suggestionList.isOpen || listedMatches != nil }
+        return instantActions.suggestion != nil
+    }
+
     /// The rows the list shows now, or none when it is closed. Slash commands come first: a
     /// slash rules out an instant action.
     var suggestionRows: [SuggestionRow] {
