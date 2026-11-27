@@ -11,7 +11,7 @@ enum PanelPreview {
     static let names = [
         "empty", "running", "confirmation", "finished", "history", "draft", "multiline-draft",
         "fresh-start", "scrollback", "command-hint", "tool-states", "first-message", "streaming",
-        "fresh-start-slot", "markdown", "markdown-streaming", "markdown-code-streaming", "controls",
+        "fresh-start-slot", "markdown", "markdown-streaming", "markdown-code-streaming", "controls", "links",
     ] + goAheadStates + incognitoStates + inspectorStates + InstantActionPreview.names + FooterPreview.names
         + PanelWithBarsPreview.names + ImagePreview.names
 
@@ -41,6 +41,17 @@ enum PanelPreview {
     static func inspectedCall(named name: String) -> String? {
         inspectorStates.contains(name) ? "call_" + name.dropFirst("inspector-".count) : nil
     }
+
+    /// A reply with links in each place a reply draws inline text, all to placeholder addresses.
+    static let linksReply = """
+        The [setup guide](https://example.com/guide) covers it, and https://example.org has the rest.
+
+        - See [the notes](https://example.com/notes) for the details.
+
+        | Page | Where |
+        |:--|:--|
+        | Overview | [example.net](https://example.net) |
+        """
 
     /// A reply that uses most of what the panel draws from Markdown.
     static let markdownReply = """
@@ -190,6 +201,13 @@ enum PanelPreview {
             // how an unfinished reply renders while it streams.
             let cut = markdownReply.range(of: "| `~/Downloads` | 12")!.upperBound
             return AgentSession(previewEntries: thread.entries, streamingText: String(markdownReply[..<cut]), isRunning: true)
+        case "links":
+            // A reply with links in a paragraph, a list, and a table, all to placeholder
+            // addresses, for checking that a click opens them and dragging still selects.
+            var thread = StandInThread(now: Date())
+            thread.user("where can I read more about this", minutesAgo: 1)
+            thread.reply(linksReply)
+            return AgentSession(previewEntries: thread.entries)
         case "controls":
             // The hover controls all shown at once, since a capture has no pointer.
             var thread = StandInThread(now: Date())
