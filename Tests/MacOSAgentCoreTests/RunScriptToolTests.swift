@@ -158,13 +158,16 @@ import Testing
         #expect(ContinuousClock.now - started < .seconds(5))
     }
 
+    /// The wait is longer than the limit, so the script finishes only if the wait is left out.
+    /// The limit still has to cover starting the helper and passing the call both ways, which
+    /// can take most of a second while the other tests run in parallel, so it is not tight.
     @Test func timeWaitingForTheOwnerDoesNotCount() async {
         let tool = StandInTool(name: "change_events") { _, context in
             _ = await context.confirm(ConfirmationRequest(callID: context.callID, command: "x", reason: "deletes an event"))
             return "Done."
         }
         let result = await run(
-            "// @options: {\"timeout_ms\": 700}\nreturn await tools.change_events({})", tools: [tool], wait: .milliseconds(1500))
+            "// @options: {\"timeout_ms\": 2000}\nreturn await tools.change_events({})", tools: [tool], wait: .milliseconds(2500))
         #expect(result.hasPrefix("Script completed"))
         #expect(result.hasSuffix("\nDone."))
     }

@@ -415,6 +415,10 @@ private func offered(_ input: String, history: InstantActionHistory = InstantAct
     /// The first keystroke matches every installed app, since nearly all of them start with
     /// some letter. This times it on a made-up Mac with 600 apps, more than most have, and
     /// fails only far above what typing could notice, so a busy test run does not trip it.
+    ///
+    /// The tests run in parallel, so any one timing can include a stretch where this thread was
+    /// not running at all. The check on the slowest letter uses each letter's fastest round,
+    /// which is what the lookup itself costs, and leaves those stretches out.
     @Test func theFirstCharacterIsFastOnManyApps() {
         let syllables = ["ka", "lo", "mi", "ne", "su", "ra", "to", "vi", "be", "do", "fa", "go"]
         var applications = standInApplications
@@ -427,7 +431,7 @@ private func offered(_ input: String, history: InstantActionHistory = InstantAct
         }
         let engine = InstantActionEngine(providers: [ApplicationInstantActions(applications: applications)])
         let letters = "abcdefghijklmnopqrstuvwxyz".map(String.init)
-        var worst = Duration.zero
+        var fastest: [String: Duration] = [:]
         var total = Duration.zero
         let rounds = 20
         for _ in 0..<rounds {
@@ -436,13 +440,14 @@ private func offered(_ input: String, history: InstantActionHistory = InstantAct
                 _ = engine.suggestion(for: letter, now: now, mode: .inField)
                 let elapsed = ContinuousClock.now - start
                 total += elapsed
-                worst = max(worst, elapsed)
+                fastest[letter] = min(fastest[letter] ?? elapsed, elapsed)
             }
         }
         let mean = total / (rounds * letters.count)
-        print("instant-actions: first character on \(applications.count) apps, mean \(mean), worst \(worst)")
+        let slowestLetter = fastest.values.max() ?? .zero
+        print("instant-actions: first character on \(applications.count) apps, mean \(mean), slowest letter \(slowestLetter)")
         #expect(mean < .milliseconds(5))
-        #expect(worst < .milliseconds(50))
+        #expect(slowestLetter < .milliseconds(50))
     }
 }
 
