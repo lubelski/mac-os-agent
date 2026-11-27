@@ -63,6 +63,7 @@ public struct QuickActionInstantActions: InstantActionProvider {
         var result: [InstantActionCandidate] = []
         for entry in prepared {
             var best: (strength: InstantMatchStrength, score: Int)?
+            var startsName = false
             for query in queries {
                 let normalized = ApplicationMatcher.normalized(query)
                 guard !normalized.isEmpty else { continue }
@@ -71,6 +72,8 @@ public struct QuickActionInstantActions: InstantActionProvider {
                     guard let strength = ApplicationInstantActions.strength(
                         query: normalized, queryWords: queryWords, name: name.whole, words: name.words)
                     else { continue }
+                    // "dark" for Dark mode: the subject is the name's first whole word or words.
+                    if !queryWords.isEmpty, name.words.starts(with: queryWords) { startsName = true }
                     // A phrase is a name the owner chose, so it counts as fully as the name, a
                     // point lower so the name wins a tie with its own phrase.
                     let score = ApplicationInstantActions.baseScore[strength]! - (index > 0 ? 1 : 0)
@@ -78,9 +81,11 @@ public struct QuickActionInstantActions: InstantActionProvider {
                 }
             }
             guard let best else { continue }
-            result.append(InstantActionCandidate(
+            var candidate = InstantActionCandidate(
                 id: Self.id(for: entry.action), title: entry.action.name, detail: entry.detail,
-                strength: best.strength, score: best.score, target: .quickAction(id: entry.action.id)))
+                strength: best.strength, score: best.score, target: .quickAction(id: entry.action.id))
+            candidate.subjectStartsOwnersName = startsName
+            result.append(candidate)
         }
         return result.enumerated().sorted { a, b in
             if a.element.score != b.element.score { return a.element.score > b.element.score }

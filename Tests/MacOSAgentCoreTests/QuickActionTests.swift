@@ -182,6 +182,37 @@ private func step(_ tool: String, _ value: String) -> QuickAction.Step {
         #expect(learned.choices.map(\.title) == ["Spotify"], "what the owner took before is offered alone")
     }
 
+    @Test func aWholeFirstWordOfAnActionsNameOffersItEvenWhenItIsAnEverydayWord() throws {
+        let toggle = QuickAction.Step(tool: "read_clipboard", arguments: [:])
+        let actions = [
+            QuickAction(id: "dark-mode", name: "Dark mode", description: "Dark.", steps: [toggle]),
+            QuickAction(id: "light-mode", name: "Light mode", description: "Light.", steps: [toggle]),
+            QuickAction(id: "darkroom", name: "Darkroom export", description: "Export.", steps: [toggle]),
+        ]
+        let applications = Self.applications + [
+            InstalledApplication(name: "Finder", bundleIdentifier: "com.apple.finder", url: URL(filePath: "/System/Library/CoreServices/Finder.app", directoryHint: .isDirectory)),
+            InstalledApplication(name: "Find My", bundleIdentifier: "com.apple.findmy", url: URL(filePath: "/System/Applications/FindMy.app", directoryHint: .isDirectory)),
+            InstalledApplication(name: "Dark Reader", bundleIdentifier: "org.example.darkreader", url: URL(filePath: "/Applications/Dark Reader.app", directoryHint: .isDirectory)),
+        ]
+        let engine = InstantActionEngine(providers: [
+            QuickActionInstantActions(actions: actions), ApplicationInstantActions(applications: applications),
+        ])
+        for mode in [InstantActionRule.Mode.row, .inField] {
+            for (input, title) in [("dar", "Dark mode"), ("dark", "Dark mode"), ("Dark", "Dark mode"), ("ligh", "Light mode"),
+                                   ("light", "Light mode"), ("run dark", "Dark mode"), ("dark mode", "Dark mode")] {
+                let suggestion = try #require(engine.suggestion(for: input, mode: mode), "\(input) \(mode)")
+                #expect(suggestion.top.title == title, "\(input) \(mode)")
+                if mode == .row, input != "dar" { #expect(suggestion.choices.count == 1, "\(input) is offered alone") }
+            }
+            // The word starts Darkroom export only as letters, and starts the app's name, which
+            // the owner did not choose, so "dark" offers neither.
+            let dark = try #require(engine.suggestion(for: "dark", mode: mode))
+            #expect(!dark.matches.map(\.title).contains("Darkroom export"), "\(mode)")
+            #expect(!dark.matches.map(\.title).contains("Dark Reader"), "\(mode)")
+            #expect(engine.suggestion(for: "find", mode: mode) == nil, "find never offers Finder or Find My (\(mode))")
+        }
+    }
+
     @Test func aLongReadingIsShortened() {
         let many = QuickAction(id: "many", name: "Many", description: "Many steps.",
                                steps: (1...5).map { _ in .init(tool: "read_clipboard", arguments: [:]) })

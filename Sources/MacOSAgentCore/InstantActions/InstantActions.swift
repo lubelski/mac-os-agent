@@ -60,6 +60,11 @@ public struct InstantActionCandidate: Sendable, Equatable, Identifiable {
     public var boost: Int = 0
     /// True when the owner has taken this candidate for this exact subject before.
     public var wasPickedForSubject = false
+    /// True when the subject is the first whole word or words of a name the owner chose, as
+    /// "dark" is for a quick action named Dark mode. A single everyday word still offers such a
+    /// candidate. Only quick actions set it: an app's name is not the owner's choice, so "find"
+    /// never offers Finder or Find My.
+    public var subjectStartsOwnersName = false
     public var target: InstantActionTarget
 
     public init(
@@ -130,7 +135,10 @@ extension InstantActionProvider {
 /// - Without a verb, the input itself has to look like a name: at least two characters, a
 ///   word prefix or better, and initials only from three characters.
 /// - A single everyday word, such as "find", "help", or "what", offers only a candidate whose
-///   name it is exactly, or with a verb, a candidate that has it as a whole word ("open word").
+///   name it is exactly, or with a verb, a candidate that has it as a whole word ("open word"),
+///   or a quick action whose name starts with it as a whole word ("dark" for Dark mode). The
+///   owner chose that name, so the word is meant for it. An app's name was not chosen by the
+///   owner, so "find" still offers neither Finder nor Find My.
 /// - The best candidate has to lead the next by `clearLead` points to be offered alone.
 ///   Otherwise the row offers the close ones to choose between, up to `maximumChoices`, but
 ///   only for a verb or a subject of three or more characters. Shorter bare input with no
@@ -195,7 +203,9 @@ public enum InstantActionRule {
         }
         if phrase.isEverydayWord, !learned, !firstCharacter {
             // A name that only starts with the word ("find" for Finder) is never enough.
-            kept = kept.filter { $0.strength == .exact || (hasVerb && $0.strength == .wordExact) }
+            kept = kept.filter {
+                $0.strength == .exact || (hasVerb && $0.strength == .wordExact) || $0.subjectStartsOwnersName
+            }
         }
         guard !kept.isEmpty else { return ([], []) }
 
