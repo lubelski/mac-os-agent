@@ -325,6 +325,24 @@ final class SummonPanel: ActiveAppearancePanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
+    /// A click on the panel while it does not have focus gives it focus and then does what
+    /// the click would do with focus. Without this, AppKit spends the click on giving the panel
+    /// focus, and passes it on only to a view that accepts the first click. The selectable text
+    /// of a reply does not, so a link in it did nothing.
+    override func sendEvent(_ event: NSEvent) {
+        if Self.takesFocusFirst(for: event.type, hasFocus: isKeyWindow, isVisible: isVisible) {
+            makeKey()
+        }
+        super.sendEvent(event)
+    }
+
+    /// Whether an event makes the panel take focus before it is handled: a press of the main
+    /// button on the panel while it is on screen without focus. A right click keeps opening its
+    /// menu without taking focus, as before.
+    nonisolated static func takesFocusFirst(for type: NSEvent.EventType, hasFocus: Bool, isVisible: Bool) -> Bool {
+        type == .leftMouseDown && !hasFocus && isVisible
+    }
+
     /// The glass's frame on screen when it is in place: the window's frame less any strip on
     /// the edge side, and less the room it grew downward for the list under the text field.
     /// Everything that remembers or reasons about the panel's place reads this, so the growth
