@@ -259,13 +259,15 @@ private struct PaneSwapping: ViewModifier {
 
 /// A pane with a title pinned above a faint line, and content that scrolls under it.
 struct StackPane<Content: View>: View {
+    /// What the pane's item is inside, as a quiet line above the title, outer before inner.
+    var scope: String?
     let title: Text
-    let subtitle: String
+    var subtitle: String?
     @ViewBuilder let content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PaneTitle(title: title, subtitle: subtitle)
+            PaneTitle(scope: scope, title: title, subtitle: subtitle)
             Divider().opacity(0.6)
             PaneScrollView { content }
         }
@@ -324,18 +326,28 @@ struct PaneItemAnchors: PreferenceKey {
     }
 }
 
-/// A pane's pinned title, with a line of secondary text under it.
+/// A pane's pinned title, with what it is inside above it and facts about it under it, each a
+/// quiet line.
 struct PaneTitle: View {
+    var scope: String?
     let title: Text
-    let subtitle: String
+    var subtitle: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
+            if let scope {
+                Text(scope)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             title.lineLimit(1).truncationMode(.middle)
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
         .padding(.horizontal, 20)
         .padding(.top, 14)

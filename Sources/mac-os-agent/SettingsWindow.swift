@@ -483,7 +483,8 @@ enum SettingsPreview {
 
     /// Tools as a pane stack. The item is `stack`, then dot-separated words: a group's id or a
     /// tool's name opens it (a tool opens its group too), `end` scrolls the top pane to its end,
-    /// and `narrow` shrinks the window to its minimum size. `stack.system.narrow` opens System at
+    /// `schema` shows a tool's JSON Schema instead of its description, and `narrow` shrinks the
+    /// window to its minimum size. `stack.system.narrow` opens System at
     /// the minimum width, and `stack.find_files.end` opens find_files scrolled to its end.
     private static func showPaneStack(_ item: String, in controller: SettingsWindowController) {
         let tools = controller.models.tools
@@ -491,6 +492,7 @@ enum SettingsPreview {
         for word in item.split(separator: ".").dropFirst().map(String.init) {
             switch word {
             case "end": tools.stack.topStartsAtEnd = true
+            case "schema": tools.textTab = .schema
             case "narrow": controller.window?.setContentSize(SettingsWindowController.minimumSize)
             default: tools.showInStack(word)
             }

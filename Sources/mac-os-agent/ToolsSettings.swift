@@ -18,6 +18,9 @@ final class ToolsSettingsModel {
     /// Where the pane stack is, with the experiment on: `[group]` or `[group, tool]`. Kept here
     /// so the stack and its scroll places last while the window is open.
     let stack = PaneStackState()
+    /// Which text a tool's details show, its description or its schema. Kept here, so moving
+    /// from tool to tool keeps it while the window is open.
+    var textTab: ToolTextTab = .description
     /// Set by a preview that asks for the pane stack, which shows it whatever the preference says.
     var paneStackOverride: Bool?
     /// The app's access to each kind of personal data the tools use, read again whenever the
@@ -204,13 +207,8 @@ struct ToolDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(tool.name).font(.title2.monospaced())
-                    Text(tool.source.title)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            VStack(alignment: .leading, spacing: 20) {
+                ToolTitle(tool: tool)
                 ToolDetailSections(tool: tool, model: model)
             }
             .padding(20)
@@ -219,15 +217,55 @@ struct ToolDetailView: View {
     }
 }
 
-/// Everything about a tool under its name: its go-ahead, the incognito window, its description
-/// and parameters as sent, and its schema.
+/// A tool's name under the group it is in, outer before inner: the group as a quiet line, then
+/// the tool's name in that group, which leads. The name the model calls is in Parameters.
+struct ToolTitle: View {
+    let tool: ToolSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(tool.source.title)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Text(tool.nameInGroup)
+                .font(.title2.monospaced().weight(.semibold))
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Which of the texts the model is sent the tool's details show.
+enum ToolTextTab: String, CaseIterable {
+    case description
+    case schema
+
+    var title: String {
+        switch self {
+        case .description: "Description"
+        case .schema: "JSON Schema"
+        }
+    }
+}
+
+/// Everything about a tool under its name: what it is for in a sentence, then what the owner
+/// decides (its access and its go-ahead), then where it runs, then what the agent sends it, and
+/// last the long texts the model is sent, its description and its schema, one at a time.
 struct ToolDetailSections: View {
     let tool: ToolSummary
     let model: ToolsSettingsModel
-    @State private var showingSchema = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 22) {
+            // What the tool is for, in its own first sentence, before anything about it. A
+            // description of one sentence is left to its box at the end, so it shows once.
+            if !tool.shortDescription.isEmpty, tool.descriptionGoesOn {
+                Text(tool.shortDescription)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 2)
+            }
             if let kind = tool.source.privacyAccess {
                 PrivacyAccessView(kind: kind, status: model.access[kind] ?? .notDetermined) {
                     model.requestAccess(kind)
@@ -235,68 +273,50 @@ struct ToolDetailSections: View {
             }
             if let mcp = tool.mcp {
                 MCPGoAheadControl(tool: tool, mcp: mcp, model: model)
+                ToolDetailBox {
+                    ToolFactRow(label: "Incognito window", fact: incognito)
+                }
             } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Asks for a go-ahead").font(.headline)
-                    Text("\(tool.goAhead.label). \(tool.goAhead.explanation)")
-                        .fixedSize(horizontal: false, vertical: true)
+                // A built-in tool's go-ahead cannot be changed, so it is a fact like the other.
+                ToolDetailBox {
+                    ToolFactRow(label: "Go-ahead", fact: Self.builtInGoAhead(tool.goAhead))
+                    ToolDetailDivider()
+                    ToolFactRow(label: "Incognito window", fact: incognito)
                 }
             }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("In the incognito window").font(.headline)
-                Text(incognitoText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Description sent to the model").font(.headline)
-                Text(tool.description)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.background.secondary, in: .rect(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Parameters").font(.headline)
-                if tool.parameters.isEmpty {
-                    Text("None.").foregroundStyle(.secondary)
-                } else {
-                    ForEach(tool.parameters) { parameter in
-                        ParameterRow(parameter: parameter)
-                        if parameter.id != tool.parameters.last?.id { Divider() }
-                    }
-                }
-            }
-
-            DisclosureGroup("JSON Schema as sent", isExpanded: $showingSchema) {
-                Text(tool.schemaText)
-                    .font(.callout.monospaced())
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 6)
-            }
+            ToolParametersSection(tool: tool)
+            ToolTextSection(tool: tool, model: model)
         }
     }
 }
 
 extension ToolDetailSections {
-    private var incognitoText: String {
+    private var incognito: ToolFact {
         if tool.mcp != nil {
-            return "Not available. The incognito window has no tools from MCP servers."
+            return ToolFact(symbol: "minus.circle", value: "Not available", detail: "The incognito window has no tools from MCP servers.")
         }
         return BuiltInTools.incognitoNames.contains(tool.name)
-            ? "Available. The incognito window has only the three application tools."
-            : "Not available. The incognito window only opens apps and answers questions, with the three application tools."
+            ? ToolFact(symbol: "checkmark.circle", value: "Available", detail: "The incognito window has only the three application tools.")
+            : ToolFact(
+                symbol: "minus.circle", value: "Not available",
+                detail: "The incognito window only opens apps and answers questions, with the three application tools.")
+    }
+
+    /// A built-in tool's go-ahead, which the owner cannot change.
+    static func builtInGoAhead(_ goAhead: ToolGoAhead) -> ToolFact {
+        switch goAhead {
+        case .never: ToolFact(symbol: "checkmark.circle", value: "Never asks", detail: nil)
+        case .sometimes(let text): ToolFact(symbol: "hand.raised", value: "Asks for some calls", detail: text)
+        case .always: ToolFact(symbol: "hand.raised", value: "Asks before every call", detail: nil)
+        case .denied: ToolFact(symbol: "nosign", value: "Never runs", detail: "Each call is denied without asking.")
+        }
     }
 }
 
-/// An MCP tool's one setting: ask each time, always allow, or always deny. A change applies to
-/// the next call, since it does not change what the model is sent. A denied tool stays in the
-/// model's list, and a call to it is answered without asking.
+/// An MCP tool's one setting: ask each time, always allow, or always deny, all three in view
+/// with the chosen one marked. A change applies to the next call, since it does not change what
+/// the model is sent. A denied tool stays in the model's list, and a call to it is answered
+/// without asking.
 struct MCPGoAheadControl: View {
     let tool: ToolSummary
     let mcp: MCPToolReference
@@ -312,22 +332,21 @@ struct MCPGoAheadControl: View {
 
     var body: some View {
         let value = model.mcpGoAhead(of: tool) ?? .defaultValue(readOnly: mcp.readOnly)
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Go-ahead").font(.headline)
-                Spacer()
-                Picker("Go-ahead", selection: Binding(get: { value }, set: { model.setGoAhead($0, tool) })) {
-                    ForEach(MCPGoAhead.allCases, id: \.self) { Text($0.title).tag($0) }
+        let defaultValue = MCPGoAhead.defaultValue(readOnly: mcp.readOnly)
+        ToolDetailSection("Go-ahead", footer: "\(mcp.defaultExplanation) A change applies to the next call.") {
+            ToolDetailBox {
+                ForEach(MCPGoAhead.allCases, id: \.self) { choice in
+                    if choice != MCPGoAhead.allCases.first { ToolDetailDivider() }
+                    GoAheadChoiceRow(
+                        title: choice.title, detail: Self.explanation(choice),
+                        isSelected: choice == value, isDefault: choice == defaultValue
+                    ) {
+                        model.setGoAhead(choice, tool)
+                    }
                 }
-                .labelsHidden()
-                .fixedSize()
             }
-            Text(Self.explanation(value))
-                .fixedSize(horizontal: false, vertical: true)
-            Text("\(mcp.defaultExplanation) A change applies to the next call.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Go-ahead")
             if let error = model.errorMessage {
                 Text(error).font(.callout).foregroundStyle(.red)
             }
@@ -335,30 +354,376 @@ struct MCPGoAheadControl: View {
     }
 }
 
+/// One go-ahead choice: a mark that fills when it is chosen, its name, and what it does. The
+/// chosen row is tinted too. Its weight never changes, so choosing does not shift the text.
+struct GoAheadChoiceRow: View {
+    let title: String
+    let detail: String
+    let isSelected: Bool
+    let isDefault: Bool
+    let choose: () -> Void
+
+    var body: some View {
+        Button(action: choose) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
+                    .frame(width: ToolDetailRow.symbolWidth)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(title)
+                        if isDefault { ToolDetailTag(text: "Default") }
+                    }
+                    Text(detail)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, ToolDetailRow.inset)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background { if isSelected { Color.accentColor.opacity(0.12) } }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(isDefault ? "\(title), the default" : title))
+        .accessibilityHint(Text(detail))
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// What the agent sends the tool: the call as the model makes it, with its full name, then each
+/// parameter with its name first and the facts about it quieter.
+struct ToolParametersSection: View {
+    let tool: ToolSummary
+
+    var body: some View {
+        let parameters = ToolParameter.inCallOrder(tool.parameters)
+        ToolDetailSection("Parameters") {
+            Text(Self.count(parameters))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } content: {
+            ToolDetailBox {
+                CallSignature(name: tool.name, parameters: parameters)
+                    .padding(.horizontal, ToolDetailRow.inset)
+                    .padding(.vertical, 9)
+                    .background(.primary.opacity(0.03))
+                ForEach(parameters) { parameter in
+                    ToolDetailDivider()
+                    ParameterRow(parameter: parameter)
+                }
+            }
+        }
+    }
+
+    static func count(_ parameters: [ToolParameter]) -> String {
+        let required = parameters.filter(\.isRequired).count
+        let optional = parameters.count - required
+        switch (required, optional) {
+        case (0, 0): return "None"
+        case (_, 0): return required == 1 ? "1, required" : "\(required), all required"
+        case (0, _): return optional == 1 ? "1, optional" : "\(optional), all optional"
+        default: return "\(required) required, \(optional) optional"
+        }
+    }
+}
+
+/// `server__tool(first, second, third?)`: the call as the model makes it, optional parameters
+/// marked with a question mark. Selectable, so the full name can be copied.
+struct CallSignature: View {
+    let name: String
+    let parameters: [ToolParameter]
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Text(signature)
+            .font(.system(size: 11.5, design: .monospaced))
+            .lineSpacing(2)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel(Text("Called as \(name)"))
+    }
+
+    private var signature: AttributedString {
+        let dark = colorScheme == .dark
+        func part(_ text: String, _ kind: CodeHighlighting.Kind?) -> AttributedString {
+            var part = AttributedString(text)
+            if let kind { part.foregroundColor = HighlightedCode.color(kind, dark: dark) }
+            return part
+        }
+        var result = part(name, .command) + part("(", .punctuation)
+        for (index, parameter) in parameters.enumerated() {
+            if index > 0 { result += part(", ", .punctuation) }
+            result += part(parameter.name, nil)
+            if !parameter.isRequired { result += part("?", .punctuation) }
+        }
+        return result + part(")", .punctuation)
+    }
+}
+
+/// One parameter: its name leads, in the body's size and weight, with its type and whether it
+/// is optional quiet at the row's end. Its description, allowed values, and default follow as
+/// supporting text.
 struct ParameterRow: View {
     let parameter: ToolParameter
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(parameter.name).font(.body.monospaced())
-                Text(parameter.type).foregroundStyle(.secondary)
-                Spacer()
-                Text(parameter.isRequired ? "Required" : "Optional")
-                    .font(.caption)
+                Text(parameter.name)
+                    .font(.body.monospaced().weight(.semibold))
+                    .layoutPriority(1)
+                Spacer(minLength: 8)
+                if !parameter.isRequired { ToolDetailTag(text: "optional") }
+                Text(parameter.type)
+                    .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             if !parameter.description.isEmpty {
                 Text(parameter.description)
                     .font(.callout)
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if !parameter.allowedValues.isEmpty {
-                Text("One of: \(parameter.allowedValues.joined(separator: ", "))")
-                    .font(.callout)
+            if let values = valuesText {
+                values
+                    .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .padding(.horizontal, ToolDetailRow.inset)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// "One of storm, heat, frost" and "Default 3", with the values in code type.
+    private var valuesText: Text? {
+        var parts: [Text] = []
+        if !parameter.allowedValues.isEmpty {
+            let values = parameter.allowedValues.map { Text($0).font(.caption.monospaced()).foregroundStyle(.primary) }
+            parts.append(values.dropFirst().reduce(Text("One of ") + values[0]) { $0 + Text(", ") + $1 })
+        }
+        if let value = parameter.defaultValue {
+            parts.append(Text("Default ") + Text(value).font(.caption.monospaced()).foregroundStyle(.primary))
+        }
+        guard let first = parts.first else { return nil }
+        return parts.dropFirst().reduce(first) { $0 + Text(". ") + $1 }
+    }
+}
+
+/// The two texts the model is sent, one at a time under a switch: the description, and the
+/// parameters' JSON Schema. Both are monospaced with best-effort highlighting, selectable, and
+/// shown at full length in the pane's own scroll, last on the pane so nothing is below them.
+struct ToolTextSection: View {
+    let tool: ToolSummary
+    @Bindable var model: ToolsSettingsModel
+    @State private var copied = false
+
+    var body: some View {
+        let tab = model.textTab
+        let text = tab == .description ? tool.description : tool.schemaText
+        ToolDetailSection("Sent to the model") {
+            ToolDetailBox {
+                HStack(spacing: 8) {
+                    Picker("Text", selection: $model.textTab) {
+                        ForEach(ToolTextTab.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .fixedSize()
+                    Spacer(minLength: 8)
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                        copied = true
+                    } label: {
+                        Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .help(tab == .description ? "Copy the description" : "Copy the JSON Schema")
+                    .disabled(text.isEmpty)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                Divider().opacity(0.6)
+                Group {
+                    if text.isEmpty {
+                        Text("No description.").foregroundStyle(.secondary)
+                    } else {
+                        HighlightedCodeText(
+                            text: text,
+                            spans: tab == .description ? CodeHighlighting.freeText(text) : CodeHighlighting.json(text),
+                            size: 10.5)
+                    }
+                }
+                .padding(.horizontal, ToolDetailRow.inset)
+                .padding(.vertical, 10)
+            }
+        }
+        .onChange(of: tab) { copied = false }
+        .task(id: copied) {
+            guard copied else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            copied = false
+        }
+    }
+}
+
+// MARK: - Parts of the tool's details
+
+/// A heading over a box of rows, with something small at the heading's end, such as a count,
+/// and a note under the box.
+struct ToolDetailSection<Accessory: View, Content: View>: View {
+    let title: String
+    var footer: String?
+    @ViewBuilder let accessory: Accessory
+    @ViewBuilder let content: Content
+
+    init(_ title: String, footer: String? = nil, @ViewBuilder accessory: () -> Accessory, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.footer = footer
+        self.accessory = accessory()
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 8)
+                accessory
+            }
+            .padding(.horizontal, 2)
+            content
+            if let footer {
+                Text(footer)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 2)
+            }
+        }
+    }
+}
+
+extension ToolDetailSection where Accessory == EmptyView {
+    init(_ title: String, footer: String? = nil, @ViewBuilder content: () -> Content) {
+        self.init(title, footer: footer, accessory: { EmptyView() }, content: content)
+    }
+}
+
+/// Rows on a faint rounded box, as System Settings groups them.
+struct ToolDetailBox<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        VStack(alignment: .leading, spacing: 0) {
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.primary.opacity(0.035), in: shape)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(.separator))
+    }
+}
+
+/// A row that states one thing: a symbol, what it is, and a line about it.
+struct ToolDetailRow: View {
+    static let inset: CGFloat = 12
+    static let symbolWidth: CGFloat = 16
+
+    let symbol: String
+    let title: String
+    var detail: String?
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: symbol)
+                .foregroundStyle(.secondary)
+                .frame(width: Self.symbolWidth)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if let detail {
+                    Text(detail)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Self.inset)
+        .padding(.vertical, 9)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// One fact about a tool and a line on why, such as whether the incognito window has it.
+struct ToolFact {
+    let symbol: String
+    let value: String
+    let detail: String?
+}
+
+/// A fact in a box: what it is about at the leading edge, the fact at the trailing edge, and
+/// the line on why under both.
+struct ToolFactRow: View {
+    let label: String
+    let fact: ToolFact
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(label)
+                Spacer(minLength: 8)
+                Label(fact.value, systemImage: fact.symbol)
+                    .foregroundStyle(.secondary)
+            }
+            if let detail = fact.detail {
+                Text(detail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, ToolDetailRow.inset)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct ToolDetailDivider: View {
+    var body: some View {
+        Divider().opacity(0.6)
+    }
+}
+
+/// A small quiet label beside a name, such as "optional" or "Default".
+struct ToolDetailTag: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(.quaternary.opacity(0.8), in: .capsule)
     }
 }
 
@@ -369,19 +734,23 @@ struct PrivacyAccessView: View {
     let request: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Access to \(kind.title)").font(.headline)
-            Label(status.label, systemImage: status == .fullAccess ? "checkmark.circle" : "exclamationmark.circle")
-                .foregroundStyle(status == .fullAccess ? Color.secondary : Color.orange)
-            Text(explanation)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                if status == .notDetermined {
-                    Button("Ask for Access…", action: request)
-                }
-                Button("Open Privacy Settings") {
-                    NSWorkspace.shared.open(kind.systemSettingsURL)
+        ToolDetailSection("Access to \(kind.title)") {
+            ToolDetailBox {
+                VStack(alignment: .leading, spacing: 8) {
+                    ToolDetailRow(
+                        symbol: status == .fullAccess ? "checkmark.circle" : "exclamationmark.circle",
+                        title: status.label, detail: explanation)
+                    .foregroundStyle(status == .fullAccess ? Color.primary : Color.orange)
+                    HStack {
+                        if status == .notDetermined {
+                            Button("Ask for Access…", action: request)
+                        }
+                        Button("Open Privacy Settings") {
+                            NSWorkspace.shared.open(kind.systemSettingsURL)
+                        }
+                    }
+                    .padding(.leading, ToolDetailRow.inset + ToolDetailRow.symbolWidth + 10)
+                    .padding(.bottom, 10)
                 }
             }
         }

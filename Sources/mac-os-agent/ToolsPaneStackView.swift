@@ -31,12 +31,14 @@ struct ToolsPaneStackView: View {
             case .group(let group):
                 ToolListPane(group: group, model: model)
             case .tool(let tool, let group):
-                StackPane(title: Text(tool.name).font(.title3.monospaced()), subtitle: group.source.title) {
+                // Outer before inner: the group above the tool's name in it. The name the model
+                // calls, with the server's prefix, is in Parameters.
+                StackPane(scope: group.source.title, title: Text(tool.nameInGroup).font(.title3.monospaced().weight(.semibold))) {
                     ToolDetailSections(tool: tool, model: model)
                         .padding(20)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                // A new tool starts with its schema folded.
+                // Another tool starts with its own state, such as the Copy button's.
                 .id(tool.id)
             case nil:
                 Color.clear
@@ -195,7 +197,8 @@ struct ToolStackRow: View {
     var body: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(tool.name).font(.body.monospaced()).lineLimit(1)
+                // The group is the pane's title, so an MCP tool shows its name on its server.
+                Text(tool.nameInGroup).font(.body.monospaced()).lineLimit(1)
                 Text(tool.shortDescription)
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -209,7 +212,7 @@ struct ToolStackRow: View {
         .padding(.trailing, 16)
         .padding(.vertical, 10)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(goAhead != .never ? "\(tool.name), can ask for a go-ahead" : tool.name))
+        .accessibilityLabel(Text(goAhead != .never ? "\(tool.nameInGroup), can ask for a go-ahead" : tool.nameInGroup))
     }
 }
 

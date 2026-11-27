@@ -81,6 +81,8 @@ codesign --force --sign - "$BIN" 2>/dev/null
 
 DATA="$(mktemp -d)"
 trap 'rm -rf "$DATA"' EXIT
+# Stand-in MCP servers, which only MCP Servers and an MCP tool in Tools show.
+scripts/write-sample-mcp-data.sh "$DATA"
 FILES=()
 for state in "${STATES[@]}"; do
   IFS=: read -r kind name item <<<"$state"
