@@ -41,7 +41,7 @@ import SwiftUI
 /// Close and Discard in its top bar's menu or Command-W, discards its conversation, so Escape
 /// never closes it.
 @MainActor
-final class SummonPanel: NSPanel {
+final class SummonPanel: ActiveAppearancePanel {
     /// Which window this is.
     enum Role: Equatable {
         /// The main panel the hotkey and the menu bar icon toggle.

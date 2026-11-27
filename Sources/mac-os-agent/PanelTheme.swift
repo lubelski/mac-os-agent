@@ -356,6 +356,7 @@ private struct ThemedPanelRoot: ViewModifier {
             allowsGlass: model.usesGlass && !reduceTransparency)
         if drawsSurface {
             content
+                .alwaysAppearsActive()
                 .panelText(palette)
                 .environment(\.panelPalette, palette)
                 .panelSurface(
@@ -364,6 +365,7 @@ private struct ThemedPanelRoot: ViewModifier {
                 .background(WindowAppearance(fixed: theme.fixedAppearance))
         } else {
             content
+                .alwaysAppearsActive()
                 .panelText(palette)
                 .environment(\.panelPalette, palette)
                 .background(WindowAppearance(fixed: theme.fixedAppearance))
@@ -371,3 +373,17 @@ private struct ThemedPanelRoot: ViewModifier {
     }
 }
 
+
+extension View {
+    /// Draws the views inside as they look while their window has keyboard focus, whether or
+    /// not it has. The panel looks the same when the owner clicks another app (MAC-88): SwiftUI
+    /// otherwise draws controls in an unfocused window in their inactive look, with the accent
+    /// and the theme's tint gone gray from prominent buttons, toggles, and pickers.
+    ///
+    /// It covers what SwiftUI draws from `appearsActive`. Liquid Glass reads the window's own
+    /// active look instead, which `ActiveAppearancePanel` holds. Nothing in the app reads
+    /// `appearsActive` for behavior, so this changes looks only.
+    func alwaysAppearsActive() -> some View {
+        environment(\.appearsActive, true)
+    }
+}
