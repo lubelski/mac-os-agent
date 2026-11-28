@@ -3,7 +3,7 @@ import MacOSAgentCore
 import SwiftUI
 
 /// Settings, Tools, as a pane stack: the groups, a group's tools, and a tool's details, each
-/// sliding over the one before. Behind the pane stack experiment. See `PaneStackView`.
+/// sliding over the one before. See `PaneStackView`.
 struct ToolsPaneStackView: View {
     /// How much of the groups shows beside a group's tools.
     static let groupsStripWidth: CGFloat = 200

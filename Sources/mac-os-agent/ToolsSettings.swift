@@ -12,17 +12,12 @@ import SwiftUI
 @Observable
 final class ToolsSettingsModel {
     let groups: [ToolGroup]
-    /// The selected tool in the list beside a detail pane, the layout without the pane stack
-    /// experiment.
-    var selection: ToolSummary.ID?
-    /// Where the pane stack is, with the experiment on: `[group]` or `[group, tool]`. Kept here
-    /// so the stack and its scroll places last while the window is open.
+    /// Where the pane stack is: `[group]` or `[group, tool]`. Kept here so the stack and its
+    /// scroll places last while the window is open.
     let stack = PaneStackState()
     /// Which text a tool's details show, its description or its schema. Kept here, so moving
     /// from tool to tool keeps it while the window is open.
     var textTab: ToolTextTab = .description
-    /// Set by a preview that asks for the pane stack, which shows it whatever the preference says.
-    var paneStackOverride: Bool?
     /// The app's access to each kind of personal data the tools use, read again whenever the
     /// window comes forward, since the owner changes it in System Settings.
     private(set) var access: [PrivacyAccessKind: PrivacyAccessStatus] = [:]
@@ -38,7 +33,6 @@ final class ToolsSettingsModel {
 
     init(registry: ToolRegistry, access gate: any PrivacyAccessGate, mcpSettings: MCPSettingsStore? = nil) {
         groups = registry.groups
-        selection = groups.first?.tools.first?.id
         self.gate = gate
         self.mcpSettings = mcpSettings
         reloadAccess()
@@ -123,10 +117,6 @@ final class ToolsSettingsModel {
         }
     }
 
-    var selectedTool: ToolSummary? {
-        groups.lazy.flatMap(\.tools).first { $0.id == selection }
-    }
-
     /// Opens a tool's details, or a group's tools, in the pane stack, as `--preview-item` asks.
     /// An item that is not here changes nothing.
     func showInStack(_ item: String) {
@@ -139,182 +129,13 @@ final class ToolsSettingsModel {
     }
 }
 
-/// Settings, Tools: the pane stack with its experiment on, and a list beside a detail pane
-/// without it.
+/// Settings, Tools: the groups, a group's tools, and a tool's details, as a pane stack. See
+/// `ToolsPaneStackView`.
 struct ToolsSettingsView: View {
     @Bindable var model: ToolsSettingsModel
-    @AppStorage(Experiment.settingsPaneStack.key) private var paneStack = false
 
     var body: some View {
-        if model.paneStackOverride ?? paneStack {
-            ToolsPaneStackView(model: model)
-        } else {
-            ToolsListAndDetailView(model: model)
-        }
-    }
-}
-
-/// Every tool in one list beside the selected tool's detail.
-struct ToolsListAndDetailView: View {
-    @Bindable var model: ToolsSettingsModel
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                List(selection: $model.selection) {
-                    ForEach(model.groups) { group in
-                        Section {
-                            ForEach(group.tools) { tool in
-                                ToolRow(tool: tool, displayName: model.displayName(of: tool), goAhead: model.goAhead(of: tool))
-                                    .tag(tool.id).id(tool.id)
-                            }
-                        } header: {
-                            ToolGroupHeader(title: model.title(of: group), source: group.source)
-                        }
-                    }
-                }
-                .listStyle(.inset)
-                .scrollContentBackground(.hidden)
-                .task {
-                    // Waits a moment for the rows, then brings the selected tool into view, such
-                    // as an MCP tool at the end of the list.
-                    try? await Task.sleep(for: .milliseconds(100))
-                    if let selection = model.selection { proxy.scrollTo(selection, anchor: .center) }
-                }
-            }
-            .frame(width: 260)
-            Divider()
-            Group {
-                if let tool = model.selectedTool {
-                    ToolDetailView(tool: tool, model: model)
-                } else {
-                    ContentUnavailableView("No Tool Selected", systemImage: "wrench.and.screwdriver")
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-}
-
-/// A group's header in the list: its title, and for an MCP server its display name with its
-/// name in the file after it, monospaced and quieter, as MCP Servers shows it.
-struct ToolGroupHeader: View {
-    let title: String
-    let source: ToolSource
-
-    var body: some View {
-        if source.isMCPServer {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(title).lineLimit(1)
-                Text(source.title)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text("\(title), \(source.title)"))
-        } else {
-            Text(title)
-        }
-    }
-}
-
-/// A tool in the list. An MCP tool leads with its display name, with the name the model calls
-/// under it, monospaced and quieter, as in MCP Servers. A built-in tool has no display name
-/// and shows the name the model calls.
-struct ToolRow: View {
-    let tool: ToolSummary
-    var displayName: String?
-    let goAhead: ToolGoAhead
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            VStack(alignment: .leading, spacing: 2) {
-                if let displayName {
-                    Text(displayName).fontWeight(.medium).lineLimit(1)
-                    Text(tool.name)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                } else {
-                    Text(tool.name).font(.body.monospaced())
-                }
-                Text(tool.shortDescription)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 4)
-            if let mark {
-                Image(systemName: mark.symbol)
-                    .foregroundStyle(.secondary)
-                    .help(mark.text)
-                    .accessibilityLabel(mark.text)
-            }
-        }
-        .padding(.vertical, 2)
-    }
-}
-
-extension ToolRow {
-    /// The mark at the end of the row: the hand for a tool that can ask, and for an MCP tool
-    /// its saved choice, so Always allow and Always deny show in the list.
-    var mark: (symbol: String, text: String)? {
-        switch goAhead {
-        case .never: tool.mcp == nil ? nil : ("checkmark.circle", "Always allowed")
-        case .denied: ("nosign", "Always denied")
-        case .always where tool.mcp != nil: ("hand.raised", "Asks each time")
-        case .always, .sometimes: ("hand.raised", "Can ask for a go-ahead")
-        }
-    }
-}
-
-struct ToolDetailView: View {
-    let tool: ToolSummary
-    let model: ToolsSettingsModel
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                ToolTitle(tool: tool, scope: model.title(of: tool.source), displayName: model.displayName(of: tool))
-                ToolDetailSections(tool: tool, model: model)
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}
-
-/// A tool's name under the group it is in, outer before inner: the group as a quiet line, then
-/// the tool's name in that group, which leads. An MCP tool leads with its display name under
-/// its server's, with the name the model calls under it, monospaced. A built-in tool's name
-/// is the name the model calls, which is also in Parameters.
-struct ToolTitle: View {
-    let tool: ToolSummary
-    let scope: String
-    var displayName: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(scope)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            if let displayName {
-                Text(displayName)
-                    .font(.title2.weight(.semibold))
-                Text(tool.name)
-                    .font(.callout.monospaced())
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            } else {
-                Text(tool.nameInGroup)
-                    .font(.title2.monospaced().weight(.semibold))
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
+        ToolsPaneStackView(model: model)
     }
 }
 

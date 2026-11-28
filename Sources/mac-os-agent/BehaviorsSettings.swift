@@ -49,7 +49,6 @@ struct ExperimentsSettingsView: View {
     @AppStorage(Experiment.panelWithBarsAndInputPill.key) private var panelWithBars = false
     @AppStorage(Experiment.scripts.key) private var scripts = false
     @AppStorage(Experiment.settingsTools.key) private var settingsTools = false
-    @AppStorage(Experiment.settingsPaneStack.key) private var settingsPaneStack = false
     @AppStorage(Experiment.firstClickActsOnPanel.key) private var firstClickActsOnPanel = false
 
     /// An experiment's key (`Experiment.rawValue`) to scroll to when the section appears, for
@@ -92,10 +91,6 @@ struct ExperimentsSettingsView: View {
                 Toggle(isOn: $settingsTools) {
                     Text(Experiment.settingsTools.title)
                     Text("The agent can read and change MOA's own setup: its MCP servers and its experiments. Every change asks for your go-ahead first, and a server's environment values are never shown to it or taken from it. Its tools sit in a group behind find_tools and use_tool, so they cost the prompt a line. Takes effect at the next launch.")
-                }
-                Toggle(isOn: $settingsPaneStack) {
-                    Text(Experiment.settingsPaneStack.title)
-                    Text("Tools shows its groups, a group's tools, and a tool's details as panes that slide in from the right over each other, each leaving a strip of the one under it showing. History does the same with its episodes, an episode, and a command's input and output. Click a strip or press Escape to go back. Read-only, as both are today.")
                 }
                 Toggle(isOn: $firstClickActsOnPanel) {
                     Text(Experiment.firstClickActsOnPanel.title)

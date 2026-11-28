@@ -113,19 +113,6 @@ private struct NoPrivacyAccess: PrivacyAccessGate {
         #expect(await eventually { model.goAheadRevision > before })
     }
 
-    @Test func theToolListRowShowsAnMCPToolsSavedChoice() {
-        var mcp = ToolSummary(AskingTool())
-        mcp.mcp = MCPToolReference(server: "tasks", tool: "create_task", readOnly: false)
-        #expect(ToolRow(tool: mcp, goAhead: .always).mark?.text == "Asks each time")
-        #expect(ToolRow(tool: mcp, goAhead: .never).mark?.text == "Always allowed")
-        #expect(ToolRow(tool: mcp, goAhead: .denied).mark?.symbol == "nosign")
-        #expect(ToolRow(tool: mcp, goAhead: .denied).mark?.text == "Always denied")
-        // A built-in tool that never asks has no mark, as before.
-        let builtIn = ToolSummary(AskingTool())
-        #expect(ToolRow(tool: builtIn, goAhead: .never).mark == nil)
-        #expect(ToolRow(tool: builtIn, goAhead: .always).mark?.text == "Can ask for a go-ahead")
-    }
-
     @Test func theToolsPaneSetsEachOfTheThreeChoices() throws {
         defer { try? FileManager.default.removeItem(at: folder) }
         let store = MCPSettingsStore(file: folder.appending(path: "mcp-settings.json"))
