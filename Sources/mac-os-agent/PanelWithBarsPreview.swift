@@ -29,22 +29,28 @@ import MacOSAgentCore
 /// - `bars-links`: three task links above the pill. `bars-rest` is the same panel with none.
 /// - `bars-links-more`: five, so two go into the overflow menu at the row's end.
 /// - `bars-card-down`: "chr", with the match card open downward past the panel's bottom edge,
-///   in its own window. Captured with the backdrop, which covers both windows.
+///   in its own window, with room for every row. A render draws both windows.
+/// - `bars-card-short`: "c", with seven rows and room below for two, the fewest, so the card
+///   is shortened and scrolls, with the highlight moved to the fifth row.
 /// - `bars-card-up`: the same card opening upward over the end of the conversation, as it does
-///   with no room below, with three task links that it covers.
+///   with room below for fewer than two rows, as in slide over, with three task links that it
+///   covers.
 /// - `bars-card-slash`: the slash commands in the card, opening downward.
 @MainActor
 enum PanelWithBarsPreview {
     static let names = [
         "bars-rest", "bars-typing", "bars-long", "bars-match", "bars-slash", "bars-running", "bars-working-hover",
         "bars-queued", "bars-lines", "bars-lines-off", "bars-layout", "bars-layout-copy", "bars-scrolled", "bars-links",
-        "bars-links-more", "bars-card-down", "bars-card-up", "bars-card-slash",
+        "bars-links-more", "bars-card-down", "bars-card-short", "bars-card-up", "bars-card-slash",
     ]
+
+    /// The room below the panel for `bars-card-short`: two rows and the card's hairline.
+    static let shortCardRoom = MatchCard.rowHeight * 2 + MatchCard.reachBeyondRows
 
     /// The states whose card opens below the panel, in a window of its own, so a capture of the
     /// panel's window alone would leave it out.
     static func opensBelow(_ name: String) -> Bool {
-        name == "bars-card-down" || name == "bars-card-slash"
+        ["bars-card-down", "bars-card-short", "bars-card-slash"].contains(name)
     }
 
     static func session(named name: String) -> AgentSession? {
@@ -88,14 +94,23 @@ enum PanelWithBarsPreview {
             session.taskLinks = Array(links.prefix(3))
         case "bars-links-more":
             session.taskLinks = links
-        case "bars-slash", "bars-card-slash":
+        case "bars-slash":
             session.skillCommands = SkillCommandsModel(menu: FooterPreview.skills)
             session.draft = "/re"
+        case "bars-card-slash":
+            session.skillCommands = SkillCommandsModel(menu: FooterPreview.skills)
+            session.suggestionList.previewRoomBelow = 1000
+            session.draft = "/re"
         case "bars-card-down":
+            session.suggestionList.previewRoomBelow = 1000
             session.draft = "chr"
+        case "bars-card-short":
+            session.suggestionList.previewRoomBelow = shortCardRoom
+            session.draft = "c"
+            for _ in 0..<4 { _ = session.chooseInFooter(by: 1) }
         case "bars-card-up":
             session.taskLinks = Array(links.prefix(3))
-            session.suggestionList.previewOpensUpward = true
+            session.suggestionList.previewRoomBelow = 0
             session.draft = "chr"
         default:
             break

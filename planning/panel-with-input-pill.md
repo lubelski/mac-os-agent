@@ -37,8 +37,9 @@ A match opens the pill into a card that holds the field and an Alfred-style list
 - A match opens the pill into a card that holds the field and the list.
 - The list is there as soon as there is a match, with no key to open it.
 - The rows are Alfred's: an icon, a name, a second line, and Command numbers.
-- With room below, the card opens downward, past the panel's bottom edge. The panel does not resize.
-- With no room, as in slide over, the card opens upward over the end of the conversation, and covers the links.
+- The card always opens downward, past the panel's bottom edge. The panel does not resize.
+- With too little room below for every row, the list is shortened to the rows that fit, at least two, and scrolls.
+- With room for fewer than two rows, as in slide over, the card opens upward over the end of the conversation, and covers the links. See Open.
 - The selected row is a band from one edge of the card to the other, with no radius of its own. The card's corners clip it.
 - The rows are indented so their icons sit under the mark.
 
@@ -97,6 +98,8 @@ A match opens the pill into a card that holds the field and an Alfred-style list
 - Whether the logo also replaces the app icon, or is only the mark in the field.
 - The last row of the list reads "Ask the agent: …", since the agent has no name of its own. Whether it says something else beside a title of "MacOS Agent".
 - Whether the card shows a row under the pointer as the pointer moves over it. As built a click acts on a row and hovering changes nothing.
+- What the card does with room below for fewer than two rows: in slide over, which is the screen's full height, and with the panel at the very bottom of the screen. As built it opens upward over the conversation, since opening downward would put it off the screen or under the Dock. Moving the panel up to make room, or opening downward over the panel's own bottom, are the other ways.
+- Whether a shortened list shows that more rows are below or above it, and scrolls with the trackpad. As built its rows move only with the arrows, as the upward card's do, and nothing marks the hidden ones.
 
 ## What it changes when built
 

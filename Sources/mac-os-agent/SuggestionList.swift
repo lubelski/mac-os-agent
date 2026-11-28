@@ -43,17 +43,19 @@ final class SuggestionListState {
     /// How far the window has grown downward to hold the list. Set by the window only.
     var growth: CGFloat = 0
     /// With the panel with bars on: how far the match card may reach below the panel's bottom
-    /// edge, on the panel's screen, less a margin. Zero in slide over, while hidden or sliding,
+    /// edge, on the panel's screen, less a margin. The card is shortened to fit it, and opens
+    /// upward when it holds fewer than two rows. Zero in slide over, while hidden or sliding,
     /// and when the panel is at the bottom of the screen. Set by the window only.
     var roomBelow: CGFloat = 0
     /// With the panel with bars on: the room above the pill, up to the title bar, that the card
-    /// may cover when it opens upward. Set by the view.
+    /// may cover when it opens upward, with room below for fewer than two rows. Set by the view.
     var roomAbove: CGFloat = .greatestFiniteMagnitude
     /// With the panel with bars on: the pill's frame in the panel's content, top-left origin.
     /// Set by the view, read by the window to put the card's lower part under it.
     @ObservationIgnored var pillFrame: CGRect = .zero
-    /// For previews: the match card opens upward wherever the panel is.
-    @ObservationIgnored var previewOpensUpward = false
+    /// For previews: the room below the panel the match card has, wherever the panel is, in
+    /// place of the room on the screen it is drawn on.
+    @ObservationIgnored var previewRoomBelow: CGFloat?
     /// For previews and tests: the experiment's switch, in place of the preferences.
     @ObservationIgnored var forcedOn: Bool?
     /// Called after a key opened, moved, or closed the list, so the window grows or shrinks in
