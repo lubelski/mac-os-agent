@@ -14,8 +14,9 @@ import SwiftUI
 //   top, and the rest is `MatchCardWindow`, a child window under it, so the panel never moves or
 //   resizes and its frame never includes the card. The card covers the status line, so it
 //   carries the keys on its own last row. With too little room below for every row, the list
-//   is shortened to the rows that fit, at least two, and scrolls. See `MatchListFit`.
-// - With room below for fewer than two rows, as in slide over, the same card opens upward over
+//   is shortened to the whole rows that fit and part of the next, at least two and a part, and
+//   scrolls. See `MatchListFit` and `MatchListScroll`.
+// - With room below for less than that, as in slide over, the same card opens upward over
 //   the end of the conversation, inside the panel, with the field as its last line. Nothing in
 //   the conversation moves.
 //
@@ -35,9 +36,10 @@ enum MatchCard {
     /// column under the field's mark.
     static let rowIndent = PanelFrame.pillPadding
 
-    /// The part of a card that opens downward below the pill: the rows, a hairline, the keys.
-    static func heightBelowPill(rows: Int) -> CGFloat {
-        rows == 0 ? 0 : rowHeight * CGFloat(rows) + 1 + keysHeight
+    /// The part of a card that opens downward below the pill: the rows, and part of the next one
+    /// when the list is shortened, a hairline, the keys.
+    static func heightBelowPill(rows: Int, partRowHeight: CGFloat = 0) -> CGFloat {
+        rows == 0 ? 0 : rowHeight * CGFloat(rows) + partRowHeight + 1 + keysHeight
     }
 
     /// The part of a card that opens upward above the pill: the rows, and the hairline that
@@ -48,9 +50,12 @@ enum MatchCard {
 
     /// How far a card that opens downward reaches below the panel's bottom edge. It covers the
     /// status line under the pill first.
-    static func reachBelowPanel(rows: Int) -> CGFloat {
-        max(0, heightBelowPill(rows: rows) - InputFooter.height)
+    static func reachBelowPanel(rows: Int, partRowHeight: CGFloat = 0) -> CGFloat {
+        max(0, heightBelowPill(rows: rows, partRowHeight: partRowHeight) - InputFooter.height)
     }
+
+    /// The part row a shortened list ends in: 0.4 of a row, in whole points.
+    static let partRowHeight = MatchListFit.partRowHeight(rowHeight: rowHeight)
 
     /// How far a card that opens downward reaches below the panel's bottom edge besides its
     /// rows: the hairline and the keys, less the status line they cover.
@@ -63,7 +68,7 @@ enum MatchCard {
 
     /// How many rows a card that opens upward shows in the room above the pill: as many as
     /// fit, at least one. The rest come into view as the highlight reaches them. It opens upward
-    /// only with room below for fewer than two rows.
+    /// only with room below for less than two rows and a part.
     static func rowsAbove(_ count: Int, roomAbove: CGFloat) -> Int {
         guard count > 0 else { return 0 }
         let fits = ((roomAbove - 1) / rowHeight).rounded(.down)
@@ -81,8 +86,8 @@ enum MatchCard {
     /// The child window's frame for a card that opens downward: the pill's width, from the
     /// pill's bottom edge down. `pill` is in the panel's content with a top-left origin, and
     /// `content` is that content's frame on screen.
-    static func frameBelow(pill: CGRect, content: CGRect, rows: Int) -> CGRect {
-        let height = heightBelowPill(rows: rows)
+    static func frameBelow(pill: CGRect, content: CGRect, rows: Int, partRowHeight: CGFloat = 0) -> CGRect {
+        let height = heightBelowPill(rows: rows, partRowHeight: partRowHeight)
         return CGRect(x: content.minX + pill.minX, y: content.maxY - pill.maxY - height, width: pill.width, height: height)
     }
 
@@ -127,7 +132,7 @@ enum MatchCard {
 enum MatchCardSide: Equatable {
     /// Downward: the pill is the card's top, and the rows are in the child window below it.
     case below
-    /// Upward, with room below for fewer than two rows: the rows are over the end of the
+    /// Upward, with room below for less than two rows and a part: the rows are over the end of the
     /// conversation, and the pill is the card's bottom.
     case above
 }
@@ -139,8 +144,11 @@ extension AgentSession {
     }
 
     /// Which way the card opens now and how many rows show, or nil when there is no card.
+    /// Opening downward it is never taller than `MatchCard.visibleLimit` rows, so a longer list,
+    /// such as many slash commands, is shortened and scrolls even with room for all of it.
     var matchCardFit: MatchListFit? {
-        MatchCard.fit(rows: min(matchCardRows.count, MatchCard.visibleLimit), roomBelow: suggestionList.roomBelow)
+        let tallest = MatchCard.reachBelowPanel(rows: MatchCard.visibleLimit)
+        return MatchCard.fit(rows: matchCardRows.count, roomBelow: min(suggestionList.roomBelow, tallest))
     }
 
     /// Which way the card opens now, or nil when there is no card.
@@ -152,13 +160,22 @@ extension AgentSession {
         }
     }
 
-    /// How many rows the card shows at once. The rest come into view as the highlight reaches them.
+    /// How many whole rows the card shows at once. Opening downward, a shortened list shows part
+    /// of one more, `matchCardPartRowHeight`, and scrolls. Opening upward, the rest come into view
+    /// as the highlight reaches them.
     var matchCardVisibleRows: Int {
         switch matchCardFit {
-        case .below(let rows): rows
+        case .below(let rows, _): rows
         case .above: MatchCard.rowsAbove(min(matchCardRows.count, MatchCard.visibleLimit), roomAbove: suggestionList.roomAbove)
         case nil: 0
         }
+    }
+
+    /// How much of the row after the last whole one a card that opens downward shows: the part
+    /// row of a shortened list, or 0.
+    var matchCardPartRowHeight: CGFloat {
+        if case .below(_, let part) = matchCardFit { return part }
+        return 0
     }
 
     /// Command and a number, 1 to 9: runs that row of the card without moving the highlight
@@ -218,8 +235,9 @@ struct MatchCardEdge: View {
     }
 }
 
-/// The rows of the card: the visible window of them, moved along so the highlighted one is in
-/// view. Each is a full-bleed band when highlighted, which the card's corners clip.
+/// The rows of a card that opens upward: the visible window of them, moved along so the
+/// highlighted one is in view. Each is a full-bleed band when highlighted, which the card's
+/// corners clip. A card that opens downward scrolls instead, in `MatchCardScrollingRows`.
 struct MatchCardRows: View {
     let rows: [SuggestionRow]
     let highlight: Int
@@ -240,7 +258,83 @@ struct MatchCardRows: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(rows.first.map { if case .command = $0 { "Commands" } else { "Matches" } } ?? "")
+        .accessibilityLabel(MatchCard.listLabel(rows))
+    }
+}
+
+extension MatchCard {
+    /// What VoiceOver calls the list.
+    static func listLabel(_ rows: [SuggestionRow]) -> String {
+        rows.first.map { if case .command = $0 { "Commands" } else { "Matches" } } ?? ""
+    }
+}
+
+/// The rows of a card that opens downward, in a list that scrolls: with the trackpad, and with
+/// the arrows, which scroll it only as far as keeps the highlighted row whole, by
+/// `MatchListScroll`. A shortened list is `height` tall, whole rows and a part row, so a row cut
+/// off at an edge shows there are more. With room for every row it never scrolls.
+struct MatchCardScrollingRows: View {
+    let rows: [SuggestionRow]
+    let highlight: Int
+    /// The list's height as shown.
+    let height: CGFloat
+    /// How much of the rows past the highlighted one the arrows keep in view: the part row.
+    let margin: CGFloat
+    let incognito: Bool
+    var activate: (Int) -> Void = { _ in }
+
+    @State private var position: ScrollPosition
+    /// Where the list is scrolled to, as the trackpad or the arrows left it.
+    @State private var offset: CGFloat
+
+    init(
+        rows: [SuggestionRow], highlight: Int, height: CGFloat, margin: CGFloat, incognito: Bool,
+        activate: @escaping (Int) -> Void = { _ in }
+    ) {
+        self.rows = rows
+        self.highlight = highlight
+        self.height = height
+        self.margin = margin
+        self.incognito = incognito
+        self.activate = activate
+        let start = MatchListScroll.offset(
+            showing: highlight, from: 0, rowCount: rows.count, rowHeight: MatchCard.rowHeight, viewport: height, margin: margin)
+        _position = State(initialValue: ScrollPosition(y: start))
+        _offset = State(initialValue: start)
+    }
+
+    var body: some View {
+        ScrollView(.vertical) {
+            VStack(spacing: 0) {
+                ForEach(rows.indices, id: \.self) { index in
+                    MatchCardRowView(
+                        row: rows[index], highlighted: index == highlight,
+                        key: MatchCard.key(for: rows[index], at: index, highlight: highlight),
+                        incognito: incognito)
+                        .contentShape(.rect)
+                        .onTapGesture { activate(index) }
+                }
+            }
+        }
+        .scrollPosition($position)
+        .scrollBounceBehavior(.basedOnSize)
+        .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }, action: { _, new in offset = new })
+        .frame(height: height)
+        .onChange(of: highlight) { reveal() }
+        .onChange(of: rows) { reveal() }
+        .onChange(of: height) { reveal() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(MatchCard.listLabel(rows))
+    }
+
+    /// Scrolls just far enough that the highlighted row is whole, with a part row past it.
+    private func reveal() {
+        let target = MatchListScroll.offset(
+            showing: highlight, from: offset, rowCount: rows.count, rowHeight: MatchCard.rowHeight, viewport: height,
+            margin: margin)
+        guard target != offset else { return }
+        offset = target
+        position.scrollTo(y: target)
     }
 }
 
@@ -368,8 +462,8 @@ struct MatchCardIcon: View {
     }
 }
 
-/// The part of a card that opens upward, with room below for fewer than two rows: its rows over
-/// the end of the conversation, with the card's top corners and the hairline that joins them to
+/// The part of a card that opens upward, with room below for less than two rows and a part: its
+/// rows over the end of the conversation, with the card's top corners and the hairline that joins them to
 /// the field. Drawn by the panel.
 struct MatchCardAbove: View {
     let session: AgentSession
@@ -397,9 +491,11 @@ struct MatchCardBelow: View {
     var body: some View {
         let shape = MatchCard.shape(top: false, bottom: true)
         VStack(spacing: 0) {
-            MatchCardRows(
-                rows: session.matchCardRows, highlight: session.highlightedRowIndex, visible: session.matchCardVisibleRows,
-                incognito: session.isIncognito, activate: session.activateSuggestionRow)
+            MatchCardScrollingRows(
+                rows: session.matchCardRows, highlight: session.highlightedRowIndex,
+                height: MatchCard.rowHeight * CGFloat(session.matchCardVisibleRows) + session.matchCardPartRowHeight,
+                margin: session.matchCardPartRowHeight, incognito: session.isIncognito,
+                activate: session.activateSuggestionRow)
             MatchCardSeam()
             InputFooter(
                 content: .make(

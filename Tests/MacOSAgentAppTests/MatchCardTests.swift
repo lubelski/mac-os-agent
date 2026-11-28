@@ -20,17 +20,23 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
 /// The match card's measures, which way it opens, and its keys. See `MatchCard`.
 @MainActor
 @Suite struct MatchCardGeometryTests {
-    @Test func itOpensDownwardShortenedToTheRoomAndNeverBelowTwoRows() {
+    @Test func itOpensDownwardShortenedToTheRoomAndNeverBelowTwoRowsAndAPart() {
         let rows = 4
+        let part = MatchCard.partRowHeight
+        #expect(part == 17, "0.4 of a 44 point row")
         let reach = MatchCard.reachBelowPanel(rows: rows)
         // The card covers the status line first, then reaches past the panel's edge.
         #expect(reach == MatchCard.heightBelowPill(rows: rows) - InputFooter.height)
         #expect(MatchCard.heightBelowPill(rows: rows) == 4 * 44 + 1 + InputFooter.height)
+        #expect(MatchCard.heightBelowPill(rows: 2, partRowHeight: part) == 2 * 44 + 17 + 1 + InputFooter.height)
         #expect(reach == MatchCard.rowHeight * 4 + MatchCard.reachBeyondRows)
-        #expect(MatchCard.fit(rows: rows, roomBelow: reach) == .below(rows: 4))
-        #expect(MatchCard.fit(rows: rows, roomBelow: reach - 1) == .below(rows: 3), "shortened, and it scrolls")
-        #expect(MatchCard.fit(rows: rows, roomBelow: MatchCard.reachBelowPanel(rows: 2)) == .below(rows: 2))
-        #expect(MatchCard.fit(rows: rows, roomBelow: MatchCard.reachBelowPanel(rows: 2) - 1) == .above, "fewer than two")
+        #expect(MatchCard.fit(rows: rows, roomBelow: reach) == .below(rows: 4, partRowHeight: 0))
+        #expect(MatchCard.fit(rows: rows, roomBelow: reach - 1) == .below(rows: 3, partRowHeight: part), "shortened, and it scrolls")
+        let fewest = MatchCard.reachBelowPanel(rows: 2, partRowHeight: part)
+        #expect(MatchCard.fit(rows: 7, roomBelow: fewest) == .below(rows: 2, partRowHeight: part))
+        #expect(MatchCard.fit(rows: 7, roomBelow: MatchCard.reachBelowPanel(rows: 3, partRowHeight: part)) == .below(rows: 3, partRowHeight: part))
+        #expect(MatchCard.fit(rows: 7, roomBelow: fewest - 1) == .above, "less than two and a part")
+        #expect(MatchCard.fit(rows: 7, roomBelow: MatchCard.reachBelowPanel(rows: 2)) == .above, "two whole rows are not enough")
         #expect(MatchCard.fit(rows: 0, roomBelow: 1000) == nil, "no rows, no card")
     }
 
@@ -313,36 +319,81 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
         #expect(rows > 2, "the stand-in apps match more than fit in some of these rooms")
         let available = room - SummonPanel.footerGrowthMargin
         let fits = Int(((available - MatchCard.reachBeyondRows) / MatchCard.rowHeight).rounded(.down))
-        if fits >= 2 {
+        let wholeBesidesPart = Int(((available - MatchCard.reachBeyondRows - MatchCard.partRowHeight) / MatchCard.rowHeight).rounded(.down))
+        if fits >= rows {
             #expect(session.matchCardSide == .below)
-            #expect(session.matchCardVisibleRows == min(rows, fits))
-            session.suggestionList.pillFrame = CGRect(x: 8, y: 500 - 26 - 38, width: 624, height: 38)
-            let card = try #require(panel.matchCardFrame)
-            #expect(card.minY >= laptop.minY + SummonPanel.footerGrowthMargin, "it ends inside the screen")
+            #expect(session.matchCardVisibleRows == rows)
+            #expect(session.matchCardPartRowHeight == 0)
+        } else if wholeBesidesPart >= 2 {
+            #expect(session.matchCardSide == .below)
+            #expect(session.matchCardVisibleRows == wholeBesidesPart)
+            #expect(session.matchCardPartRowHeight == MatchCard.partRowHeight, "ends in a part row")
         } else {
             #expect(session.matchCardSide == .above)
             #expect(panel.matchCardFrame == nil)
         }
+        if session.matchCardSide == .below {
+            session.suggestionList.pillFrame = CGRect(x: 8, y: 500 - 26 - 38, width: 624, height: 38)
+            let card = try #require(panel.matchCardFrame)
+            #expect(card.minY >= laptop.minY + SummonPanel.footerGrowthMargin, "it ends inside the screen")
+            #expect(card.height == MatchCard.heightBelowPill(rows: session.matchCardVisibleRows, partRowHeight: session.matchCardPartRowHeight))
+        }
         #expect(panel.panelFrame.minY == laptop.minY + room, "the panel never moves")
     }
 
-    /// In the shortened card, the arrows move the rows along so the highlighted one stays in view.
-    @Test func theShortenedCardKeepsTheHighlightInView() throws {
-        let room = SummonPanel.footerGrowthMargin + MatchCard.reachBelowPanel(rows: 2)
+    /// In the shortened card, the arrows scroll the list so the highlighted row is always whole,
+    /// down to the Ask row and back up, with part of the next row showing past it.
+    @Test func theShortenedCardKeepsTheHighlightWhole() throws {
+        let room = SummonPanel.footerGrowthMargin + MatchCard.reachBelowPanel(rows: 2, partRowHeight: MatchCard.partRowHeight)
         let (panel, session, defaults) = try makePanel(frame: CGRect(x: 300, y: laptop.minY + room, width: 640, height: 500))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         session.draft = "chr"
         panel.updateFooterGrowth()
         #expect(session.matchCardSide == .below)
         #expect(session.matchCardVisibleRows == 2)
+        #expect(session.matchCardPartRowHeight == MatchCard.partRowHeight)
         let count = session.matchCardRows.count
-        for step in 0..<count {
-            let shown = CommandHint.window(count: count, selection: session.highlightedRowIndex, limit: session.matchCardVisibleRows)
-            #expect(shown.count == 2)
-            #expect(shown.contains(session.highlightedRowIndex), "row \(step) in view")
+        #expect(count > 3, "more rows than show")
+        let viewport = 2 * MatchCard.rowHeight + MatchCard.partRowHeight
+        var offset: CGFloat = 0
+        func check(_ label: String) {
+            let index = session.highlightedRowIndex
+            offset = MatchListScroll.offset(
+                showing: index, from: offset, rowCount: count, rowHeight: MatchCard.rowHeight, viewport: viewport,
+                margin: session.matchCardPartRowHeight)
+            #expect(MatchListScroll.isWhole(index, offset: offset, rowHeight: MatchCard.rowHeight, viewport: viewport), "\(label) row \(index)")
+            if index < count - 1 {
+                #expect(offset + viewport > CGFloat(index + 1) * MatchCard.rowHeight, "part of the row after \(index) shows")
+            }
+        }
+        for _ in 0..<count {
+            check("down")
             _ = session.chooseInFooter(by: 1)
         }
         #expect(session.highlightedRow == .ask("chr"), "the Ask row last")
+        #expect(offset == CGFloat(count) * MatchCard.rowHeight - viewport, "scrolled to the end")
+        for _ in 0..<count {
+            check("up")
+            _ = session.chooseInFooter(by: -1)
+        }
+        #expect(session.highlightedRowIndex == 0)
+        #expect(offset == 0, "back at the top")
+    }
+
+    /// Many slash commands never make the card taller than its limit: the list is shortened, ends
+    /// in a part row, and scrolls, even with room for all of it.
+    @Test func aListLongerThanTheLimitIsShortened() throws {
+        let (panel, session, defaults) = try makePanel()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        session.skillCommands = SkillCommandsModel(menu: SlashCommandMenu(skills: (1...12).map {
+            SkillCommand(name: "skill-\($0)", description: "A stand-in skill.", folderName: "skill-\($0)")
+        }))
+        session.draft = "/"
+        panel.updateFooterGrowth()
+        #expect(session.matchCardRows.count > MatchCard.visibleLimit)
+        #expect(session.matchCardSide == .below)
+        #expect(session.matchCardVisibleRows == MatchCard.visibleLimit - 1)
+        #expect(session.matchCardPartRowHeight == MatchCard.partRowHeight)
     }
 
     @Test func aHiddenPanelLeavesNoRoomAndNoCard() throws {

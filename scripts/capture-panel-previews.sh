@@ -55,7 +55,7 @@ while [[ "${1:-}" == --* ]]; do
       elif [[ "$2" == "instant" ]]; then
         STATES=(instant-one instant-several)
       elif [[ "$2" == "bars" ]]; then
-        STATES=(bars-rest bars-typing bars-long bars-match bars-slash bars-running bars-working-hover bars-queued bars-lines bars-lines-off bars-links bars-links-more bars-card-down bars-card-short bars-card-up bars-card-slash)
+        STATES=(bars-rest bars-typing bars-long bars-match bars-slash bars-running bars-working-hover bars-queued bars-lines bars-lines-off bars-links bars-links-more bars-card-down bars-card-short-top bars-card-short bars-card-short-end bars-card-up bars-card-slash)
       else
         read -r -a STATES <<<"$2"
       fi

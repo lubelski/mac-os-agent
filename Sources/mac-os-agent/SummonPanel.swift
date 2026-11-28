@@ -1002,6 +1002,7 @@ final class SummonPanel: ActiveAppearancePanel {
             _ = session.suggestionListHeight
             _ = session.matchCardSide
             _ = session.matchCardVisibleRows
+            _ = session.matchCardPartRowHeight
         } onChange: { [weak self] in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
@@ -1017,7 +1018,7 @@ final class SummonPanel: ActiveAppearancePanel {
 
     /// Keeps the room below the panel that the match card opens into current. The card is
     /// shortened to fit it. None in slide over, while hidden, and while sliding, so the card
-    /// opens upward then, as it does with room for fewer than two rows.
+    /// opens upward then, as it does with room for less than two rows and a part.
     private func updateMatchCardRoom() {
         var room: CGFloat = 0
         if isPresented, slide == nil, let visible = currentScreen()?.visible {
@@ -1034,7 +1035,8 @@ final class SummonPanel: ActiveAppearancePanel {
         let pill = session.suggestionList.pillFrame
         guard pill.width > 0, pill.height > 0 else { return nil }
         let content = host.frame.offsetBy(dx: frame.minX, dy: frame.minY)
-        return MatchCard.frameBelow(pill: pill, content: content, rows: session.matchCardVisibleRows)
+        return MatchCard.frameBelow(
+            pill: pill, content: content, rows: session.matchCardVisibleRows, partRowHeight: session.matchCardPartRowHeight)
     }
 
     /// Shows the part of the match card below the panel, under the pill, while there is a card
