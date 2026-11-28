@@ -8,6 +8,9 @@ struct RowView: View {
     /// The command line a shell call ran, by call id, for Copy Command. Read only when the
     /// owner copies, so drawing a row never parses a call's arguments.
     var commandOfCall: (String) -> String? = { _ in nil }
+    /// The words a call's row leads with when they are more than its first word, by call id,
+    /// such as an MCP tool's display name.
+    var leadOfCall: (String) -> String? = { _ in nil }
 
     var body: some View {
         switch row.kind {
@@ -19,8 +22,8 @@ struct RowView: View {
             AgentMessage(text: text)
         case .tool(let command, let status, let output):
             ToolLine(
-                callID: row.id, summary: command, state: ToolCallState(status: status, output: output), output: output,
-                commandOfCall: commandOfCall)
+                callID: row.id, summary: command, lead: leadOfCall(row.id), state: ToolCallState(status: status, output: output),
+                output: output, commandOfCall: commandOfCall)
         case .notice(let text):
             StatusLine(text: text, isError: false)
         case .error(let text):
@@ -231,6 +234,8 @@ struct ToolLine: View {
     let callID: String
     /// The tool's one-line summary of the call. Empty while the model is still writing it.
     let summary: String
+    /// The words the summary leads with when they are more than its first word.
+    var lead: String?
     let state: ToolCallState
     let output: String?
     let commandOfCall: (String) -> String?
@@ -323,7 +328,7 @@ struct ToolLine: View {
             // It never ran, so it reads as struck out.
             Text(verbatim: ToolSignal.cleanSummary(summary)).strikethrough().foregroundStyle(.tertiary)
         } else {
-            ToolSignal.text(for: summary)
+            ToolSignal.text(for: summary, lead: lead)
         }
     }
 }

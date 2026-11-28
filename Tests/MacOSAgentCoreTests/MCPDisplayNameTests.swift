@@ -402,6 +402,25 @@ private let addAlert = MCPToolInfo(
         #expect(ToolCallSummaries.builtIn.summary(of: call("notes__search_notes")) == "notes__search_notes")
     }
 
+    @Test func aRowLeadsWithTheWholeDisplayName() throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let pool = weatherPool(folder)
+        try pool.settings.setToolDisplayName("Five-Day Forecast", server: "weather", tool: "get_forecast")
+        let transcript = Transcript(entries: thread([call("weather__get_forecast")]), summaries: ToolCallSummaries(pool.makeTools(), showsDisplayNames: true))
+        let lead = try #require(transcript.summaryLead("call_1"))
+        #expect(lead == "Five-Day Forecast")
+        let command = try #require(commands(transcript).first)
+        #expect(ToolSignal.summary(command, lead: lead, home: "/Users/placeholder") == [
+            .init(.text, "Five-Day Forecast"), .init(.dim, " on Weather: city Lisbon"),
+        ])
+        // A lead the summary does not start with is ignored, and the first word leads.
+        #expect(ToolSignal.summary("Bash ls", lead: "Five", home: "/Users/placeholder").first == .init(.text, "Bash"))
+        #expect(ToolSignal.summary("Five-Day", lead: "Five", home: "/Users/placeholder") == [.init(.text, "Five-Day")])
+        // Without display names, a row has no lead.
+        #expect(Transcript(entries: thread([call("weather__get_forecast")]), summaries: ToolCallSummaries(pool.makeTools())).summaryLead("call_1") == nil)
+    }
+
     @Test func aRenameReachesRowsDrawnBeforeIt() throws {
         let folder = try Folder()
         defer { folder.remove() }

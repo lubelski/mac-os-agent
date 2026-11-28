@@ -407,6 +407,12 @@ public struct Transcript: Equatable, Sendable {
             facts: toolFacts[callID] ?? ToolCallFacts())
     }
 
+    /// The words a call's row leads with when they are more than its first word, such as an MCP
+    /// tool's display name. Nil for most calls, whose first word leads.
+    public func summaryLead(_ callID: String) -> String? {
+        toolFacts[callID]?.call.flatMap { summaries.displayLead(of: $0) }
+    }
+
     /// The ids of every tool call, oldest first, for moving between them in the inspector.
     public var toolCallIDs: [String] {
         rows.compactMap { $0.isTool ? $0.id : nil }

@@ -107,6 +107,15 @@ public struct ToolCallSummaries: Sendable {
         displaySummary(name: call.name, arguments: call.arguments)
     }
 
+    /// The words a call's row leads with when they are more than its first word: an MCP tool's
+    /// display name, with `showsDisplayNames` on. Nil for any other call.
+    public func displayLead(of call: ThreadItem.ToolCall) -> String? {
+        guard showsDisplayNames else { return nil }
+        if let tool = tools[call.name] { return (tool as? MCPTool)?.displayNames.tool }
+        guard Self.formerNames[call.name] == nil, let parts = MCPTool.parts(ofCallName: call.name) else { return nil }
+        return HumanizedName.from(parts.tool)
+    }
+
     func displaySummary(name: String, arguments: String) -> String? {
         guard showsDisplayNames else { return nil }
         let parsed = JSONValue.parse(arguments) ?? .object([:])

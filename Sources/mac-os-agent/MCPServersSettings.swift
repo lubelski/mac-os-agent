@@ -475,7 +475,7 @@ struct MCPToolPane: View {
             subtitle: tool.name, subtitleIsCode: true
         ) {
             VStack(alignment: .leading, spacing: 22) {
-                ToolDetailSection("Display Name", footer: "Shown only here in Settings. The agent still calls it \(tool.name).") {
+                ToolDetailSection("Display Name", footer: "Shown wherever the app names this tool for you. The agent still calls it \(tool.name).") {
                     MCPDisplayNameField(
                         defaultName: HumanizedName.from(mcp.tool), override: model.displayNameOverride(of: mcp),
                         label: "Display name for \(tool.name)"
@@ -618,7 +618,7 @@ struct MCPServerDetailsTab: View {
                         defaultName: HumanizedName.from(entry.name), override: model.displayNameOverride(of: entry.name),
                         label: "Display name for \(entry.name)"
                     ) { model.setDisplayName($0, of: entry.name) }
-                    Text("Shown only here in Settings. The agent still sees \(entry.name) in each of its tools' names.")
+                    Text("Shown wherever the app names this server for you. The agent still sees \(entry.name) in each of its tools' names.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
