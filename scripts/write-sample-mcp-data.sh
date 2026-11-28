@@ -9,6 +9,8 @@
 # files' write_file is set to always deny, and weather's get_forecast is read-only, so it is
 # always allowed. tracker's create_attachment has a long description with shell and
 # PowerShell lines, taken from a public tool description, the way a real server's can be.
+# example has 40 invented tools, for a long list. drafts is turned off and has never
+# connected, so it has no tools at all.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -24,13 +26,28 @@ cat > "$DATA/mcp-servers.json" <<'JSON'
     "calendar-sync": { "command": "/usr/local/bin/calendar-sync-mcp" },
     "clock": { "command": "npx", "args": ["-y", "@example/clock-mcp"] },
     "tracker": { "command": "npx", "args": ["-y", "@example/tracker-mcp"] },
+    "example": { "command": "npx", "args": ["-y", "@example/workspace-mcp"], "env": { "EXAMPLE_TOKEN": "placeholder", "EXAMPLE_WORKSPACE": "placeholder" } },
+    "drafts": { "command": "npx", "args": ["-y", "@example/drafts-mcp"] },
     "my server": { "command": "npx", "args": ["my-server"] }
   }
 }
 JSON
-printf '{"disabled":["calendar-sync"],"goAhead":{"files":{"write_file":"deny"}}}\n' > "$DATA/mcp-settings.json"
+printf '{"disabled":["calendar-sync","drafts"],"goAhead":{"files":{"write_file":"deny"}}}\n' > "$DATA/mcp-settings.json"
 
 jq -n --rawfile attachment Tests/MacOSAgentCoreTests/Fixtures/tool-description-create-attachment.txt '
+# example: each of five verbs on each of eight things, 40 tools. Listing and getting are read-only.
+def example_tools:
+  [ ["list", "Lists the", "in the example workspace. Results come back in pages of 50, newest first, with a cursor for the next page.", true],
+    ["get", "Gets one of the", "by its ID.", true],
+    ["create", "Creates one of the", "and returns its ID.", false],
+    ["update", "Changes one of the", ". Fields that are left out are kept as they are.", false],
+    ["archive", "Archives one of the", ". It can be restored for 30 days.", false] ] as $verbs
+  | ["projects", "tasks", "notes", "labels", "comments", "files", "teams", "views"] as $things
+  | [ $things[] as $thing | $verbs[] as $verb
+      | { name: "\($verb[0])_\($thing)",
+          description: ("\($verb[1]) \($thing)" + (if ($verb[2] | startswith(".")) then "" else " " end) + $verb[2]),
+          readOnly: $verb[3],
+          inputSchema: { type: "object", properties: { id: { type: "string" } } } } ];
 {
   "servers": {
     "weather": { "updated": "2026-11-21T09:00:00Z", "tools": [
@@ -51,6 +68,7 @@ jq -n --rawfile attachment Tests/MacOSAgentCoreTests/Fixtures/tool-description-c
     "calendar-sync": { "updated": "2026-11-19T08:00:00Z", "tools": [
       { "name": "sync_now", "description": "Sync the calendars now.", "readOnly": false, "inputSchema": { "type": "object" } }
     ] },
+    "example": { "updated": "2026-11-25T10:00:00Z", "tools": example_tools },
     "tracker": { "updated": "2026-11-24T16:00:00Z", "tools": [
       { "name": "create_attachment", "description": ($attachment | rtrimstr("\n")), "readOnly": false,
         "inputSchema": { "type": "object", "additionalProperties": false, "properties": {
