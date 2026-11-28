@@ -182,6 +182,16 @@ private let addAlert = MCPToolInfo(
         #expect(MCPServerSummary.resolve(entry: plain, info: nil) == nil)
     }
 
+    @Test func aServerRowsThirdLineIsItsDescriptionOrAPlaceholder() {
+        let described = MCPServerRowDescription(MCPServerSummary(text: "Forecasts for my trips.", source: .file))
+        #expect(described.text == "Forecasts for my trips.")
+        #expect(!described.isPlaceholder)
+        let plain = MCPServerRowDescription(nil)
+        #expect(plain == .placeholder)
+        #expect(plain.text == "No description")
+        #expect(plain.isPlaceholder)
+    }
+
     @Test func whatAServerSaysAboutItselfIsKeptWithItsTools() async throws {
         let folder = try Folder()
         defer { folder.remove() }

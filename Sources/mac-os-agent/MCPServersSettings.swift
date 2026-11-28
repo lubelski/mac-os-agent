@@ -327,8 +327,9 @@ extension MCPServerStatus {
     }
 }
 
-/// A server in the list, in three lines: its display name, which leads, then its name in the
-/// file with its state for this run, then what it is for, when that is known.
+/// A server in the list, in three lines of one line each, so every row has the same height: its
+/// display name, which leads, then its name in the file with its state for this run, then what it
+/// is for, or a placeholder when that is not known.
 struct MCPServerRow: View {
     let status: MCPServerStatus
     let displayName: String
@@ -358,13 +359,16 @@ struct MCPServerRow: View {
                     .font(.caption)
                 }
                 .foregroundStyle(.secondary)
-                if let summary = status.summary {
-                    Text(summary.text)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .help(summary.text)
-                }
+                // Always one line, so every row has the same height: the description cut at its
+                // end, or a quieter placeholder in italics when there is none.
+                let description = MCPServerRowDescription(status.summary)
+                Text(description.text)
+                    .font(.caption)
+                    .italic(description.isPlaceholder)
+                    .foregroundStyle(description.isPlaceholder ? .tertiary : .secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(description.isPlaceholder ? "" : description.text)
             }
             Spacer(minLength: 4)
             Image(systemName: status.stateSymbol)

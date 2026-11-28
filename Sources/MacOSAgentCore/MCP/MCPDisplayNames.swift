@@ -124,3 +124,25 @@ public struct MCPServerSummary: Sendable, Equatable {
         return nil
     }
 }
+
+/// The third line of a server's row in Settings: its description, or a placeholder when it has
+/// none. The line is always there, so every row has the same three lines and the same height.
+public enum MCPServerRowDescription: Sendable, Equatable {
+    case description(String)
+    case placeholder
+
+    public static let placeholderText = "No description"
+
+    public init(_ summary: MCPServerSummary?) {
+        self = summary.map { .description($0.text) } ?? .placeholder
+    }
+
+    public var text: String {
+        switch self {
+        case .description(let text): text
+        case .placeholder: Self.placeholderText
+        }
+    }
+
+    public var isPlaceholder: Bool { self == .placeholder }
+}
