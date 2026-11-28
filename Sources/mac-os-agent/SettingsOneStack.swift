@@ -178,12 +178,13 @@ struct SettingsSectionListPane: View {
                     Image(systemName: section.symbolName)
                 }
                 // The row's whole width and height, so a click anywhere on it in the strip finds
-                // it. The List's own rows are 32 points apart, and the label is about 21 tall.
+                // it. The List's rows are about 32 points apart, and a label is 17 to 24 tall by
+                // its icon, so each reaches 8 points up and down, and the rows' places meet.
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background {
                     Color.clear
                         .anchorPreference(key: PaneItemAnchors.self, value: .bounds) { [section.rawValue: $0] }
-                        .padding(.vertical, -5.5)
+                        .padding(.vertical, -8)
                 }
                 .tag(section)
                 .listRowBackground(
