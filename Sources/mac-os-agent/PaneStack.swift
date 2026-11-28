@@ -141,8 +141,10 @@ struct PaneStackView<Pane: View>: View {
         .background {
             // Escape closes one pane. With only the base showing there is no button, so Escape
             // means what it meant before.
-            if let back = escape(state.path) {
-                Button("Back") { change { $0 = back } }
+            // The pane it closes is worked out when the key is pressed, from the path then, so
+            // a press before the stack draws again still closes the top pane.
+            if escape(state.path) != nil {
+                Button("Back") { change { if let back = escape($0) { $0 = back } } }
                     .keyboardShortcut(.cancelAction)
                     .opacity(0)
                     .frame(width: 0, height: 0)
