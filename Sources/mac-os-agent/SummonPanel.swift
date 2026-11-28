@@ -36,6 +36,12 @@ import SwiftUI
 /// below. The growth is never part of `panelFrame`, so nothing that remembers or reasons about
 /// the panel's place sees it.
 ///
+/// With the panel with bars on, the match card always opens downward, in a window of its own
+/// below the panel. Where there is too little room below for it, the panel makes room for a
+/// while: a centered panel moves up, and a slide over panel's bottom edge rises. It goes back
+/// when the field is cleared or sent, or the panel hides, and the place the owner left it in is
+/// never saved over. See the match card section below.
+///
 /// The incognito window is the same panel with the `.incognito` role. It has no layouts and
 /// no slide, keeps nothing about its place, and opens beside the main panel. Closing it, with
 /// Close and Discard in its top bar's menu or Command-W, discards its conversation, so Escape
@@ -180,6 +186,34 @@ final class SummonPanel: ActiveAppearancePanel {
     private var matchCardWindow: MatchCardWindow?
     /// The preferences the panel's content reads, which the match card's window reads too.
     private let contentPreferences: UserDefaults
+    /// How the panel moved to make room for the match card below it, until it goes back. See
+    /// `updateMatchCardMove()`.
+    private var matchCardMove: MatchCardMove?
+    /// True once the owner moved or resized the panel while the match card was open, so the
+    /// panel does not move for the card again until the field is cleared or the panel hides.
+    private var matchCardMoveIsHeld = false
+    /// The panel's way to or from the place it moved to for the match card, while under way.
+    private(set) var matchCardMotion: MatchListRoom.Motion?
+    private var matchCardDisplayLink: CADisplayLink?
+    private var lastMatchCardFrameTime: CFTimeInterval?
+    /// For a render: draw the bottom of the screen's visible area under the panel, so a render
+    /// shows where the panel and its match card are on the screen.
+    var rendersScreenBottom = false
+
+    /// A move the panel made to make room for the match card.
+    private struct MatchCardMove {
+        /// The window's frame before it moved, which a centered panel goes back to.
+        var restingFrame: CGRect
+        /// The glass's frame it moved to.
+        var movedGlass: CGRect
+        /// True for a slide over panel, whose bottom edge rose. Its place is still its edge at the
+        /// full height, so `panelFrame` reaches down to `restingFrame.minY` the whole time.
+        var isPinned: Bool
+        /// The content size limits from before. A slide over panel's hold its height, so they
+        /// are set to the shorter height while it is shortened.
+        var contentMinSize: NSSize
+        var contentMaxSize: NSSize
+    }
 
     /// - Parameters:
     ///   - role: the main panel, or the incognito window. The incognito window never reads or
@@ -368,11 +402,19 @@ final class SummonPanel: ActiveAppearancePanel {
     /// the edge side, and less the room it grew downward for the list under the text field.
     /// Everything that remembers or reasons about the panel's place reads this, so the growth
     /// reaches none of it.
+    ///
+    /// A slide over panel whose bottom edge rose for the match card still reads as reaching the
+    /// bottom of the screen here, since that is its place. A centered panel that moved up for it
+    /// reads where it is, so what follows it, such as the inspector, moves with it.
     var panelFrame: CGRect {
         var glass = frame
         if footerGrowth > 0 {
             glass.origin.y += footerGrowth
             glass.size.height -= footerGrowth
+        }
+        if let matchCardMove, matchCardMove.isPinned {
+            glass.size.height = glass.maxY - matchCardMove.restingFrame.minY
+            glass.origin.y = matchCardMove.restingFrame.minY
         }
         guard let inset else { return glass }
         glass.size.width -= inset.width
@@ -381,9 +423,19 @@ final class SummonPanel: ActiveAppearancePanel {
     }
 
     /// Where the glass is drawn now, in screen coordinates. Away from `panelFrame` only while
-    /// it slides.
+    /// it slides, and while a slide over panel's bottom edge is raised for the match card.
     var glassFrameOnScreen: CGRect {
         host.frame.offsetBy(dx: frame.minX, dy: frame.minY)
+    }
+
+    /// The glass's frame when it is not sliding: `panelFrame`, with a slide over panel's bottom
+    /// edge where it is now.
+    private var glassFrameInPlace: CGRect {
+        var glass = panelFrame
+        guard let matchCardMove, matchCardMove.isPinned else { return glass }
+        glass.size.height = glass.maxY - frame.minY
+        glass.origin.y = frame.minY
+        return glass
     }
 
     // MARK: - Showing and hiding
@@ -434,16 +486,26 @@ final class SummonPanel: ActiveAppearancePanel {
     private func prepareForRender() {
         if placement.preset.slideOverEdge != nil {
             applyPreset()
-        } else {
+        } else if !hasBeenPlaced {
             placeOnActiveScreen()
         }
         isPresented = true
         if session.panelWithBars { session.suggestionListFollowsDraft() }
         updateFooterGrowth()
         // The part of the match card below the panel is a window of its own, drawn with it.
-        PreviewRender.render(self) { [weak self] in
+        let screenBottom = rendersScreenBottom ? currentScreen()?.visible.minY : nil
+        PreviewRender.render(self, screenBottom: screenBottom) { [weak self] in
             self?.matchCardWindowForRender().map { [$0] } ?? []
         }
+    }
+
+    /// For a preview: puts a centered panel at the very bottom of the visible area of the screen
+    /// with the mouse, centered across it, as if the owner had left it there.
+    func placeAtTheBottomForPreview() {
+        guard placement.preset.slideOverEdge == nil, let visible = mouseScreen(screens())?.visible else { return }
+        var target = PanelGeometry.defaultFrame(size: panelFrame.size, in: visible)
+        target.origin.y = visible.minY
+        place(target)
     }
 
     private func present(makeKey: Bool) {
@@ -792,8 +854,10 @@ final class SummonPanel: ActiveAppearancePanel {
     }
 
     private func place(_ target: CGRect) {
-        // The target is a place for the panel itself. Any growth for the list is dropped.
+        // The target is a place for the panel itself. Any growth for the list is dropped, and
+        // so is a move for the match card.
         if footerGrowth > 0 { forgetFooterGrowth() }
+        forgetMatchCardMove(restoringContentSize: false)
         hasBeenPlaced = true
         isPlacing = true
         setFrame(target, display: true)
@@ -854,7 +918,8 @@ final class SummonPanel: ActiveAppearancePanel {
             placeInspector()
             updateMatchCard()
         }
-        guard !isPlacing, slide == nil else { return }
+        guard !isPlacing, matchCardMotion == nil, slide == nil else { return }
+        ownerMovedWithMatchCard()
         if let grownSize, frame.size != grownSize {
             // The owner resized the grown window. It keeps the size they gave it, and the list
             // closes, since the window is no longer grown for it.
@@ -939,10 +1004,7 @@ final class SummonPanel: ActiveAppearancePanel {
     private func setFooterGrowth(_ growth: CGFloat) {
         guard growth != footerGrowth else { return }
         let resting = panelFrame
-        if growth > 0, suspendedAutosaveName == nil, !frameAutosaveName.isEmpty {
-            suspendedAutosaveName = frameAutosaveName
-            setFrameAutosaveName("")
-        }
+        if growth > 0 { suspendFrameAutosave() }
         footerGrowth = growth
         var target = resting
         target.origin.y -= growth
@@ -965,7 +1027,17 @@ final class SummonPanel: ActiveAppearancePanel {
         resumeFrameAutosave()
     }
 
+    /// Sets the frame autosave aside while the window is grown or moved for the list, so neither
+    /// is ever saved as the panel's place.
+    private func suspendFrameAutosave() {
+        guard suspendedAutosaveName == nil, !frameAutosaveName.isEmpty else { return }
+        suspendedAutosaveName = frameAutosaveName
+        setFrameAutosaveName("")
+    }
+
+    /// Saves the frame again once the window is neither grown nor moved for the list.
     private func resumeFrameAutosave() {
+        guard footerGrowth == 0, matchCardMove == nil, matchCardMotion == nil else { return }
         guard let name = suspendedAutosaveName else { return }
         suspendedAutosaveName = nil
         setFrameAutosaveName(name)
@@ -977,6 +1049,8 @@ final class SummonPanel: ActiveAppearancePanel {
     private func collapseFooter() {
         session.closeSuggestionList()
         setFooterGrowth(0)
+        matchCardMoveIsHeld = false
+        settleMatchCardMove(animated: false)
     }
 
     /// Clips the glass again when its radius changes, as the panel with bars switch does.
@@ -1000,7 +1074,8 @@ final class SummonPanel: ActiveAppearancePanel {
     private func observeSuggestionList() {
         withObservationTracking {
             _ = session.suggestionListHeight
-            _ = session.matchCardSide
+            _ = session.showsMatchCard
+            _ = session.draft
             _ = session.matchCardVisibleRows
             _ = session.matchCardPartRowHeight
         } onChange: { [weak self] in
@@ -1017,21 +1092,21 @@ final class SummonPanel: ActiveAppearancePanel {
     // MARK: - The match card
 
     /// Keeps the room below the panel that the match card opens into current. The card is
-    /// shortened to fit it. None in slide over, while hidden, and while sliding, so the card
-    /// opens upward then, as it does with room for less than two rows and a part.
+    /// shortened to fit it. While the panel moves for the card, it is the room where the panel
+    /// is going, so the card is its final size on the way. None while hidden and while sliding.
     private func updateMatchCardRoom() {
         var room: CGFloat = 0
         if isPresented, slide == nil, let visible = currentScreen()?.visible {
             room = session.suggestionList.previewRoomBelow
-                ?? MatchCard.roomBelow(panel: panelFrame, visible: visible, slideOver: placement.preset.slideOverEdge != nil)
+                ?? MatchCard.roomBelow(panel: matchCardMove?.movedGlass ?? glassFrameInPlace, visible: visible)
         }
         if session.suggestionList.roomBelow != room { session.suggestionList.roomBelow = room }
     }
 
     /// Where the part of the match card below the panel goes on screen, or nil when there is no
-    /// card that opens downward. It is never part of `panelFrame`.
+    /// card. It is never part of `panelFrame`.
     var matchCardFrame: CGRect? {
-        guard session.matchCardSide == .below else { return nil }
+        guard session.showsMatchCard else { return nil }
         let pill = session.suggestionList.pillFrame
         guard pill.width > 0, pill.height > 0 else { return nil }
         let content = host.frame.offsetBy(dx: frame.minX, dy: frame.minY)
@@ -1040,9 +1115,10 @@ final class SummonPanel: ActiveAppearancePanel {
     }
 
     /// Shows the part of the match card below the panel, under the pill, while there is a card
-    /// that opens downward and the panel is up, and hides it otherwise. It is a child window,
-    /// so it moves with the panel and is ordered with it.
+    /// and the panel is up, and hides it otherwise. It is a child window, so it moves with the
+    /// panel and is ordered with it. First the panel makes room for it, or goes back.
     func updateMatchCard() {
+        updateMatchCardMove()
         updateMatchCardRoom()
         guard let target = matchCardFrame, isVisible, isPresented, slide == nil else {
             hideMatchCard()
@@ -1058,6 +1134,156 @@ final class SummonPanel: ActiveAppearancePanel {
         }
         if card.parent == nil { addChildWindow(card, ordered: .above) }
         if !card.isVisible { card.orderFront(nil) }
+    }
+
+    /// Makes room below the panel for the match card, or goes back once it is gone for good. The
+    /// card always opens downward (the owner's direction, 2026-11-27).
+    ///
+    /// - It moves when a card shows with less room below than its minimum, two rows and a part
+    ///   (`MatchCard.minimumReach`). It makes room for that minimum of the longest list,
+    ///   `MatchCard.roomMade`, so the card keeps its room as matches come and go while the owner
+    ///   types, and the panel moves once. Where the panel is by `MatchListRoom`: a centered panel
+    ///   moves up, and a slide over panel's bottom edge rises.
+    /// - It goes back when the field is empty, as after sending or clearing it, and at once when
+    ///   the panel hides or changes layout. Until then it stays, even while no card shows, so it
+    ///   does not move up and down as the owner types.
+    /// - A centered panel goes back to the frame it had, which is the one kept: the autosave is
+    ///   set aside while it is moved. If the owner moves or resizes it in the meantime, where they
+    ///   leave it is the panel's place, and it does not move for the card again until the field is
+    ///   empty. A slide over panel goes back to the screen's full height, at any width the owner
+    ///   gave it in the meantime.
+    private func updateMatchCardMove() {
+        guard !isPlacing else { return }
+        if matchCardMove != nil || matchCardMoveIsHeld {
+            guard !isPresented || session.draft.isEmpty else { return }
+            matchCardMoveIsHeld = false
+            settleMatchCardMove(animated: isPresented)
+            return
+        }
+        guard session.panelWithBars, isPresented, slide == nil, matchCardMotion == nil,
+              session.suggestionList.previewRoomBelow == nil, let visible = currentScreen()?.visible else { return }
+        let rows = min(session.matchCardRows.count, MatchCard.visibleLimit)
+        let glass = glassFrameInPlace
+        guard rows > 0, MatchCard.roomBelow(panel: glass, visible: visible) < MatchCard.minimumReach(rows: rows) else { return }
+        let pinned = placement.preset.slideOverEdge != nil
+        let target = MatchCard.frameMakingRoom(panel: glass, visible: visible, slideOver: pinned)
+        guard target != glass else { return }
+        // The window's frame, with any strip beside the glass kept.
+        var window = frame
+        window.origin.y += target.minY - glass.minY
+        window.size.height += target.height - glass.height
+        matchCardMove = MatchCardMove(
+            restingFrame: frame, movedGlass: target, isPinned: pinned, contentMinSize: contentMinSize,
+            contentMaxSize: contentMaxSize)
+        suspendFrameAutosave()
+        if pinned {
+            // Slide over holds the window at the full height while the owner resizes its free
+            // edge. While shortened, it holds it at the shorter one.
+            contentMinSize = NSSize(width: contentMinSize.width, height: window.height)
+            contentMaxSize = NSSize(width: contentMaxSize.width, height: window.height)
+        }
+        moveForMatchCard(to: window, animated: true)
+    }
+
+    /// Goes back from a move for the match card: a centered panel to the frame it had, a slide
+    /// over panel to the screen's full height.
+    private func settleMatchCardMove(animated: Bool) {
+        guard let move = matchCardMove else { return }
+        var target = move.restingFrame
+        if move.isPinned {
+            contentMinSize = move.contentMinSize
+            contentMaxSize = move.contentMaxSize
+            // At the width the owner may have given it since.
+            target = frame
+            target.size.height = frame.maxY - move.restingFrame.minY
+            target.origin.y = move.restingFrame.minY
+        }
+        matchCardMove = nil
+        moveForMatchCard(to: target, animated: animated)
+    }
+
+    /// Drops a move for the match card where the panel is: the owner moved it, or it is being put
+    /// somewhere else.
+    private func forgetMatchCardMove(restoringContentSize: Bool) {
+        stopMatchCardMotion()
+        guard let move = matchCardMove else { return }
+        matchCardMove = nil
+        if restoringContentSize, move.isPinned {
+            contentMinSize = move.contentMinSize
+            contentMaxSize = move.contentMaxSize
+        }
+        resumeFrameAutosave()
+    }
+
+    /// The owner moved or resized the panel. While it is moved for the match card, or a card
+    /// shows, where they leave it is theirs: a centered panel's move is dropped and the frame
+    /// saved where it is, and the panel does not move for the card again until the field is
+    /// empty. A slide over panel keeps its raised bottom edge while the owner resizes its free
+    /// edge, and drops it once they drag it out of slide over.
+    private func ownerMovedWithMatchCard() {
+        guard matchCardMove != nil || session.showsMatchCard else { return }
+        if !session.draft.isEmpty { matchCardMoveIsHeld = true }
+        guard let move = matchCardMove else { return }
+        if move.isPinned, let edge = placement.preset.slideOverEdge, let visible = currentScreen()?.visible,
+           PanelGeometry.isInSlideOver(panelFrame, at: edge, in: visible)
+        {
+            return
+        }
+        forgetMatchCardMove(restoringContentSize: true)
+    }
+
+    /// Puts the window at a frame for the match card or back from it: on the way there with a
+    /// slide's motion when the panel is on screen, and at once with Reduce Motion, while hidden,
+    /// and in a render.
+    private func moveForMatchCard(to target: CGRect, animated: Bool) {
+        stopMatchCardMotion()
+        guard animated, isOrderedIn, !reduceMotion(), !PreviewRender.isRendering, frame != target else {
+            setFrameForMatchCard(target)
+            resumeFrameAutosave()
+            return
+        }
+        matchCardMotion = MatchListRoom.Motion(from: frame, to: target)
+        guard drivesSlidesWithTheDisplay else { return }
+        let link = displayLink(target: self, selector: #selector(matchCardMotionFrame(_:)))
+        link.add(to: .main, forMode: .common)
+        matchCardDisplayLink = link
+    }
+
+    @objc private func matchCardMotionFrame(_ link: CADisplayLink) {
+        let now = link.timestamp
+        let elapsed = lastMatchCardFrameTime.map { now - $0 } ?? 0
+        lastMatchCardFrameTime = now
+        advanceMatchCardMotion(by: min(elapsed, 0.05))
+    }
+
+    /// Moves the panel on by this much time on its way for the match card, and finishes there.
+    func advanceMatchCardMotion(by seconds: TimeInterval) {
+        guard var motion = matchCardMotion else { return }
+        motion.advance(by: seconds / max(slideTimeScale, 0.01))
+        matchCardMotion = motion
+        setFrameForMatchCard(motion.frame)
+        guard motion.isFinished else { return }
+        stopMatchCardMotion()
+        resumeFrameAutosave()
+        updateMatchCard()
+    }
+
+    private func stopMatchCardMotion() {
+        matchCardDisplayLink?.invalidate()
+        matchCardDisplayLink = nil
+        lastMatchCardFrameTime = nil
+        matchCardMotion = nil
+    }
+
+    private func setFrameForMatchCard(_ target: CGRect) {
+        guard frame != target else { return }
+        isPlacing = true
+        setFrame(target, display: true)
+        isPlacing = false
+        layoutHost(offset: 0)
+        updatePlacementFrames()
+        placeInspector()
+        updateMatchCard()
     }
 
     /// For a render: the part of the match card below the panel, sized and placed under the

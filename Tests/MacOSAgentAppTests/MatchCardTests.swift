@@ -17,10 +17,10 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
     return condition()
 }
 
-/// The match card's measures, which way it opens, and its keys. See `MatchCard`.
+/// The match card's measures, how much of it shows, and its keys. See `MatchCard`.
 @MainActor
 @Suite struct MatchCardGeometryTests {
-    @Test func itOpensDownwardShortenedToTheRoomAndNeverBelowTwoRowsAndAPart() {
+    @Test func itIsShortenedToTheRoomDownToOneRowAndAPart() {
         let rows = 4
         let part = MatchCard.partRowHeight
         #expect(part == 17, "0.4 of a 44 point row")
@@ -30,29 +30,39 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
         #expect(MatchCard.heightBelowPill(rows: rows) == 4 * 44 + 1 + InputFooter.height)
         #expect(MatchCard.heightBelowPill(rows: 2, partRowHeight: part) == 2 * 44 + 17 + 1 + InputFooter.height)
         #expect(reach == MatchCard.rowHeight * 4 + MatchCard.reachBeyondRows)
-        #expect(MatchCard.fit(rows: rows, roomBelow: reach) == .below(rows: 4, partRowHeight: 0))
-        #expect(MatchCard.fit(rows: rows, roomBelow: reach - 1) == .below(rows: 3, partRowHeight: part), "shortened, and it scrolls")
+        #expect(MatchCard.fit(rows: rows, roomBelow: reach) == MatchListFit(rows: 4, partRowHeight: 0))
+        #expect(MatchCard.fit(rows: rows, roomBelow: reach - 1) == MatchListFit(rows: 3, partRowHeight: part), "shortened, and it scrolls")
         let fewest = MatchCard.reachBelowPanel(rows: 2, partRowHeight: part)
-        #expect(MatchCard.fit(rows: 7, roomBelow: fewest) == .below(rows: 2, partRowHeight: part))
-        #expect(MatchCard.fit(rows: 7, roomBelow: MatchCard.reachBelowPanel(rows: 3, partRowHeight: part)) == .below(rows: 3, partRowHeight: part))
-        #expect(MatchCard.fit(rows: 7, roomBelow: fewest - 1) == .above, "less than two and a part")
-        #expect(MatchCard.fit(rows: 7, roomBelow: MatchCard.reachBelowPanel(rows: 2)) == .above, "two whole rows are not enough")
+        #expect(MatchCard.fit(rows: 7, roomBelow: fewest) == MatchListFit(rows: 2, partRowHeight: part))
+        #expect(MatchCard.fit(rows: 7, roomBelow: MatchCard.reachBelowPanel(rows: 3, partRowHeight: part)) == MatchListFit(rows: 3, partRowHeight: part))
+        #expect(MatchCard.minimumReach(rows: 7) == fewest, "the panel makes room for less than this")
+        #expect(MatchCard.roomMade == fewest)
+        #expect(MatchCard.minimumReach(rows: 2) == MatchCard.reachBelowPanel(rows: 2), "two rows show whole")
+        #expect(MatchCard.fit(rows: 7, roomBelow: fewest - 1) == MatchListFit(rows: 1, partRowHeight: part), "short of it, still downward")
+        #expect(MatchCard.fit(rows: 7, roomBelow: 0) == MatchListFit(rows: 1, partRowHeight: part), "never upward")
         #expect(MatchCard.fit(rows: 0, roomBelow: 1000) == nil, "no rows, no card")
     }
 
-    @Test func theRoomBelowIsNoneInSlideOverAndLessAMargin() {
+    @Test func theRoomBelowIsLessAMarginAndNoneAtTheBottom() {
         let visible = CGRect(x: 0, y: 0, width: 1512, height: 949)
         let panel = CGRect(x: 300, y: 200, width: 640, height: 560)
-        #expect(MatchCard.roomBelow(panel: panel, visible: visible, slideOver: false) == 200 - SummonPanel.footerGrowthMargin)
-        #expect(MatchCard.roomBelow(panel: panel, visible: visible, slideOver: true) == 0)
-        #expect(MatchCard.roomBelow(panel: panel.offsetBy(dx: 0, dy: -200), visible: visible, slideOver: false) == 0)
+        #expect(MatchCard.roomBelow(panel: panel, visible: visible) == 200 - SummonPanel.footerGrowthMargin)
+        #expect(MatchCard.roomBelow(panel: panel.offsetBy(dx: 0, dy: -200), visible: visible) == 0)
+        #expect(MatchCard.roomBelow(panel: CGRect(x: 1112, y: 0, width: 400, height: 949), visible: visible) == 0, "slide over")
     }
 
-    @Test func openingUpwardShowsAsManyRowsAsFit() {
-        #expect(MatchCard.rowsAbove(7, roomAbove: .greatestFiniteMagnitude) == 7)
-        #expect(MatchCard.rowsAbove(7, roomAbove: 44 * 3 + 1) == 3)
-        #expect(MatchCard.rowsAbove(7, roomAbove: 10) == 1, "at least one")
-        #expect(MatchCard.rowsAbove(0, roomAbove: 500) == 0)
+    /// Where the panel goes to make room: a centered one moves up, a slide over one's bottom
+    /// edge rises, each by just enough for two rows and a part above the margin.
+    @Test func thePanelMakesRoomForTwoRowsAndAPart() {
+        let visible = CGRect(x: 0, y: 0, width: 1512, height: 949)
+        let made = MatchCard.roomMade + SummonPanel.footerGrowthMargin
+        let bottom = CGRect(x: 300, y: 0, width: 640, height: 560)
+        #expect(MatchCard.frameMakingRoom(panel: bottom, visible: visible, slideOver: false) == bottom.offsetBy(dx: 0, dy: made))
+        let slideOver = CGRect(x: 1112, y: 0, width: 400, height: 949)
+        #expect(MatchCard.frameMakingRoom(panel: slideOver, visible: visible, slideOver: true)
+            == CGRect(x: 1112, y: made, width: 400, height: 949 - made))
+        let roomy = CGRect(x: 300, y: 300, width: 640, height: 560)
+        #expect(MatchCard.frameMakingRoom(panel: roomy, visible: visible, slideOver: false) == roomy)
     }
 
     /// The window below the pill is the pill's width and starts at its bottom edge.
@@ -138,7 +148,7 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
         harness.type("zzz")
         await harness.settle()
         #expect(session.matchCardRows.isEmpty)
-        #expect(session.matchCardSide == nil)
+        #expect(!session.showsMatchCard)
     }
 
     @Test func withTheSwitchOffTheListStillWaitsForDown() async throws {
@@ -147,7 +157,7 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
         await harness.settle()
         #expect(!harness.session.suggestionList.isOpen)
         #expect(harness.session.matchCardRows.isEmpty)
-        #expect(harness.session.matchCardSide == nil)
+        #expect(!harness.session.showsMatchCard)
         press(harness, down)
         #expect(harness.session.suggestionList.isOpen)
         press(harness, up)
@@ -228,7 +238,7 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
         let rows = harness.session.matchCardRows
         #expect(!rows.isEmpty)
         #expect(rows.allSatisfy { if case .command = $0 { true } else { false } })
-        #expect(harness.session.matchCardSide != nil)
+        #expect(harness.session.showsMatchCard)
     }
 }
 
@@ -276,7 +286,7 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
         #expect(session.suggestionList.roomBelow == 300 - SummonPanel.footerGrowthMargin)
         session.draft = "chr"
         panel.updateFooterGrowth()
-        #expect(session.matchCardSide == .below)
+        #expect(session.showsMatchCard)
         #expect(panel.footerGrowth == 0, "the window never grows for the card")
         #expect(panel.frame == before)
         #expect(panel.panelFrame == before)
@@ -293,52 +303,178 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
         #expect(defaults.string(forKey: SummonPanel.centeredFrameKey) == NSStringFromRect(before), "the saved centered frame")
     }
 
-    /// Slide over is the screen's full height, so there is no room below for two rows.
-    @Test func inSlideOverItOpensUpward() throws {
-        let (panel, session, defaults) = try makePanel()
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        panel.choose(.slideOverRight)
-        let before = panel.frame
-        session.draft = "chr"
-        panel.updateFooterGrowth()
-        #expect(session.suggestionList.roomBelow == 0)
-        #expect(session.matchCardSide == .above)
-        #expect(panel.matchCardFrame == nil)
-        #expect(panel.frame == before)
-    }
-
-    /// Near the bottom of the screen the card still opens downward, shortened to the rows that
-    /// fit, and opens upward only with room for fewer than two.
-    @Test(arguments: [CGFloat(4), 60, 100, 150, 250, 400])
-    func nearTheBottomOfTheScreenItIsShortened(_ room: CGFloat) throws {
-        let (panel, session, defaults) = try makePanel(frame: CGRect(x: 300, y: laptop.minY + room, width: 640, height: 500))
+    /// Near the bottom of the screen the card is shortened to the rows that fit. With room for
+    /// less than two rows and a part, the panel moves up just far enough for them, and the card
+    /// still opens downward.
+    @Test(arguments: [CGFloat(0), 4, 60, 100, 150, 250, 400])
+    func nearTheBottomOfTheScreenItIsShortenedOrThePanelMovesUp(_ room: CGFloat) throws {
+        let start = CGRect(x: 300, y: laptop.minY + room, width: 640, height: 500)
+        let (panel, session, defaults) = try makePanel(frame: start)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         session.draft = "chr"
         panel.updateFooterGrowth()
+        panel.advanceMatchCardMotion(by: 1)
         let rows = min(session.matchCardRows.count, MatchCard.visibleLimit)
         #expect(rows > 2, "the stand-in apps match more than fit in some of these rooms")
         let available = room - SummonPanel.footerGrowthMargin
         let fits = Int(((available - MatchCard.reachBeyondRows) / MatchCard.rowHeight).rounded(.down))
         let wholeBesidesPart = Int(((available - MatchCard.reachBeyondRows - MatchCard.partRowHeight) / MatchCard.rowHeight).rounded(.down))
+        #expect(session.showsMatchCard, "always, and always downward")
         if fits >= rows {
-            #expect(session.matchCardSide == .below)
             #expect(session.matchCardVisibleRows == rows)
             #expect(session.matchCardPartRowHeight == 0)
+            #expect(panel.frame == start, "the panel stays")
         } else if wholeBesidesPart >= 2 {
-            #expect(session.matchCardSide == .below)
             #expect(session.matchCardVisibleRows == wholeBesidesPart)
             #expect(session.matchCardPartRowHeight == MatchCard.partRowHeight, "ends in a part row")
+            #expect(panel.frame == start, "the panel stays")
         } else {
-            #expect(session.matchCardSide == .above)
-            #expect(panel.matchCardFrame == nil)
+            #expect(session.matchCardVisibleRows == 2, "two rows and a part, the minimum")
+            #expect(session.matchCardPartRowHeight == MatchCard.partRowHeight)
+            #expect(panel.frame.size == start.size)
+            #expect(panel.frame.minY == laptop.minY + SummonPanel.footerGrowthMargin + MatchCard.roomMade, "just far enough")
+            #expect(panel.panelFrame == panel.frame, "a centered panel reads where it is")
         }
-        if session.matchCardSide == .below {
-            session.suggestionList.pillFrame = CGRect(x: 8, y: 500 - 26 - 38, width: 624, height: 38)
-            let card = try #require(panel.matchCardFrame)
-            #expect(card.minY >= laptop.minY + SummonPanel.footerGrowthMargin, "it ends inside the screen")
-            #expect(card.height == MatchCard.heightBelowPill(rows: session.matchCardVisibleRows, partRowHeight: session.matchCardPartRowHeight))
+        session.suggestionList.pillFrame = CGRect(x: 8, y: 500 - 26 - 38, width: 624, height: 38)
+        let card = try #require(panel.matchCardFrame)
+        #expect(card.minY >= laptop.minY + SummonPanel.footerGrowthMargin, "it ends inside the screen")
+        #expect(card.maxY == panel.frame.minY + 26, "under the pill")
+        #expect(card.height == MatchCard.heightBelowPill(rows: session.matchCardVisibleRows, partRowHeight: session.matchCardPartRowHeight))
+    }
+
+    /// A centered panel at the bottom moves up once with a slide's motion, keeps its place while
+    /// matches come and go, and goes back to where the owner left it when the field is cleared.
+    /// The place kept is never the moved one.
+    @Test func atTheBottomItMovesUpOnceAndGoesBackWhenTheFieldIsCleared() throws {
+        let start = CGRect(x: 300, y: laptop.minY, width: 640, height: 560)
+        let (panel, session, defaults) = try makePanel(frame: start)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let name = "mac-os-agent-match-card-test-\(UUID().uuidString)"
+        #expect(panel.setFrameAutosaveName(name))
+        defer {
+            panel.setFrameAutosaveName("")
+            UserDefaults.standard.removeObject(forKey: "NSWindow Frame \(name)")
         }
-        #expect(panel.panelFrame.minY == laptop.minY + room, "the panel never moves")
+        let saved = UserDefaults.standard.string(forKey: "NSWindow Frame \(name)")
+        let raised = start.offsetBy(dx: 0, dy: SummonPanel.footerGrowthMargin + MatchCard.roomMade)
+        session.draft = "chr"
+        panel.updateFooterGrowth()
+        #expect(panel.matchCardMotion?.end == raised, "on its way up")
+        #expect(session.matchCardVisibleRows == 2, "the card is its final size on the way")
+        #expect(panel.frameAutosaveName.isEmpty, "the autosave is set aside")
+        panel.advanceMatchCardMotion(by: MatchListRoom.Motion.duration / 3)
+        #expect(panel.frame.minY > start.minY)
+        #expect(panel.frame.minY < raised.minY)
+        panel.advanceMatchCardMotion(by: 1)
+        #expect(panel.matchCardMotion == nil)
+        #expect(panel.frame == raised)
+        #expect(UserDefaults.standard.string(forKey: "NSWindow Frame \(name)") == saved, "the moved frame is never kept")
+        // No match, then a match again: the panel stays up the whole time.
+        session.draft = "chrzzz"
+        panel.updateFooterGrowth()
+        #expect(!session.showsMatchCard)
+        #expect(panel.matchCardMotion == nil)
+        #expect(panel.frame == raised, "it does not go back while the owner types")
+        session.draft = "chr"
+        panel.updateFooterGrowth()
+        #expect(panel.matchCardMotion == nil)
+        #expect(panel.frame == raised)
+        // Cleared: it goes back.
+        session.draft = ""
+        panel.updateFooterGrowth()
+        #expect(panel.matchCardMotion?.end == start)
+        panel.advanceMatchCardMotion(by: 1)
+        #expect(panel.frame == start)
+        #expect(panel.frameAutosaveName == name, "the autosave is back")
+        let kept = try #require(UserDefaults.standard.string(forKey: "NSWindow Frame \(name)"))
+        #expect(kept.hasPrefix("\(Int(start.minX)) \(Int(start.minY)) "), "the place kept is where the owner left it")
+    }
+
+    /// Hiding puts it back at once, before it goes, and Reduce Motion moves it at once both ways.
+    @Test func hidingPutsItBackAtOnceAndReduceMotionNeverAnimates() throws {
+        let start = CGRect(x: 300, y: laptop.minY, width: 640, height: 560)
+        let (panel, session, defaults) = try makePanel(frame: start)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        session.draft = "chr"
+        panel.updateFooterGrowth()
+        panel.advanceMatchCardMotion(by: 1)
+        #expect(panel.frame.minY > start.minY)
+        panel.dismiss()
+        #expect(panel.matchCardMotion == nil)
+        #expect(panel.frame == start, "back before it hides")
+        panel.reduceMotion = { true }
+        panel.summon()
+        session.draft = "chr"
+        panel.updateFooterGrowth()
+        #expect(panel.matchCardMotion == nil, "no motion with Reduce Motion")
+        #expect(panel.frame.minY == start.minY + SummonPanel.footerGrowthMargin + MatchCard.roomMade)
+        session.draft = ""
+        panel.updateFooterGrowth()
+        #expect(panel.matchCardMotion == nil)
+        #expect(panel.frame == start)
+    }
+
+    /// A drag while it is moved makes where the owner drops it the panel's place: the move is
+    /// dropped, and the panel does not move for the card again until the field is empty.
+    @Test func aDragWhileMovedKeepsWhereTheOwnerLeftIt() throws {
+        let start = CGRect(x: 300, y: laptop.minY, width: 640, height: 560)
+        let (panel, session, defaults) = try makePanel(frame: start)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        session.draft = "chr"
+        panel.updateFooterGrowth()
+        panel.advanceMatchCardMotion(by: 1)
+        let dropped = CGRect(x: 200, y: laptop.minY + 20, width: 640, height: 560)
+        panel.setFrame(dropped, display: false)
+        #expect(panel.frame == dropped)
+        session.draft = "chro"
+        panel.updateFooterGrowth()
+        #expect(panel.matchCardMotion == nil, "it does not move up again under the owner")
+        #expect(panel.frame == dropped)
+        #expect(session.showsMatchCard, "the card is shortened to the room instead, downward")
+        #expect(session.matchCardVisibleRows == 1)
+        session.draft = ""
+        panel.updateFooterGrowth()
+        #expect(panel.matchCardMotion == nil)
+        #expect(panel.frame == dropped, "it stays where the owner left it")
+        session.draft = "chr"
+        panel.updateFooterGrowth()
+        panel.advanceMatchCardMotion(by: 1)
+        #expect(panel.frame.minY == laptop.minY + SummonPanel.footerGrowthMargin + MatchCard.roomMade, "a new draft moves it again")
+    }
+
+    /// Slide over is the screen's full height, so its bottom edge rises instead, and its top and
+    /// edge stay. It still reads as being in slide over, and goes back to the full height.
+    @Test func inSlideOverTheBottomEdgeRises() throws {
+        let (panel, session, defaults) = try makePanel()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        panel.choose(.slideOverRight)
+        #expect(panel.slide != nil, "it slides in from its edge")
+        session.draft = "chr"
+        panel.updateFooterGrowth()
+        #expect(panel.matchCardMotion == nil, "nothing moves for the card while it slides")
+        panel.advanceSlide(by: 1)
+        let full = panel.panelFrame
+        #expect(full.minY == laptop.minY)
+        #expect(full.maxY == laptop.maxY)
+        #expect(panel.matchCardMotion != nil, "once in place, its bottom edge rises")
+        panel.advanceMatchCardMotion(by: 1)
+        let rise = SummonPanel.footerGrowthMargin + MatchCard.roomMade
+        #expect(panel.frame == CGRect(x: full.minX, y: full.minY + rise, width: full.width, height: full.height - rise))
+        #expect(panel.panelFrame == full, "its place is still the full height")
+        #expect(panel.placement.preset == .slideOverRight)
+        #expect(session.suggestionList.roomBelow == MatchCard.roomMade)
+        #expect(session.matchCardVisibleRows == 2)
+        #expect(session.matchCardPartRowHeight == MatchCard.partRowHeight)
+        // The owner widens it from its free edge: still slide over, still raised.
+        let wider = CGRect(x: full.minX - 60, y: panel.frame.minY, width: full.width + 60, height: panel.frame.height)
+        panel.setFrame(wider, display: false)
+        #expect(panel.placement.preset == .slideOverRight)
+        #expect(panel.frame.minY == full.minY + rise)
+        session.draft = ""
+        panel.updateFooterGrowth()
+        panel.advanceMatchCardMotion(by: 1)
+        #expect(panel.frame == CGRect(x: wider.minX, y: full.minY, width: wider.width, height: full.height), "the full height, at the new width")
+        #expect(panel.placement.preset == .slideOverRight)
     }
 
     /// In the shortened card, the arrows scroll the list so the highlighted row is always whole,
@@ -349,7 +485,8 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         session.draft = "chr"
         panel.updateFooterGrowth()
-        #expect(session.matchCardSide == .below)
+        #expect(session.showsMatchCard)
+        #expect(panel.frame.minY == laptop.minY + room, "with room for the minimum, the panel stays")
         #expect(session.matchCardVisibleRows == 2)
         #expect(session.matchCardPartRowHeight == MatchCard.partRowHeight)
         let count = session.matchCardRows.count
@@ -391,7 +528,7 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
         session.draft = "/"
         panel.updateFooterGrowth()
         #expect(session.matchCardRows.count > MatchCard.visibleLimit)
-        #expect(session.matchCardSide == .below)
+        #expect(session.showsMatchCard)
         #expect(session.matchCardVisibleRows == MatchCard.visibleLimit - 1)
         #expect(session.matchCardPartRowHeight == MatchCard.partRowHeight)
     }

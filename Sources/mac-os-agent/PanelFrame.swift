@@ -81,11 +81,11 @@ extension InputBand where AboveField == EmptyView {
 /// with the same corners, which grows upward because the band is at the bottom of the panel,
 /// up to `InputField.maximumLines`, and then the text scrolls inside it. Nothing else goes in it.
 ///
-/// While a match shows, the pill is one end of the match card, `card` says which: the card's top
-/// when it opens downward, and its bottom when it opens upward. It is then on the card's opaque
-/// fill, with square corners where the rest of the card joins it. See `MatchCard`.
+/// While a match shows, the pill is the top of the match card, which opens downward below it.
+/// It is then on the card's opaque fill, with square corners at its bottom, where the rest of
+/// the card joins it, and it draws the hairline between it and the rows. See `MatchCard`.
 struct InputPill<Field: View>: View {
-    var card: MatchCardSide? = nil
+    var opensCard = false
     @ViewBuilder var field: Field
     @Environment(\.panelPalette) private var palette
 
@@ -100,24 +100,22 @@ struct InputPill<Field: View>: View {
         .padding(.horizontal, PanelFrame.pillPadding)
         .frame(minHeight: PanelFrame.pillHeight)
         .background {
-            if let card {
-                MatchCardFill().clipShape(shape(card))
+            if opensCard {
+                MatchCardFill().clipShape(cardShape)
             } else {
                 PanelFrame.pill.fill(palette.fieldFill)
             }
         }
         .overlay {
-            if let card {
-                // Opening downward, the pill draws the hairline between it and the rows.
-                // Opening upward, the rows draw it, so the pill leaves its top open.
-                MatchCardEdge(shape: shape(card), openTop: card == .above)
+            if opensCard {
+                MatchCardEdge(shape: cardShape)
             } else {
                 PanelFrame.pill.strokeBorder(palette.fieldEdge, lineWidth: 1)
             }
         }
     }
 
-    private func shape(_ card: MatchCardSide) -> UnevenRoundedRectangle {
-        MatchCard.shape(top: card == .below, bottom: card == .above)
+    private var cardShape: UnevenRoundedRectangle {
+        MatchCard.shape(top: true, bottom: false)
     }
 }
