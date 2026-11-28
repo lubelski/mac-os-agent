@@ -167,6 +167,21 @@ public final class MCPSettingsStore: Sendable {
         toolNameOverride(server: server, tool: tool) ?? HumanizedName.from(tool)
     }
 
+    /// The names for a call to a tool that is no longer listed, read back from the name the
+    /// model called: the owner's while they are still saved, else the literal ones made
+    /// readable. Nil for a name with no server in it. A tool whose name was shortened and given
+    /// a hash is matched by naming the tools saved for its server the way a launch would.
+    public func displayNames(ofUnlistedCallName name: String) -> ConfirmationRequest.DisplayNames? {
+        guard let parts = MCPTool.parts(ofCallName: name) else { return nil }
+        let (serverName, savedTools) = state.withLock { ($0.serverNames[parts.server], $0.toolNames[parts.server] ?? [:]) }
+        let toolName = savedTools[parts.tool]
+            ?? MCPToolNaming.names(server: parts.server, tools: Array(savedTools.keys))
+                .first { $0.value == name }.flatMap { savedTools[$0.key] }
+        return ConfirmationRequest.DisplayNames(
+            server: serverName ?? HumanizedName.from(parts.server),
+            tool: toolName ?? HumanizedName.from(parts.tool))
+    }
+
     /// Sets a tool's display name. An empty name, or the default, removes the override.
     public func setToolDisplayName(_ name: String?, server: String, tool: String) throws {
         defer { NotificationCenter.default.post(name: Self.namesDidChange, object: self) }

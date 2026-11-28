@@ -65,7 +65,7 @@ private let addAlert = MCPToolInfo(
         ("log_in", "Log In"),
         ("sign_up", "Sign Up"),
         ("check_out", "Check Out"),
-        ("opt_out_of", "Opt out Of"),
+        ("opt_out_of", "Opt Out Of"),
         ("what_to_search_for", "What to Search For"),
         // The first word is too.
         ("the_list", "The List"),
@@ -87,13 +87,10 @@ private let addAlert = MCPToolInfo(
         ("files_in_folder", "Files in Folder"),
         ("move_into_folder", "Move into Folder"),
         ("list_of_issues", "List of Issues"),
-        ("turn_off_alarm", "Turn off Alarm"),
         ("get_on_board", "Get on Board"),
         ("move_onto_stack", "Move onto Stack"),
-        ("sign_out_user", "Sign out User"),
-        ("hand_over_task", "Hand over Task"),
+        ("pass_over_task", "Pass over Task"),
         ("add_to_list", "Add to List"),
-        ("set_up_account", "Set up Account"),
         ("reply_with_quote", "Reply with Quote"),
         // Words outside the list are capitalized, including "as" and longer prepositions.
         ("save_as_draft", "Save As Draft"),
@@ -106,6 +103,73 @@ private let addAlert = MCPToolInfo(
     ])
     func followsTitleStyle(_ name: String, _ expected: String) {
         #expect(HumanizedName.from(name) == expected)
+    }
+
+    /// A short word that is part of the verb is capitalized wherever it falls, as the convention
+    /// has it: "Set Up Account". The name cannot be parsed for that, so a short table of verbs
+    /// and their particles decides, used only when the particle directly follows the verb. The
+    /// same word as a plain preposition stays lower case.
+    @Test(arguments: [
+        // The convention's own examples.
+        ("set_up_account", "Set Up Account"),
+        ("sign_out_user", "Sign Out User"),
+        ("turn_off_alerts", "Turn Off Alerts"),
+        ("search_in_files", "Search in Files"),
+        // Each pair, inside a name.
+        ("back_up_files", "Back Up Files"),
+        ("check_out_branch", "Check Out Branch"),
+        ("clean_up_downloads", "Clean Up Downloads"),
+        ("hand_off_task", "Hand Off Task"),
+        ("hand_over_keys", "Hand Over Keys"),
+        ("lock_out_user", "Lock Out User"),
+        ("log_in_user", "Log In User"),
+        ("log_out_everywhere", "Log Out Everywhere"),
+        ("look_up_contact", "Look Up Contact"),
+        ("opt_in_beta", "Opt In Beta"),
+        ("opt_out_tracking", "Opt Out Tracking"),
+        ("pick_up_order", "Pick Up Order"),
+        ("power_on_device", "Power On Device"),
+        ("power_off_device", "Power Off Device"),
+        ("scale_up_cluster", "Scale Up Cluster"),
+        ("sign_in_user", "Sign In User"),
+        ("sign_up_user", "Sign Up User"),
+        ("start_up_server", "Start Up Server"),
+        ("switch_on_light", "Switch On Light"),
+        ("switch_off_light", "Switch Off Light"),
+        ("turn_on_light", "Turn On Light"),
+        ("zoom_in_map", "Zoom In Map"),
+        ("zoom_out_map", "Zoom Out Map"),
+        // A preposition after the particle stays lower case.
+        ("log_in_to_account", "Log In to Account"),
+        ("sign_in_with_passkey", "Sign In with Passkey"),
+        ("zoom_in_on_map", "Zoom In on Map"),
+        // The verb can come later in the name, and in camel case or capitals.
+        ("user_sign_out_all", "User Sign Out All"),
+        ("setUpAccount", "Set Up Account"),
+        ("SIGN_OUT_USER", "Sign Out User"),
+        // Not a pair: the same words as plain prepositions.
+        ("check_in_status", "Check in Status"),
+        ("check_in_cache", "Check in Cache"),
+        ("add_to_list", "Add to List"),
+        ("copy_to_clipboard", "Copy to Clipboard"),
+        ("files_in_folder", "Files in Folder"),
+        ("get_on_board", "Get on Board"),
+        ("set_on_fire", "Set on Fire"),
+        ("log_of_sign_in", "Log of Sign In"),
+        // The particle must directly follow the verb.
+        ("set_the_up_flag", "Set the up Flag"),
+        // A last word is capitalized as before.
+        ("move_up", "Move Up"),
+        ("sign_in", "Sign In"),
+    ])
+    func capitalizesAParticleThatIsPartOfTheVerb(_ name: String, _ expected: String) {
+        #expect(HumanizedName.from(name) == expected)
+    }
+
+    @Test func everyParticleInTheTableIsAMinorWord() {
+        for (verb, particles) in HumanizedName.phrasalVerbs {
+            #expect(particles.isSubset(of: HumanizedName.minorWords), "\(verb)")
+        }
     }
 
     @Test func theMinorWordsAreExactlyTheConventionsList() {
@@ -391,8 +455,6 @@ private let addAlert = MCPToolInfo(
         let folder = try Folder()
         defer { folder.remove() }
         let pool = weatherPool(folder)
-        // An override set before the server went is not used: the row falls back to the default.
-        try pool.settings.setServerDisplayName("Old Notes", server: "notes")
         let summaries = ToolCallSummaries([ShellCommandTool()] + pool.makeTools(), showsDisplayNames: true)
         #expect(summaries.summary(of: call("notes__search_notes", #"{"query":"trip"}"#)) == "Search Notes on Notes: query trip")
         #expect(summaries.summary(of: call("calendar-sync__sync_now", "not json")) == "Sync Now on Calendar Sync")
@@ -400,6 +462,40 @@ private let addAlert = MCPToolInfo(
         #expect(summaries.summary(of: call(ShellCommandTool.name, #"{"command":"ls","destructive":false}"#)) == "Bash ls")
         #expect(summaries.summary(of: call("gone_tool")) == "gone_tool")
         #expect(ToolCallSummaries.builtIn.summary(of: call("notes__search_notes")) == "notes__search_notes")
+    }
+
+    @Test func aToolNoLongerListedReadsByTheNamesStillSavedForIt() throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let pool = weatherPool(folder)
+        // Names set while `notes` was listed, still in the file after it left.
+        try pool.settings.setServerDisplayName("Old Notes", server: "notes")
+        try pool.settings.setToolDisplayName("Find a Note", server: "notes", tool: "search_notes")
+        let longTool = "search_every_note_in_every_folder_on_this_mac_by_its_text_or_title"
+        try pool.settings.setToolDisplayName("Search Everything", server: "notes", tool: longTool)
+        // A tool listed under a server that is still there, and named for it, but gone itself.
+        try pool.settings.setToolDisplayName("Old Alert", server: "weather", tool: "remove_alert")
+        let summaries = ToolCallSummaries([ShellCommandTool()] + pool.makeTools(), showsDisplayNames: true)
+        #expect(summaries.summary(of: call("notes__search_notes", #"{"query":"trip"}"#)) == "Find a Note on Old Notes: query trip")
+        #expect(summaries.displayLead(of: call("notes__search_notes")) == "Find a Note")
+        // A tool without a saved name of its own reads by its literal name, on the server's saved one.
+        #expect(summaries.summary(of: call("notes__add_note", "{}")) == "Add Note on Old Notes")
+        #expect(summaries.summary(of: call("weather__remove_alert", "{}")) == "Old Alert on Weather")
+        // A name that was shortened and given a hash is matched to the tool it was made from.
+        let madeName = try #require(MCPToolNaming.names(server: "notes", tools: [longTool])[longTool])
+        #expect(madeName != "notes__" + longTool)
+        #expect(summaries.summary(of: call(madeName, "{}")) == "Search Everything on Old Notes")
+        // Once a name is removed, the literal name made readable comes back.
+        try pool.settings.setToolDisplayName(nil, server: "notes", tool: "search_notes")
+        try pool.settings.setServerDisplayName(nil, server: "notes")
+        #expect(summaries.summary(of: call("notes__search_notes", "{}")) == "Search Notes on Notes")
+        // With no MCP tool listed, the store passed in is read.
+        try pool.settings.setServerDisplayName("Old Notes", server: "notes")
+        #expect(ToolCallSummaries([], showsDisplayNames: true).summary(of: call("notes__add_note", "{}")) == "Add Note on Notes")
+        #expect(ToolCallSummaries([], showsDisplayNames: true, savedNames: pool.settings).summary(of: call("notes__add_note", "{}")) == "Add Note on Old Notes")
+        #expect(ToolCallSummaries.builtIn.showingDisplayNames(savedNames: pool.settings).summary(of: call("notes__add_note", "{}")) == "Add Note on Old Notes")
+        // Without display names, the call reads as it always has.
+        #expect(ToolCallSummaries([], savedNames: pool.settings).summary(of: call("notes__add_note")) == "notes__add_note")
     }
 
     @Test func aRowLeadsWithTheWholeDisplayName() throws {

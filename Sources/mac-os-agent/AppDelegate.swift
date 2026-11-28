@@ -132,6 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         session = AgentSession(
             loop: loop, authenticator: authenticator, signedIn: modelAccess == .gateway, problems: problems)
         session.modelAccess = modelAccess
+        session.mcpSettings = mcp.settings
         // Read at each send: the model setting, and what Ollama last said about a local model.
         let imageInputSupported: () -> Bool? = { [localModels] in
             ImageInput.isSupported(modelID: ModelSetting.effective(), localCapabilities: localModels.capabilities)
