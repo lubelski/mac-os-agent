@@ -23,6 +23,9 @@ import MacOSAgentCore
 /// - `bars-layout`: owner messages, a long reply and a short one, a time label after a pause,
 ///   and the three lines, to compare the message layouts with `--preview-message-layout`.
 /// - `bars-layout-copy`: the same, with every copy control showing, as under the pointer.
+/// - `bars-scrolled`: the same after an earlier exchange, too long for the panel, so the
+///   conversation is scrolled to its end with a reply cut off under the top bar, to show the
+///   hairlines that set the bars apart from it.
 /// - `bars-links`: three task links above the pill. `bars-rest` is the same panel with none.
 /// - `bars-links-more`: five, so two go into the overflow menu at the row's end.
 /// - `bars-card-down`: "chr", with the match card open downward past the panel's bottom edge,
@@ -34,8 +37,8 @@ import MacOSAgentCore
 enum PanelWithBarsPreview {
     static let names = [
         "bars-rest", "bars-typing", "bars-long", "bars-match", "bars-slash", "bars-running", "bars-working-hover",
-        "bars-queued", "bars-lines", "bars-lines-off", "bars-layout", "bars-layout-copy", "bars-links", "bars-links-more",
-        "bars-card-down", "bars-card-up", "bars-card-slash",
+        "bars-queued", "bars-lines", "bars-lines-off", "bars-layout", "bars-layout-copy", "bars-scrolled", "bars-links",
+        "bars-links-more", "bars-card-down", "bars-card-up", "bars-card-slash",
     ]
 
     /// The states whose card opens below the panel, in a window of its own, so a capture of the
@@ -54,6 +57,10 @@ enum PanelWithBarsPreview {
         let entries = switch name {
         case "bars-lines": thread() + linesThread()
         case "bars-layout", "bars-layout-copy": layoutThread() + linesThread()
+        case "bars-scrolled":
+            // The earlier exchange goes inside the layout thread's episode, after its marker, so
+            // the episode is longer than the panel and the conversation opens at its end.
+            Array(layoutThread().prefix(1)) + earlierThread() + layoutThread().dropFirst() + linesThread()
         default: thread()
         }
         let session = AgentSession(previewEntries: entries, isRunning: runs(name))
@@ -151,6 +158,20 @@ enum PanelWithBarsPreview {
                 "Tomorrow has three things:\n\n- 9:00 Standup with the design team\n- 12:30 Lunch with Alex Example\n- 16:00 Dentist, about 40 minutes away\n\nThe dentist is the only one with travel. I can remind you to leave at 15:15.")),
             ThreadEntry(date: now.addingTimeInterval(-600), item: .userMessage(text: "yes please, and turn on dark mode")),
             ThreadEntry(date: now.addingTimeInterval(-595), item: reply("Done. Both are set.")),
+        ]
+    }
+
+    /// An exchange at the start of `layoutThread`'s episode, long enough that with it the
+    /// conversation no longer fits the panel. The plans are made up.
+    static func earlierThread() -> [ThreadEntry] {
+        let now = Date()
+        func reply(_ text: String) -> ThreadItem {
+            .assistantMessage(.init(text: text, provider: "openai", model: "gpt-6-luna"))
+        }
+        return [
+            ThreadEntry(date: now.addingTimeInterval(-7208), item: .userMessage(text: "what did I miss in the team channel")),
+            ThreadEntry(date: now.addingTimeInterval(-7205), item: reply(
+                "Three threads since yesterday:\n\n- The launch moved to Thursday\n- Sam Example asked for review on the onboarding copy\n- The offsite poll closes at noon\n\nThe review request mentions you by name, so it is likely the one to answer first.")),
         ]
     }
 
