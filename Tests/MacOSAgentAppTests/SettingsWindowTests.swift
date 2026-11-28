@@ -177,6 +177,36 @@ struct SettingsWindowRenders {
         }
     }
 
+    /// The owner asked for the two windows to share one minimum width: the Settings window,
+    /// sidebar included, can be made as narrow as the summon panel and no narrower.
+    @Test func settingsHasTheSummonPanelsMinimumWidth() throws {
+        #expect(SettingsWindowController.minimumSize.width == SummonPanel.minimumSize.width)
+        let harness = try SettingsWindowHarness(section: .general)
+        defer { harness.tearDown() }
+        #expect(harness.window.contentMinSize.width == SummonPanel.minimumSize.width)
+    }
+
+    /// A frame remembered narrower than the minimum opens at the minimum, with its top left
+    /// corner where it was.
+    @Test func aNarrowRememberedFrameOpensAtTheMinimum() throws {
+        let harness = try SettingsWindowHarness(section: .general)
+        defer { harness.tearDown() }
+        let window = harness.window
+        window.setFrame(NSRect(x: 100, y: 200, width: 300, height: 300), display: false)
+        let top = window.frame.maxY
+        SettingsWindowController.raiseToMinimum(window)
+        let content = window.contentRect(forFrameRect: window.frame).size
+        #expect(content.width == SettingsWindowController.minimumSize.width)
+        #expect(content.height == SettingsWindowController.minimumSize.height)
+        #expect(window.frame.minX == 100)
+        #expect(window.frame.maxY == top)
+
+        let wide = NSRect(x: 100, y: 200, width: 1000, height: 700)
+        window.setFrame(wide, display: false)
+        SettingsWindowController.raiseToMinimum(window)
+        #expect(window.frame == wide, "a frame above the minimum is left as it is")
+    }
+
     @Test func debuggingIsLast() {
         #expect(SettingsSection.allCases.last == .debugging)
     }
