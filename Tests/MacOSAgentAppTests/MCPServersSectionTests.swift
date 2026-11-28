@@ -67,3 +67,45 @@ import Testing
         }
     }
 }
+
+/// A server's detail has a fixed header over two tabs, Details and Tools.
+@MainActor
+@Suite struct MCPServerDetailTabTests {
+    @Test func detailsComesFirst() {
+        let model = MCPServersSettingsModel(pool: .empty, file: URL(filePath: "/dev/null"))
+        #expect(model.detailTab == .details)
+        #expect(MCPServerDetailTab.allCases == [.details, .tools])
+    }
+
+    @Test func theChosenTabStaysWhenAnotherServerIsSelected() {
+        let model = MCPServersSettingsModel(pool: .empty, file: URL(filePath: "/dev/null"))
+        model.selection = "weather"
+        model.detailTab = .tools
+        model.selection = "files"
+        #expect(model.detailTab == .tools)
+    }
+
+    @Test func theToolsTabCarriesItsCountOnceAnyAreKnown() {
+        #expect(MCPServerDetailTab.tools.title(toolCount: 0) == "Tools")
+        #expect(MCPServerDetailTab.tools.title(toolCount: 78) == "Tools (78)")
+        #expect(MCPServerDetailTab.details.title(toolCount: 78) == "Details")
+    }
+
+    @Test func aPreviewItemNamesAServerAndATab() {
+        let model = MCPServersSettingsModel(pool: .empty, file: URL(filePath: "/dev/null"))
+        model.showPreviewItem("example.tools")
+        #expect(model.selection == "example")
+        #expect(model.detailTab == .tools)
+        model.showPreviewItem("weather")
+        #expect(model.selection == "weather")
+        #expect(model.detailTab == .tools, "a server alone leaves the tab as it is")
+        model.showPreviewItem("notes.unknown")
+        #expect(model.selection == "notes")
+        #expect(model.detailTab == .tools)
+        model.showPreviewItem("notes.details")
+        #expect(model.detailTab == .details)
+        model.showPreviewItem("example.tools.narrow")
+        #expect(model.selection == "example")
+        #expect(model.detailTab == .tools)
+    }
+}
