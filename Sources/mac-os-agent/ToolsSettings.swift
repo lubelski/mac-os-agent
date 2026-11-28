@@ -31,6 +31,9 @@ final class ToolsSettingsModel {
     /// Changes when an MCP tool's go-ahead does, so the views read the store again.
     private(set) var goAheadRevision = 0
     @ObservationIgnored private var goAheadObserver: (any NSObjectProtocol)?
+    /// Changes when an MCP server's or tool's display name does, set in MCP Servers.
+    private(set) var namesRevision = 0
+    @ObservationIgnored private var namesObserver: (any NSObjectProtocol)?
     var errorMessage: String?
 
     init(registry: ToolRegistry, access gate: any PrivacyAccessGate, mcpSettings: MCPSettingsStore? = nil) {
@@ -47,11 +50,38 @@ final class ToolsSettingsModel {
             ) { [weak self] _ in
                 MainActor.assumeIsolated { self?.goAheadRevision += 1 }
             }
+            namesObserver = NotificationCenter.default.addObserver(
+                forName: MCPSettingsStore.namesDidChange, object: mcpSettings, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.namesRevision += 1 }
+            }
         }
     }
 
     isolated deinit {
         if let goAheadObserver { NotificationCenter.default.removeObserver(goAheadObserver) }
+        if let namesObserver { NotificationCenter.default.removeObserver(namesObserver) }
+    }
+
+    // MARK: - Display names
+
+    /// An MCP tool's display name: the owner's, or its name on its server made readable. Nil
+    /// for a built-in tool, which has none.
+    func displayName(of tool: ToolSummary) -> String? {
+        _ = namesRevision
+        guard let mcp = tool.mcp else { return nil }
+        return mcpSettings?.toolDisplayName(server: mcp.server, tool: mcp.tool) ?? HumanizedName.from(mcp.tool)
+    }
+
+    /// A group's title: an MCP server's display name, or a built-in group's title.
+    func title(of group: ToolGroup) -> String {
+        title(of: group.source)
+    }
+
+    func title(of source: ToolSource) -> String {
+        _ = namesRevision
+        guard source.isMCPServer else { return source.title }
+        return mcpSettings?.serverDisplayName(source.title) ?? HumanizedName.from(source.title)
     }
 
     /// The tool's go-ahead as it is now. An MCP tool's can change while the app runs.
@@ -133,10 +163,13 @@ struct ToolsListAndDetailView: View {
             ScrollViewReader { proxy in
                 List(selection: $model.selection) {
                     ForEach(model.groups) { group in
-                        Section(group.source.title) {
+                        Section {
                             ForEach(group.tools) { tool in
-                                ToolRow(tool: tool, goAhead: model.goAhead(of: tool)).tag(tool.id).id(tool.id)
+                                ToolRow(tool: tool, displayName: model.displayName(of: tool), goAhead: model.goAhead(of: tool))
+                                    .tag(tool.id).id(tool.id)
                             }
+                        } header: {
+                            ToolGroupHeader(title: model.title(of: group), source: group.source)
                         }
                     }
                 }
@@ -163,14 +196,51 @@ struct ToolsListAndDetailView: View {
     }
 }
 
+/// A group's header in the list: its title, and for an MCP server its display name with its
+/// name in the file after it, monospaced and quieter, as MCP Servers shows it.
+struct ToolGroupHeader: View {
+    let title: String
+    let source: ToolSource
+
+    var body: some View {
+        if source.isMCPServer {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(title).lineLimit(1)
+                Text(source.title)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("\(title), \(source.title)"))
+        } else {
+            Text(title)
+        }
+    }
+}
+
+/// A tool in the list. An MCP tool leads with its display name, with the name the model calls
+/// under it, monospaced and quieter, as in MCP Servers. A built-in tool has no display name
+/// and shows the name the model calls.
 struct ToolRow: View {
     let tool: ToolSummary
+    var displayName: String?
     let goAhead: ToolGoAhead
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(tool.name).font(.body.monospaced())
+                if let displayName {
+                    Text(displayName).fontWeight(.medium).lineLimit(1)
+                    Text(tool.name)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text(tool.name).font(.body.monospaced())
+                }
                 Text(tool.shortDescription)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -208,7 +278,7 @@ struct ToolDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                ToolTitle(tool: tool)
+                ToolTitle(tool: tool, scope: model.title(of: tool.source), displayName: model.displayName(of: tool))
                 ToolDetailSections(tool: tool, model: model)
             }
             .padding(20)
@@ -218,17 +288,30 @@ struct ToolDetailView: View {
 }
 
 /// A tool's name under the group it is in, outer before inner: the group as a quiet line, then
-/// the tool's name in that group, which leads. The name the model calls is in Parameters.
+/// the tool's name in that group, which leads. An MCP tool leads with its display name under
+/// its server's, with the name the model calls under it, monospaced. A built-in tool's name
+/// is the name the model calls, which is also in Parameters.
 struct ToolTitle: View {
     let tool: ToolSummary
+    let scope: String
+    var displayName: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(tool.source.title)
+            Text(scope)
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Text(tool.nameInGroup)
-                .font(.title2.monospaced().weight(.semibold))
+            if let displayName {
+                Text(displayName)
+                    .font(.title2.weight(.semibold))
+                Text(tool.name)
+                    .font(.callout.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            } else {
+                Text(tool.nameInGroup)
+                    .font(.title2.monospaced().weight(.semibold))
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)

@@ -7,26 +7,38 @@ import Foundation
 /// where camel case changes from lower case or a digit to a capital (`getAttachment`), or a run
 /// of capitals ends before a lower-case letter (`HTTPServer`). Digits stay in the word they are
 /// in (`s3`, `v2`). A name with no lower-case letters is read as lower case, so `SEND_EMAIL` is
-/// "Send Email". Each word then starts with a capital, except:
+/// "Send Email".
+///
+/// The words then take the repo's title style, Apple's: every word starts with a capital, except
+/// the articles, the coordinating conjunctions, and the prepositions of four letters or fewer
+/// (`minorWords`), which are lower case unless they are the first or the last word. So
+/// `add_to_list` is "Add to List", `log_in` is "Log In", and `set_up_account` "Set up Account".
+/// Two more exceptions come first:
 ///
 /// - a word that is already all capitals and at least two letters long stays as it is (`HTTP`),
-/// - a few very common short forms are written in capitals (`acronyms`),
-/// - a few short joining words are lower case after the first word (`minorWords`), so
-///   `add_to_list` is "Add to List".
+/// - a few very common short forms are written in capitals (`acronyms`).
 ///
-/// It is for Settings only. The model is always sent the literal name.
+/// It is for people only. The model is always sent the literal name.
 public enum HumanizedName {
     /// Short forms written in capitals wherever they are a word of their own. Kept to a few on
     /// purpose: a longer list guesses wrong more often than it helps.
     public static let acronyms: Set<String> = ["api", "id", "mcp", "pr", "ui", "url"]
-    /// Words that stay lower case unless they come first.
-    public static let minorWords: Set<String> = ["a", "an", "and", "as", "at", "by", "for", "from", "in", "of", "on", "or", "the", "to", "with"]
+    /// Words that stay lower case unless they come first or last: the articles, the coordinating
+    /// conjunctions, and the prepositions of four letters or fewer, as Apple's title style has them.
+    public static let minorWords: Set<String> = articles.union(conjunctions).union(shortPrepositions)
+    static let articles: Set<String> = ["a", "an", "the"]
+    static let conjunctions: Set<String> = ["and", "but", "for", "nor", "or", "so", "yet"]
+    static let shortPrepositions: Set<String> = [
+        "at", "by", "for", "from", "in", "into", "of", "off", "on", "onto", "out", "over", "to", "up", "with",
+    ]
 
     public static func from(_ name: String) -> String {
         let source = name.contains(where: \.isLowercase) ? name : name.lowercased()
         let words = split(source)
         guard !words.isEmpty else { return name }
-        return words.enumerated().map { index, word in style(word, isFirst: index == 0) }.joined(separator: " ")
+        return words.enumerated().map { index, word in
+            style(word, isFirstOrLast: index == 0 || index == words.count - 1)
+        }.joined(separator: " ")
     }
 
     static func split(_ name: String) -> [String] {
@@ -57,12 +69,12 @@ public enum HumanizedName {
         return words
     }
 
-    static func style(_ word: String, isFirst: Bool) -> String {
+    static func style(_ word: String, isFirstOrLast: Bool) -> String {
         let letters = word.filter(\.isLetter)
         if letters.count >= 2, letters.allSatisfy(\.isUppercase) { return word }
         let lower = word.lowercased()
         if acronyms.contains(lower) { return word.uppercased() }
-        if !isFirst, minorWords.contains(lower) { return lower }
+        if !isFirstOrLast, minorWords.contains(lower) { return lower }
         guard let first = word.first else { return word }
         return first.uppercased() + word.dropFirst()
     }

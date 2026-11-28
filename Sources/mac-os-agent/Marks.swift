@@ -65,8 +65,8 @@ extension ToolSignal.Tone {
 extension ToolSignal {
     /// A tool call's summary as text, with its first word in the secondary level and the rest
     /// in the tertiary.
-    static func text(for summary: String) -> Text {
-        ToolSignal.summary(summary).reduce(Text(verbatim: "")) { text, segment in
+    static func text(for summary: String, lead: String? = nil) -> Text {
+        ToolSignal.summary(summary, lead: lead).reduce(Text(verbatim: "")) { text, segment in
             Text("\(text)\(Text(verbatim: segment.text).foregroundStyle(segment.tone.style))")
         }
     }

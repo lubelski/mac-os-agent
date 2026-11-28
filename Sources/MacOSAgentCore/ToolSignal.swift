@@ -37,9 +37,19 @@ public enum ToolSignal {
     /// A tool call's summary as segments, on one line: its first word, which names what the
     /// call does, as `.text`, and the rest as `.dim`. Whole literal paths under the home folder
     /// in the rest shorten to `~`.
-    public static func summary(_ summary: String, home: String = NSHomeDirectory()) -> [Segment] {
+    ///
+    /// - Parameter lead: The words that name the call when they are more than one, such as an
+    ///   MCP tool's display name, "Five-Day Forecast". Used when the summary starts with them.
+    public static func summary(_ summary: String, lead: String? = nil, home: String = NSHomeDirectory()) -> [Segment] {
         let line = cleanSummary(summary)
         guard !line.isEmpty else { return [] }
+        if let lead = lead.map(cleanSummary), !lead.isEmpty, line.hasPrefix(lead) {
+            let end = line.index(line.startIndex, offsetBy: lead.count)
+            if end == line.endIndex { return [Segment(.text, line)] }
+            if line[end] == " " {
+                return [Segment(.text, lead), Segment(.dim, compactPaths(in: String(line[end...]), home: home))]
+            }
+        }
         guard let space = line.firstIndex(of: " ") else { return [Segment(.text, line)] }
         let rest = String(line[space...])
         return [Segment(.text, String(line[..<space])), Segment(.dim, compactPaths(in: rest, home: home))]

@@ -366,11 +366,14 @@ public struct Transcript: Equatable, Sendable {
         append(TranscriptRow(id: callID, kind: .tool(command: "", status: .preparing, output: nil)))
     }
 
-    /// A tool began running with this summary of what it does.
+    /// A tool began running with this summary of what it does. The loop's summary uses literal
+    /// names, so a call to an MCP tool keeps the row's reading by display names when the rows
+    /// show them.
     public mutating func toolRunning(_ callID: String, command: String, at date: Date = Date()) {
         if indexByID[callID] != nil, toolFacts[callID]?.runningSince == nil {
             toolFacts[callID, default: ToolCallFacts()].runningSince = date
         }
+        let command = toolFacts[callID]?.call.flatMap { summaries.displaySummary(of: $0) } ?? command
         updateTool(callID) { existing, status, _ in
             existing = command
             if status == .preparing { status = .running }
@@ -402,6 +405,12 @@ public struct Transcript: Equatable, Sendable {
         return InspectedToolCall(
             callID: callID, summary: command, status: status, output: output,
             facts: toolFacts[callID] ?? ToolCallFacts())
+    }
+
+    /// The words a call's row leads with when they are more than its first word, such as an MCP
+    /// tool's display name. Nil for most calls, whose first word leads.
+    public func summaryLead(_ callID: String) -> String? {
+        toolFacts[callID]?.call.flatMap { summaries.displayLead(of: $0) }
     }
 
     /// The ids of every tool call, oldest first, for moving between them in the inspector.

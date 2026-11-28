@@ -52,7 +52,27 @@ public struct MCPTool: AgentTool {
     /// The tool and its server, then the arguments in brief, such as
     /// `get_forecast on weather: city Lisbon, days 3`.
     public func summary(arguments: JSONValue) -> String {
-        let head = "\(info.name) on \(server)"
+        Self.summary(tool: info.name, server: server, arguments: arguments)
+    }
+
+    /// The names people know the server and the tool by: the owner's, or the literal ones made
+    /// readable. Read at each call, so a rename shows the next time a row is drawn.
+    public var displayNames: ConfirmationRequest.DisplayNames {
+        ConfirmationRequest.DisplayNames(
+            server: pool.settings.serverDisplayName(server),
+            tool: pool.settings.toolDisplayName(server: server, tool: info.name))
+    }
+
+    /// The summary as a person reads it, by display names, such as
+    /// `Forecast on Forecasts: city Lisbon, days 3`. For rows in the panel and History only.
+    public func displaySummary(arguments: JSONValue) -> String {
+        let names = displayNames
+        return Self.summary(tool: names.tool, server: names.server, arguments: arguments)
+    }
+
+    /// A tool's name and its server's, then the arguments in brief.
+    public static func summary(tool: String, server: String, arguments: JSONValue) -> String {
+        let head = "\(tool) on \(server)"
         guard case .object(let object) = arguments, !object.isEmpty else { return head }
         let parts = object.keys.sorted().map { key -> String in
             let value = object[key] ?? .null
@@ -61,6 +81,17 @@ public struct MCPTool: AgentTool {
         }
         let line = parts.joined(separator: ", ")
         return "\(head): " + (line.count > 120 ? String(line.prefix(119)) + "…" : line)
+    }
+
+    /// The server and the tool's name on it, read back from a name the model calls, for a call
+    /// to a tool that is no longer listed. Nil for a name with no separator, such as a built-in
+    /// tool's. A name that was shortened and given a hash reads back as its shortened form.
+    public static func parts(ofCallName name: String) -> (server: String, tool: String)? {
+        guard let range = name.range(of: MCPToolNaming.separator) else { return nil }
+        let server = String(name[..<range.lowerBound])
+        let tool = String(name[range.upperBound...])
+        guard !server.isEmpty, !tool.isEmpty else { return nil }
+        return (server, tool)
     }
 
     public static let declinedOutput = "The person declined this call. It did not run."
@@ -91,10 +122,13 @@ public struct MCPTool: AgentTool {
             return "The MCP server \(server) is not available, so \(info.name) did not run: \(MCPServerPool.describe(error))"
         }
         if currentGoAhead == .ask {
-            let answer = await context.answer(ConfirmationRequest(
+            var request = ConfirmationRequest(
                 callID: context.callID, kind: .mcpToolCall,
                 body: .toolCall(server: server, tool: info.name, arguments: arguments.prettyEncodedString()),
-                reason: "comes from an MCP server and is set to ask before each call"))
+                reason: "comes from an MCP server and is set to ask before each call")
+            // For the card only. The call itself, and what the model is told, use the literal names.
+            request.displayNames = displayNames
+            let answer = await context.answer(request)
             if Task.isCancelled { return Self.stoppedOutput }
             switch answer {
             case .deny:

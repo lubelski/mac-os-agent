@@ -81,6 +81,20 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
     /// A call made by a `run_script` script. The card says so, and declining does not end the
     /// row, since the script runs on.
     public var fromScript = false
+    /// For a call to an MCP tool: the names people know its server and the tool by, which the
+    /// card shows above the literal call. Nil reads as the literal names made readable.
+    public var displayNames: DisplayNames?
+
+    /// An MCP server's and tool's display names, for a person. Never sent to the model.
+    public struct DisplayNames: Sendable, Equatable {
+        public var server: String
+        public var tool: String
+
+        public init(server: String, tool: String) {
+            self.server = server
+            self.tool = tool
+        }
+    }
 
     public init(callID: String, kind: Kind, body: Body, reason: String) {
         self.callID = callID
@@ -102,8 +116,15 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         if case .item(let name, _) = body { name } else { nil }
     }
 
+    /// The tool a call to an MCP tool is for, by the name a person knows it by.
     private var toolCallName: String? {
-        if case .toolCall(_, let tool, _) = body { tool } else { nil }
+        if case .toolCall(let server, let tool, _) = body { toolCallDisplayNames(server: server, tool: tool).tool } else { nil }
+    }
+
+    /// The display names for an MCP call's card: the ones the tool gave, or the literal names
+    /// made readable.
+    public func toolCallDisplayNames(server: String, tool: String) -> DisplayNames {
+        displayNames ?? DisplayNames(server: HumanizedName.from(server), tool: HumanizedName.from(tool))
     }
 
     /// The question the card asks, such as "Run this command?".

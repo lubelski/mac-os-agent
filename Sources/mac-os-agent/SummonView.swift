@@ -448,12 +448,24 @@ struct ConfirmationCard: View {
             }
             .font(.callout)
         case .toolCall(let server, let tool, let arguments):
+            // The names the owner knows the tool by lead, and the literal call that runs is under
+            // them, monospaced, so what is approved is never only a name the owner chose.
+            let names = request.toolCallDisplayNames(server: server, tool: tool)
             VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(verbatim: tool).foregroundStyle(.primary)
-                    selectable("on \(server)")
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(verbatim: names.tool).foregroundStyle(.primary)
+                        selectable("on \(names.server)")
+                    }
+                    .font(.callout)
+                    Text("\(Text(verbatim: tool).font(.system(size: 11, design: .monospaced))) on \(Text(verbatim: server).font(.system(size: 11, design: .monospaced)))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityLabel(Text("Calls \(tool) on the server \(server)"))
                 }
-                .font(.callout)
                 CodeBracket(font: .system(size: 12, design: .monospaced)) {
                     scrollsWhenLong(selectable(arguments))
                 }

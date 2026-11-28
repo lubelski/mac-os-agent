@@ -153,7 +153,9 @@ struct HistoryView: View {
     private func row(_ index: Int, in rows: [TranscriptRow]) -> some View {
         let row = rows[index]
         let session = session
-        return RowView(row: row, now: now, commandOfCall: { session.transcript.toolCall($0)?.command })
+        return RowView(
+            row: row, now: now, commandOfCall: { session.transcript.toolCall($0)?.command },
+            leadOfCall: { session.transcript.summaryLead($0) })
             .padding(.top, Self.spacing(TranscriptRow.gap(after: index > 0 ? rows[index - 1] : nil, before: row)))
     }
 

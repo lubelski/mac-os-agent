@@ -29,10 +29,20 @@ public struct HistoryPanes: Sendable, Equatable {
     public var contents: ThreadContents
     /// The episodes the base lists, top to bottom.
     public var items: [EpisodeListItem]
+    /// What a command's line says, from the tools. With display names on, an MCP call reads by
+    /// the names people know it by, resolved as the line is built.
+    public var summaries: ToolCallSummaries
 
-    public init(contents: ThreadContents, items: [EpisodeListItem]) {
+    public init(contents: ThreadContents, items: [EpisodeListItem], summaries: ToolCallSummaries = .builtIn) {
         self.contents = contents
         self.items = items
+        self.summaries = summaries
+    }
+
+    /// The same thread and list. The summaries are not compared: they read the tools, which
+    /// do not change while the app runs.
+    public static func == (lhs: HistoryPanes, rhs: HistoryPanes) -> Bool {
+        lhs.contents == rhs.contents && lhs.items == rhs.items && lhs.summaries.showsDisplayNames == rhs.summaries.showsDisplayNames
     }
 
     /// An episode's id in a path: its number, which never changes.
@@ -49,7 +59,7 @@ public struct HistoryPanes: Sendable, Equatable {
 
     /// The lines of an episode, in order.
     public func lines(of episode: Episode) -> [EpisodeLine] {
-        EpisodeLine.lines(of: episode, in: contents)
+        EpisodeLine.lines(of: episode, in: contents, summaries: summaries)
     }
 
     /// Every command an episode's pane opens, in the order it shows them: the model's commands,
@@ -69,7 +79,7 @@ public struct HistoryPanes: Sendable, Equatable {
         let count = contents.entries.count
         let start = min(episode.range.lowerBound, count)
         let end = min(contents.episode(numbered: episode.number + 1)?.range.upperBound ?? episode.range.upperBound, count)
-        return Transcript(entries: contents.entries[start..<max(start, end)]).toolCall(callID)
+        return Transcript(entries: contents.entries[start..<max(start, end)], summaries: summaries).toolCall(callID)
     }
 
     /// What the pane at a depth of the path shows, or nil when the path does not reach that

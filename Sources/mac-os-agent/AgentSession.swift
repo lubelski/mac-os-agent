@@ -189,6 +189,18 @@ final class AgentSession {
     @ObservationIgnored let suggestionList = SuggestionListState()
     /// True while Up and Down Arrow are moving through the owner's earlier messages.
     var isRecallingMessage: Bool { recall.isRecalling }
+    /// What a preview's tool rows say, from its stand-in tools.
+    @ObservationIgnored private var previewSummaries = ToolCallSummaries.builtIn.showingDisplayNames()
+    /// Set when an MCP display name changed while a task ran, so the rows are drawn again from
+    /// the thread when it can be.
+    @ObservationIgnored private var namesChangedSinceDrawn = false
+    @ObservationIgnored private var namesObserver: (any NSObjectProtocol)?
+
+    /// What the rows say about each call: the tools' own summaries, with MCP calls by display
+    /// names. The thread keeps the literal names, so the rows are drawn from them each time.
+    static func rowSummaries(_ tools: [any AgentTool]) -> ToolCallSummaries {
+        ToolCallSummaries(tools, showsDisplayNames: true)
+    }
 
     /// The main panel's session, on the kept thread.
     /// - Parameter signedIn: For tests, which run without an authenticator.
@@ -205,6 +217,22 @@ final class AgentSession {
         modelCatalog = authenticator.map { OpenAIModelCatalog(authenticator: $0) }
         self.episodeTimeout = episodeTimeout
         if signedIn { signInState = .signedIn }
+        // A rename in Settings, MCP Servers, reaches the rows already drawn.
+        namesObserver = NotificationCenter.default.addObserver(
+            forName: MCPSettingsStore.namesDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.displayNamesDidChange() }
+        }
+    }
+
+    isolated deinit {
+        if let namesObserver { NotificationCenter.default.removeObserver(namesObserver) }
+    }
+
+    /// Draws the rows again from the thread, now or once the running task is done.
+    private func displayNamesDidChange() {
+        namesChangedSinceDrawn = true
+        followPanelWithBarsSwitch()
     }
 
     /// An incognito window's session. It starts a conversation at once.
@@ -226,7 +254,8 @@ final class AgentSession {
     /// Stand-in state for rendering a window without a model.
     init(
         previewEntries: [ThreadEntry], streamingText: String = "", pendingConfirmation: ConfirmationRequest? = nil,
-        isRunning: Bool = false, runningCallIDs: [String] = [], freshStart: Bool = false, incognito: Bool = false
+        isRunning: Bool = false, runningCallIDs: [String] = [], freshStart: Bool = false, incognito: Bool = false,
+        summaries: ToolCallSummaries = ToolCallSummaries.builtIn.showingDisplayNames()
     ) {
         kind = incognito ? .incognito : .kept
         problems = ProblemLog()
@@ -239,8 +268,9 @@ final class AgentSession {
             transcript.beginEpisode(at: previewEntries.first?.date ?? Date())
             for entry in previewEntries { transcript.apply(entry) }
         } else {
-            transcript = Transcript(entries: previewEntries)
+            transcript = Transcript(entries: previewEntries, summaries: summaries)
             self.previewEntries = previewEntries
+            previewSummaries = summaries
         }
         if freshStart { transcript.beginEpisode(at: Date()) }
         for callID in runningCallIDs { transcript.setToolStatus(callID, .running) }
@@ -276,7 +306,7 @@ final class AgentSession {
     func start() async {
         if let loop, kind == .kept {
             transcript = Transcript(
-                entries: await loop.thread.entries, summaries: ToolCallSummaries(loop.tools), showsLines: panelWithBars)
+                entries: await loop.thread.entries, summaries: Self.rowSummaries(loop.tools), showsLines: panelWithBars)
             reloadTaskLinks()
         }
         if let authenticator {
@@ -304,19 +334,23 @@ final class AgentSession {
 
     /// Draws the main panel's history again when the panel with bars switch changed since it was
     /// drawn, since the switch decides whether a quick action's run and an opened app read as
-    /// one line. A fresh page stays fresh. Nothing in the thread changes.
+    /// one line, or when an MCP display name changed, since a call's row reads by it. A fresh
+    /// page stays fresh. Nothing in the thread changes. While a task runs, it waits for the next
+    /// time the panel comes up.
     func followPanelWithBarsSwitch() {
         let wanted = panelWithBars
-        guard kind == .kept, transcript.showsLines != wanted, !isRunning else { return }
+        guard kind == .kept, transcript.showsLines != wanted || namesChangedSinceDrawn, !isRunning else { return }
         if let previewEntries {
-            redraw(previewEntries, summaries: .builtIn, showsLines: wanted)
+            namesChangedSinceDrawn = false
+            redraw(previewEntries, summaries: previewSummaries, showsLines: wanted)
             return
         }
         guard let loop else { return }
         Task {
             let entries = await loop.thread.entries
-            guard !isRunning, transcript.showsLines != panelWithBars else { return }
-            redraw(entries, summaries: ToolCallSummaries(loop.tools), showsLines: panelWithBars)
+            guard !isRunning, transcript.showsLines != panelWithBars || namesChangedSinceDrawn else { return }
+            namesChangedSinceDrawn = false
+            redraw(entries, summaries: Self.rowSummaries(loop.tools), showsLines: panelWithBars)
         }
     }
 
