@@ -36,17 +36,19 @@ import MacOSAgentCore
 ///   scrolled partway, the fifth row the last whole one and part of the sixth below it.
 /// - `bars-card-short-end`: the same scrolled to its end, on the Ask row, with the part row at
 ///   the top.
-/// - `bars-card-up`: the same card opening upward over the end of the conversation, as it does
-///   with room below for less than two rows and a part, as in slide over, with three task links that it
-///   covers.
+/// - `bars-card-bottom`: "chr", with the panel at the very bottom of the screen, so it has moved
+///   up to make room for the card's two rows and a part. The render draws the bottom of the
+///   screen's visible area under it.
+/// - `bars-card-slide-over`: the same in slide over on the right, where the panel's bottom edge
+///   has risen to make room, with the bottom of the screen's visible area under it.
 /// - `bars-card-slash`: the slash commands in the card, opening downward.
 @MainActor
 enum PanelWithBarsPreview {
     static let names = [
         "bars-rest", "bars-typing", "bars-long", "bars-match", "bars-slash", "bars-running", "bars-working-hover",
         "bars-queued", "bars-lines", "bars-lines-off", "bars-layout", "bars-layout-copy", "bars-scrolled", "bars-links",
-        "bars-links-more", "bars-card-down", "bars-card-short-top", "bars-card-short", "bars-card-short-end", "bars-card-up",
-        "bars-card-slash",
+        "bars-links-more", "bars-card-down", "bars-card-short-top", "bars-card-short", "bars-card-short-end",
+        "bars-card-bottom", "bars-card-slide-over", "bars-card-slash",
     ]
 
     /// The room below the panel for `bars-card-short`: two rows, the part row, and the card's
@@ -56,7 +58,21 @@ enum PanelWithBarsPreview {
     /// The states whose card opens below the panel, in a window of its own, so a capture of the
     /// panel's window alone would leave it out.
     static func opensBelow(_ name: String) -> Bool {
-        ["bars-card-down", "bars-card-short-top", "bars-card-short", "bars-card-short-end", "bars-card-slash"].contains(name)
+        [
+            "bars-card-down", "bars-card-short-top", "bars-card-short", "bars-card-short-end", "bars-card-bottom",
+            "bars-card-slide-over", "bars-card-slash",
+        ].contains(name)
+    }
+
+    /// The layout a state is shown in, when it is not Centered.
+    static func preset(named name: String) -> PanelPreset? {
+        name == "bars-card-slide-over" ? .slideOverRight : nil
+    }
+
+    /// Whether a state is shown at the very bottom of the screen, on the real screen's room rather
+    /// than a stand-in one, with the bottom of the screen drawn in its render.
+    static func sitsOnTheScreen(_ name: String) -> Bool {
+        ["bars-card-bottom", "bars-card-slide-over"].contains(name)
     }
 
     static func session(named name: String) -> AgentSession? {
@@ -119,9 +135,7 @@ enum PanelWithBarsPreview {
             default: 0
             }
             for _ in 0..<steps { _ = session.chooseInFooter(by: 1) }
-        case "bars-card-up":
-            session.taskLinks = Array(links.prefix(3))
-            session.suggestionList.previewRoomBelow = 0
+        case "bars-card-bottom", "bars-card-slide-over":
             session.draft = "chr"
         default:
             break

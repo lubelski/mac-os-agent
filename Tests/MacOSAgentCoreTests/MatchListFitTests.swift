@@ -2,7 +2,7 @@ import CoreGraphics
 import Testing
 @testable import MacOSAgentCore
 
-/// Which way the list of matches opens, and how much of it shows. See `MatchListFit`.
+/// How much of the list of matches shows. See `MatchListFit`.
 @Suite struct MatchListFitTests {
     let row: CGFloat = 44
     let hairline: CGFloat = 1
@@ -13,55 +13,157 @@ import Testing
         MatchListFit.fit(rowCount: count, rowHeight: row, reachBeyondRows: hairline, roomBelow: room)
     }
 
+    private func shown(_ rows: Int, _ part: CGFloat) -> MatchListFit {
+        MatchListFit(rows: rows, partRowHeight: part)
+    }
+
     @Test func thePartRowIsFourTenthsOfARowInWholePoints() {
         #expect(MatchListFit.partRowHeight(rowHeight: 44) == part)
         #expect(MatchListFit.partRowHeight(rowHeight: 50) == 20)
     }
 
-    @Test func withRoomForEveryRowItOpensDownwardWhole() {
-        #expect(fit(7, room: 7 * 44 + 1) == .below(rows: 7, partRowHeight: 0))
-        #expect(fit(7, room: 2000) == .below(rows: 7, partRowHeight: 0))
-        #expect(fit(7, room: .greatestFiniteMagnitude) == .below(rows: 7, partRowHeight: 0), "no overflow")
+    @Test func withRoomForEveryRowItShowsThemAll() {
+        #expect(fit(7, room: 7 * 44 + 1) == shown(7, 0))
+        #expect(fit(7, room: 2000) == shown(7, 0))
+        #expect(fit(7, room: .greatestFiniteMagnitude) == shown(7, 0), "no overflow")
         #expect(fit(7, room: 2000)?.scrolls == false)
         #expect(fit(7, room: 2000)?.listHeight(rowHeight: row) == 7 * row)
     }
 
     @Test func withLessRoomItShowsTheWholeRowsThatFitAndAPartRow() {
-        #expect(fit(7, room: 7 * 44) == .below(rows: 6, partRowHeight: part), "one point short of the last row")
-        #expect(fit(7, room: 200) == .below(rows: 4, partRowHeight: part))
-        #expect(fit(7, room: 3 * 44 + part + 1) == .below(rows: 3, partRowHeight: part))
-        #expect(fit(7, room: 3 * 44 + part) == .below(rows: 2, partRowHeight: part), "a point short of three and a part")
+        #expect(fit(7, room: 7 * 44) == shown(6, part), "one point short of the last row")
+        #expect(fit(7, room: 200) == shown(4, part))
+        #expect(fit(7, room: 3 * 44 + part + 1) == shown(3, part))
+        #expect(fit(7, room: 3 * 44 + part) == shown(2, part), "a point short of three and a part")
+        #expect(fit(7, room: 2 * 44 + part + 1) == shown(2, part), "2.4 rows, the minimum")
         #expect(fit(7, room: 200)?.scrolls == true)
         #expect(fit(7, room: 200)?.listHeight(rowHeight: row) == 4 * 44 + part)
     }
 
-    @Test func itIsNeverShortenedBelowTwoRowsAndAPart() {
-        #expect(fit(7, room: 2 * 44 + part + 1) == .below(rows: 2, partRowHeight: part), "2.4 rows, the fewest")
-        #expect(fit(7, room: 2 * 44 + part) == .above, "a point short of it")
-        #expect(fit(7, room: 2 * 44 + 1) == .above, "room for two whole rows is not enough")
-        #expect(fit(7, room: 44 + 1) == .above)
-        #expect(fit(7, room: 0) == .above, "slide over, or the very bottom of the screen")
-        #expect(fit(7, room: -50) == .above)
-        #expect(MatchListFit.above.scrolls == false)
-        #expect(MatchListFit.above.listHeight(rowHeight: row) == 0)
+    /// Short of the minimum, which the panel makes room for wherever it can, the list is still
+    /// shortened downward: to the rows that fit, down to one and a part. It never opens upward.
+    @Test func shortOfTheMinimumItIsShortenedDownToOneRowAndAPart() {
+        #expect(fit(7, room: 2 * 44 + part) == shown(1, part), "a point short of 2.4")
+        #expect(fit(7, room: 2 * 44 + 1) == shown(1, part))
+        #expect(fit(7, room: 44 + part + 1) == shown(1, part))
+        #expect(fit(7, room: 44) == shown(1, part), "one row and a part, past the room")
+        #expect(fit(7, room: 0) == shown(1, part))
+        #expect(fit(7, room: -50) == shown(1, part))
+        #expect(fit(7, room: 0)?.scrolls == true)
     }
 
     @Test func aShortListShowsWholeWhereItFits() {
-        #expect(fit(1, room: 44 + 1) == .below(rows: 1, partRowHeight: 0))
-        #expect(fit(1, room: 44) == .above)
-        #expect(fit(2, room: 2 * 44 + 1) == .below(rows: 2, partRowHeight: 0), "two whole rows need no part")
-        #expect(fit(2, room: 2 * 44) == .above, "and two shortened would be less than 2.4")
-        #expect(fit(3, room: 3 * 44) == .below(rows: 2, partRowHeight: part))
+        #expect(fit(1, room: 44 + 1) == shown(1, 0))
+        #expect(fit(1, room: 44) == shown(1, 0), "a single row shows whole, past the room")
+        #expect(fit(1, room: 0) == shown(1, 0))
+        #expect(fit(2, room: 2 * 44 + 1) == shown(2, 0), "two whole rows need no part")
+        #expect(fit(2, room: 2 * 44) == shown(1, part))
+        #expect(fit(3, room: 3 * 44) == shown(2, part))
     }
 
     @Test func noRowsNoList() {
         #expect(fit(0, room: 2000) == nil)
     }
 
-    @Test func theMinimumAndThePartCanBeGiven() {
-        #expect(MatchListFit.fit(rowCount: 7, rowHeight: 44, reachBeyondRows: 1, roomBelow: 44 + 18, minimumRows: 1) == .below(rows: 1, partRowHeight: 17))
-        #expect(MatchListFit.fit(rowCount: 7, rowHeight: 44, reachBeyondRows: 1, roomBelow: 4 * 44, minimumRows: 4) == .above)
-        #expect(MatchListFit.fit(rowCount: 7, rowHeight: 40, reachBeyondRows: 0, roomBelow: 100, partRow: 0.5) == .below(rows: 2, partRowHeight: 20))
+    @Test func thePartCanBeGiven() {
+        #expect(MatchListFit.fit(rowCount: 7, rowHeight: 40, reachBeyondRows: 0, roomBelow: 100, partRow: 0.5) == shown(2, 20))
+    }
+
+    /// The least room the list is meant to have: every row up to two, and otherwise two rows
+    /// and a part, or every row where that is less.
+    @Test func theMinimumReachIsTwoRowsAndAPartOrEveryRowWhereLess() {
+        func reach(_ count: Int) -> CGFloat {
+            MatchListFit.minimumReach(rowCount: count, rowHeight: row, reachBeyondRows: hairline)
+        }
+        #expect(reach(0) == 0)
+        #expect(reach(1) == row + hairline)
+        #expect(reach(2) == 2 * row + hairline)
+        #expect(reach(3) == 2 * 44 + part + 1)
+        #expect(reach(7) == 2 * 44 + part + 1)
+        #expect(MatchListFit.minimumReach(rowCount: 7, rowHeight: 44, reachBeyondRows: 0, minimumRows: 4) == 4 * 44 + part)
+        // With exactly the minimum reach, the fit shows the minimum, and a point less shows less.
+        for count in 2...7 {
+            let shownRows = fit(count, room: reach(count))
+            let expected = count <= 2 ? shown(count, 0) : shown(2, part)
+            #expect(shownRows == expected, "\(count) rows")
+            #expect(fit(count, room: reach(count) - 1) != expected, "\(count) rows, a point short")
+        }
+    }
+}
+
+/// Where the panel goes so the list has its room below. See `MatchListRoom`.
+@Suite struct MatchListRoomTests {
+    let visible = CGRect(x: 0, y: 40, width: 1512, height: 900)
+    let margin: CGFloat = 8
+    let needed: CGFloat = 106
+    let minimumHeight: CGFloat = 300
+
+    private func frame(_ panel: CGRect, _ layout: MatchListRoom.Layout, in visible: CGRect? = nil) -> CGRect {
+        MatchListRoom.frame(
+            panel: panel, visible: visible ?? self.visible, layout: layout, needed: needed, margin: margin,
+            minimumHeight: minimumHeight)
+    }
+
+    @Test func theRoomBelowIsLessTheMarginAndNeverNegative() {
+        #expect(MatchListRoom.roomBelow(panel: CGRect(x: 0, y: 240, width: 640, height: 560), visible: visible, margin: 8) == 192)
+        #expect(MatchListRoom.roomBelow(panel: CGRect(x: 0, y: 40, width: 640, height: 560), visible: visible, margin: 8) == 0)
+        #expect(MatchListRoom.roomBelow(panel: CGRect(x: 0, y: 0, width: 640, height: 560), visible: visible, margin: 8) == 0)
+    }
+
+    @Test func withTheRoomAlreadyThereNothingMoves() {
+        let panel = CGRect(x: 300, y: 40 + margin + needed, width: 640, height: 560)
+        #expect(frame(panel, .floating) == panel)
+        #expect(frame(panel.offsetBy(dx: 0, dy: 200), .floating) == panel.offsetBy(dx: 0, dy: 200))
+        #expect(frame(panel, .pinnedToEdge) == panel)
+    }
+
+    /// A centered panel at the very bottom moves up by just the room it lacks, margin and all,
+    /// and keeps its size.
+    @Test func aFloatingPanelMovesUpJustFarEnough() {
+        let bottom = CGRect(x: 300, y: 40, width: 640, height: 560)
+        let moved = frame(bottom, .floating)
+        #expect(moved == bottom.offsetBy(dx: 0, dy: needed + margin))
+        #expect(MatchListRoom.roomBelow(panel: moved, visible: visible, margin: margin) == needed)
+        let near = bottom.offsetBy(dx: 0, dy: 50)
+        #expect(frame(near, .floating) == bottom.offsetBy(dx: 0, dy: needed + margin), "the same place from nearer")
+        let past = bottom.offsetBy(dx: 0, dy: -30)
+        #expect(frame(past, .floating).minY == 40 + margin + needed, "from partly off the bottom too")
+    }
+
+    /// Its top never goes past the top of the visible area, so a tall panel moves only as far as
+    /// that allows, and the list is shortened for the rest.
+    @Test func aFloatingPanelNeverMovesPastTheTop() {
+        let tall = CGRect(x: 300, y: 40, width: 640, height: 850)
+        let moved = frame(tall, .floating)
+        #expect(moved.maxY == visible.maxY)
+        #expect(moved.size == tall.size)
+        #expect(MatchListRoom.roomBelow(panel: moved, visible: visible, margin: margin) == 42)
+        let full = CGRect(x: 300, y: 40, width: 640, height: 900)
+        #expect(frame(full, .floating) == full, "no room to make")
+    }
+
+    /// Slide over is the screen's full height, so its bottom rises and its top stays.
+    @Test func aPinnedPanelRisesFromTheBottom() {
+        let full = CGRect(x: 1112, y: 40, width: 400, height: 900)
+        let shortened = frame(full, .pinnedToEdge)
+        #expect(shortened.maxY == full.maxY, "the top stays")
+        #expect(shortened.minX == full.minX)
+        #expect(shortened.width == full.width)
+        #expect(shortened.minY == 40 + needed + margin)
+        #expect(MatchListRoom.roomBelow(panel: shortened, visible: visible, margin: margin) == needed)
+    }
+
+    /// On a screen too short for both, a pinned panel keeps its least height and the list gets
+    /// what is left.
+    @Test func aPinnedPanelIsNeverShorterThanItsMinimum() {
+        let short = CGRect(x: 0, y: 40, width: 1024, height: 360)
+        let screen = CGRect(x: 0, y: 40, width: 1024, height: 360)
+        let shortened = frame(short, .pinnedToEdge, in: screen)
+        #expect(shortened.height == minimumHeight)
+        #expect(shortened.maxY == short.maxY)
+        #expect(MatchListRoom.roomBelow(panel: shortened, visible: screen, margin: margin) == 52)
+        let tiny = CGRect(x: 0, y: 40, width: 1024, height: 280)
+        #expect(frame(tiny, .pinnedToEdge, in: tiny) == tiny, "already shorter than the minimum")
     }
 }
 
@@ -139,5 +241,40 @@ import Testing
 
     @Test func aRowOutsideTheListLeavesItWhereItIs() {
         #expect(MatchListScroll.offset(showing: 9, from: 44, rowCount: 7, rowHeight: row, viewport: 105, margin: part) == 44)
+    }
+}
+
+/// The panel's way to where it moves for the list. See `MatchListRoom.Motion`.
+@Suite struct MatchListRoomMotionTests {
+    @Test func itTakesASlidesTimeAndEndsExactlyThere() {
+        let start = CGRect(x: 300, y: 40, width: 640, height: 560)
+        let end = start.offsetBy(dx: 0, dy: 114)
+        var motion = MatchListRoom.Motion(from: start, to: end)
+        #expect(motion.frame == start)
+        #expect(MatchListRoom.Motion.duration == PanelSlide.slideDuration)
+        var last = start.minY
+        var steps = 0
+        while !motion.isFinished {
+            motion.advance(by: 1.0 / 60)
+            steps += 1
+            #expect(motion.frame.minY >= last, "it only moves one way")
+            #expect(motion.frame.size == start.size, "a raise keeps the size")
+            #expect(motion.frame.minY == motion.frame.minY.rounded(), "whole points")
+            last = motion.frame.minY
+        }
+        #expect((18...19).contains(steps), "0.3 seconds at 60 frames a second")
+        #expect(motion.frame == end)
+    }
+
+    @Test func itEasesOutSoMostOfTheWayIsEarly() {
+        let start = CGRect(x: 0, y: 0, width: 400, height: 900)
+        let end = CGRect(x: 0, y: 114, width: 400, height: 786)
+        var motion = MatchListRoom.Motion(from: start, to: end)
+        motion.advance(by: MatchListRoom.Motion.duration / 3)
+        #expect(motion.frame.minY > 114 / 2, "past halfway a third of the way in")
+        #expect(motion.frame.maxY == 900, "a pinned panel's top stays")
+        motion.advance(by: 10)
+        #expect(motion.isFinished)
+        #expect(motion.frame == end)
     }
 }

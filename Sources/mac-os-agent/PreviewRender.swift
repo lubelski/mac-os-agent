@@ -35,8 +35,12 @@ enum PreviewRender {
     /// out, each sized and placed but never ordered in, and drawn where they are on screen
     /// relative to it, so the image is their union. Around the window, where only they are, the
     /// image is clear.
+    ///
+    /// `screenBottom`, the bottom of the screen's visible area on screen, draws a band below
+    /// that line, where the Dock or the screen's edge is, so the image shows how close the
+    /// windows come to it.
     static func render(
-        _ window: NSWindow, after delay: Duration = .milliseconds(900),
+        _ window: NSWindow, after delay: Duration = .milliseconds(900), screenBottom: CGFloat? = nil,
         alongside: @escaping @MainActor () -> [NSWindow] = { [] }
     ) {
         guard let target else { return }
@@ -52,7 +56,10 @@ enum PreviewRender {
             let others = alongside().compactMap { other in
                 other.contentView.flatMap(cache).map { (frame: other.frame, image: $0) }
             }
-            let union = others.reduce(window.frame) { $0.union($1.frame) }
+            var union = others.reduce(window.frame) { $0.union($1.frame) }
+            if let screenBottom {
+                union = union.union(CGRect(x: union.minX, y: screenBottom - bandHeight, width: union.width, height: bandHeight))
+            }
             // Where each window is in the image, from where it is on screen.
             func place(_ frame: CGRect) -> CGRect {
                 frame.offsetBy(dx: -union.minX, dy: -union.minY)
@@ -84,6 +91,9 @@ enum PreviewRender {
             for other in others {
                 image(other.image, size: other.frame.size).draw(in: place(other.frame))
             }
+            if let screenBottom {
+                drawScreenBottom(in: place(CGRect(x: union.minX, y: screenBottom - bandHeight, width: union.width, height: bandHeight)))
+            }
             NSGraphicsContext.restoreGraphicsState()
 
             do {
@@ -97,6 +107,23 @@ enum PreviewRender {
                 exit(1)
             }
         }
+    }
+
+    /// How tall the band below the screen's visible area is drawn.
+    private static let bandHeight: CGFloat = 28
+
+    /// The band below the screen's visible area: a gray stripe with a caption, under a line at
+    /// its top edge.
+    private static func drawScreenBottom(in rect: CGRect) {
+        NSColor(white: 0.5, alpha: 0.35).setFill()
+        rect.fill()
+        NSColor(white: 0.5, alpha: 0.9).setFill()
+        CGRect(x: rect.minX, y: rect.maxY - 1, width: rect.width, height: 1).fill()
+        let caption = NSAttributedString(string: "Bottom of the screen's visible area", attributes: [
+            .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor(white: 0.5, alpha: 1),
+        ])
+        let size = caption.size()
+        caption.draw(at: CGPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2 - 1))
     }
 
     /// Lays out a view and draws it into a bitmap, or nil when it has no size.

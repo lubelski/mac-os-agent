@@ -109,6 +109,14 @@ MainActor.assumeIsolated {
            let preset = PanelPreset(rawValue: arguments[index + 1])
         {
             panel.choose(preset)
+        } else if let preset = PanelWithBarsPreview.preset(named: name) {
+            panel.choose(preset)
+        }
+        // A state on the real screen's room: at its very bottom when Centered, and drawn with
+        // the bottom of the screen in a render.
+        if PanelWithBarsPreview.sitsOnTheScreen(name) {
+            panel.placeAtTheBottomForPreview()
+            panel.rendersScreenBottom = true
         }
         if let index = arguments.firstIndex(of: "--preview-slide-scale"), index + 1 < arguments.count,
            let value = Double(arguments[index + 1])

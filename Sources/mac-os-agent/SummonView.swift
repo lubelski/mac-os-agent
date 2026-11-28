@@ -53,19 +53,16 @@ struct SummonView: View {
             if session.panelWithBars {
                 // The band: the hairline, then the pill on the bars' fill, then the status line.
                 // Nothing is added above the hairline. A match opens the pill into the match
-                // card, upward over the conversation here, or downward in a window of its own.
+                // card, downward in a window of its own.
                 VStack(spacing: 0) {
                     PanelDivider()
                     InputBand {
                         TaskLinksRow(links: session.taskLinks, clear: session.clearTaskLinks)
                         attachmentRow
                     } field: {
-                        InputPill(card: session.matchCardSide) { field(metrics: .pill) }
-                            .overlay(alignment: .top) { matchCardAbove }
+                        InputPill(opensCard: session.showsMatchCard) { field(metrics: .pill) }
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.panelSpace)) } action: { pill in
                                 session.suggestionList.pillFrame = pill
-                                let above = pill.minY - PanelTopBar.height - 1
-                                if session.suggestionList.roomAbove != above { session.suggestionList.roomAbove = above }
                                 let update = session.suggestionList.layoutNeedsUpdate
                                 DispatchQueue.main.async { update?() }
                             }
@@ -262,17 +259,6 @@ struct SummonView: View {
 
     /// The panel's content, in which the pill's frame is measured for the match card's window.
     static let panelSpace = "panel"
-
-    /// The rows of a match card that opens upward, over the end of the conversation, with their
-    /// bottom on the pill's top. A card that opens downward is drawn by `MatchCardWindow`.
-    @ViewBuilder private var matchCardAbove: some View {
-        if session.matchCardSide == .above {
-            let height = MatchCard.heightAbovePill(rows: session.matchCardVisibleRows)
-            MatchCardAbove(session: session)
-                .frame(height: height)
-                .offset(y: -height)
-        }
-    }
 
     /// The incognito window says what it is for where the owner types, too.
     private var placeholder: String {
