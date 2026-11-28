@@ -4,14 +4,14 @@ import SwiftUI
 import Testing
 @testable import mac_os_agent
 
-/// Settings, History, with the pane stack experiment off and on, checked on the window's views,
-/// model, and key handling, since screen capture is not available.
+/// Settings, History, as a pane stack, checked on the window's views, model, and key handling,
+/// since screen capture is not available.
 @MainActor
 @Suite(.serialized) struct HistoryPaneStackAppTests {
     /// A History window over two placeholder episodes: one with a command, then, after a
     /// requested start, one of messages only.
-    private func harness(paneStack: Bool) async throws -> SettingsWindowHarness {
-        let harness = try SettingsWindowHarness(section: .history, experiments: paneStack ? [.settingsPaneStack] : [])
+    private func harness() async throws -> SettingsWindowHarness {
+        let harness = try SettingsWindowHarness(section: .history)
         let store = try #require(harness.controller.models.history.history)
         var clock = Date(timeIntervalSince1970: 1_800_000_000)
         func append(_ item: ThreadItem) async throws {
@@ -57,8 +57,8 @@ import Testing
             characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53))
     }
 
-    /// The tables in the window, other than the sidebar's, which is the leftmost: History's own
-    /// list, when it has one.
+    /// The tables in the window, other than the sidebar's, which is the leftmost. History has
+    /// none of its own.
     private func historyTables(in harness: SettingsWindowHarness) -> [NSTableView] {
         var found: [NSTableView] = []
         func walk(_ view: NSView) {
@@ -70,26 +70,8 @@ import Testing
         return found.filter { $0 !== sidebar }
     }
 
-    @Test func withTheExperimentOffHistoryIsTheListBesideTheEpisode() async throws {
-        let harness = try await harness(paneStack: false)
-        defer { harness.tearDown() }
-        let history = harness.controller.models.history
-        await settle(harness)
-        #expect(history.items.map(\.episode.number) == [2, 1])
-        // The list beside the episode, as before: a table of the episodes, the newest selected.
-        let tables = historyTables(in: harness).map(\.numberOfRows)
-        #expect(tables == [2], "tables: \(tables)")
-        #expect(history.selectedItem != nil)
-        history.selection = history.items.last?.id
-        await settle(harness)
-        #expect(history.lines.map(\.kind) == [.owner, .command(.succeeded), .agent])
-        // History does not take Escape, and the stack is never touched.
-        #expect(!harness.window.performKeyEquivalent(with: try escape()))
-        #expect(history.stack.path.isAtBase)
-    }
-
-    @Test func withTheExperimentOnHistoryIsAStackAndEscapeClosesOnePane() async throws {
-        let harness = try await harness(paneStack: true)
+    @Test func historyIsAStackAndEscapeClosesOnePane() async throws {
+        let harness = try await harness()
         defer { harness.tearDown() }
         let history = harness.controller.models.history
         await settle(harness)
@@ -111,7 +93,7 @@ import Testing
     }
 
     @Test func aSearchListsWhatMatchedAndItsEpisodeOpensAtTheMatch() async throws {
-        let harness = try await harness(paneStack: true)
+        let harness = try await harness()
         defer { harness.tearDown() }
         let history = harness.controller.models.history
         history.query = "dark mode"
@@ -133,7 +115,7 @@ import Testing
     }
 
     @Test func leavingHistoryAndComingBackKeepsTheStack() async throws {
-        let harness = try await harness(paneStack: true)
+        let harness = try await harness()
         defer { harness.tearDown() }
         let history = harness.controller.models.history
         history.showInStack("call_1")
@@ -146,7 +128,7 @@ import Testing
     }
 
     @Test func aPathToSomethingGoneFallsBackWhenHistoryShows() async throws {
-        let harness = try await harness(paneStack: true)
+        let harness = try await harness()
         defer { harness.tearDown() }
         let history = harness.controller.models.history
         history.stack.path = PaneStackPath(["1", "call_gone"])

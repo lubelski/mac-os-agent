@@ -70,11 +70,6 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
     /// experiments. Read at launch, since it changes the tool list and the instructions. See
     /// `OnDemandToolGroup` and `SettingsToolGroup`.
     case settingsTools
-    /// Settings, Tools, as panes that slide over each other from the right, each leaving a strip
-    /// of the one under it showing: the groups, a group's tools, and a tool's details. History
-    /// too: the episodes, an episode, and a command's input and output. Built on
-    /// `PaneStackPath`, which any section could use. Takes effect now. See `PaneStackView`.
-    case settingsPaneStack
     /// A first press of the main button on the panel or the incognito window while it is on
     /// screen without focus gives it focus and then does what was clicked, anywhere on it: a
     /// link in a reply, a button, a tool row, the field, the top bar's controls. Off, the first
@@ -94,7 +89,6 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
         case .scripts: "Scripts that call tools"
         case .localModelsThroughOllama: "Local models through Ollama"
         case .settingsTools: "Settings the agent can change"
-        case .settingsPaneStack: "Settings panes that slide over"
         case .firstClickActsOnPanel: "First click acts on the panel"
         }
     }
@@ -103,8 +97,7 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
     /// tool list or the instructions is read at launch, since both stay fixed for a run.
     public var whenAChangeTakesEffect: String {
         switch self {
-        case .queueMessagesWhileRunning, .suggestionsInFieldAndFooter, .localModelsThroughOllama, .settingsPaneStack,
-             .firstClickActsOnPanel:
+        case .queueMessagesWhileRunning, .suggestionsInFieldAndFooter, .localModelsThroughOllama, .firstClickActsOnPanel:
             "Now."
         case .mcpServers:
             "The servers start or stop now. Their tools join or leave the tool list at the next launch."
@@ -119,8 +112,7 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
     /// the switch was then.
     public var isReadAtLaunch: Bool {
         switch self {
-        case .queueMessagesWhileRunning, .suggestionsInFieldAndFooter, .localModelsThroughOllama, .settingsPaneStack,
-             .firstClickActsOnPanel: false
+        case .queueMessagesWhileRunning, .suggestionsInFieldAndFooter, .localModelsThroughOllama, .firstClickActsOnPanel: false
         case .mcpServers, .panelWithBarsAndInputPill, .scripts, .settingsTools: true
         }
     }
@@ -137,7 +129,6 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
         case .scripts: "ExperimentScripts"
         case .localModelsThroughOllama: "ExperimentLocalModelsThroughOllama"
         case .settingsTools: "ExperimentSettingsTools"
-        case .settingsPaneStack: "ExperimentSettingsPaneStack"
         case .firstClickActsOnPanel: "ExperimentFirstClickActsOnPanel"
         }
     }

@@ -422,7 +422,7 @@ enum SettingsPreview {
         // A preview of MCP Servers, or of an MCP tool, asks for MCP, so it shows as if the
         // experiment were on without reading or writing its preference. Other previews follow
         // the preview's own preferences, where it is off.
-        // A Tools item names one tool, or a pane stack state whose words may name one.
+        // A Tools item is dot-separated words, any of which may name a tool.
         let toolWords = section == .tools ? Set((item ?? "").split(separator: ".").map(String.init)) : []
         let showsMCP = section == .mcpServers || (section == .tools && item?.contains(MCPToolNaming.separator) == true)
         let mcp = showsMCP ? standInMCPServers() : .empty
@@ -464,18 +464,10 @@ enum SettingsPreview {
         if section == .general, let item {
             showShortcut(item, in: controller.models.shortcut)
         } else if let item {
-            if section == .history, item.hasPrefix(SettingsPreview.paneStackItem) {
-                showHistoryPaneStack(item, in: controller)
-            } else {
-                controller.models.history.query = section == .history ? item : ""
-            }
+            if section == .history { showHistoryPaneStack(item, in: controller) }
             controller.models.skills.selection = item
             if section == .quickActions { controller.models.quickActions.selection = item }
-            if section == .tools, item.hasPrefix(SettingsPreview.paneStackItem) {
-                showPaneStack(item, in: controller)
-            } else {
-                controller.models.tools.selection = item
-            }
+            if section == .tools { showPaneStack(item, in: controller) }
             if section == .mcpServers {
                 // `example.tools.narrow` selects example, shows its Tools tab, and shrinks the
                 // window to its minimum size.
@@ -519,19 +511,25 @@ enum SettingsPreview {
         return width.map { max($0, SettingsWindowController.minimumSize.width) }
     }
 
-    /// The first word of a Tools `--preview-item` that shows the pane stack, as if its
-    /// experiment were on, without reading or writing its preference.
-    static let paneStackItem = "stack"
+    /// A first word that older preview commands put before a pane stack's words, from when the
+    /// stack was an experiment and `stack` asked for it. It is accepted and means nothing now.
+    static let formerPaneStackWord = "stack"
 
-    /// Tools as a pane stack. The item is `stack`, then dot-separated words: a group's id or a
-    /// tool's name opens it (a tool opens its group too), `end` scrolls the top pane to its end,
-    /// `schema` shows a tool's JSON Schema instead of its description, and `narrow` shrinks the
-    /// window to its minimum size. `stack.system.narrow` opens System at
-    /// the minimum width, and `stack.find_files.end` opens find_files scrolled to its end.
+    /// The words of a Tools or History `--preview-item`, separated by dots, without a leading
+    /// `stack`.
+    static func paneStackWords(_ item: String) -> [String] {
+        let words = item.split(separator: ".").map(String.init)
+        return words.first == formerPaneStackWord ? Array(words.dropFirst()) : words
+    }
+
+    /// Tools, from dot-separated words: a group's id or a tool's name opens it (a tool opens its
+    /// group too), `end` scrolls the top pane to its end, `schema` shows a tool's JSON Schema
+    /// instead of its description, and `narrow` shrinks the window to its minimum size.
+    /// `system.narrow` opens System at the minimum width, and `find_files.end` opens find_files
+    /// scrolled to its end.
     private static func showPaneStack(_ item: String, in controller: SettingsWindowController) {
         let tools = controller.models.tools
-        tools.paneStackOverride = true
-        for word in item.split(separator: ".").dropFirst().map(String.init) {
+        for word in paneStackWords(item) {
             switch word {
             case "end": tools.stack.topStartsAtEnd = true
             case "schema": tools.textTab = .schema
@@ -541,15 +539,13 @@ enum SettingsPreview {
         }
     }
 
-    /// History as a pane stack. The item is `stack`, then dot-separated words: an episode's
-    /// number opens it, a command's call id opens its episode and the command, `search-<text>`
-    /// searches for the text, and `narrow` shrinks the window to its minimum size.
-    /// `stack.search-receipts.6` searches for receipts and opens episode 6 at the line that
-    /// matched, and `stack.call_5` opens the command `call_5`.
+    /// History, from dot-separated words: an episode's number opens it, a command's call id
+    /// opens its episode and the command, `search-<text>` searches for the text, and `narrow`
+    /// shrinks the window to its minimum size. `search-receipts.6` searches for receipts and
+    /// opens episode 6 at the line that matched, and `call_5` opens the command `call_5`.
     private static func showHistoryPaneStack(_ item: String, in controller: SettingsWindowController) {
         let history = controller.models.history
-        history.paneStackOverride = true
-        for word in item.split(separator: ".").dropFirst().map(String.init) {
+        for word in paneStackWords(item) {
             if word.hasPrefix("search-") {
                 history.query = String(word.dropFirst("search-".count))
             } else if word == "narrow" {
@@ -739,8 +735,7 @@ enum SettingsPreview {
                         call += 1
                         let arguments: JSONValue = ["command": .string(command), "destructive": false]
                         try? await store.append(.toolCall(.init(callID: "call_\(call)", name: "run_shell_command", arguments: arguments.encodedString(), provider: "openai", model: "gpt-6-luna")), date: tick())
-                        // What a few of the commands printed, for the pane stack's command pane.
-                        // History without the stack shows none of it.
+                        // What a few of the commands printed, for the command's pane.
                         let started = clock
                         try? await store.append(.toolResult(.init(
                             callID: "call_\(call)", output: (standInOutputs[command] ?? "") + "[exit status 0]",
@@ -801,9 +796,8 @@ enum SettingsPreview {
             try? await store.append(.appOpened(.init(
                 name: "Slack", bundleIdentifier: "com.tinyspeck.slackmacgap", path: "/Applications/Slack.app",
                 message: ThreadItem.AppOpening.message(name: "Slack", bundleIdentifier: "com.tinyspeck.slackmacgap"))), date: tick())
-            // The list may have been read while the episodes were still being written, and
-            // selected the oldest. Select the newest once they are all there.
-            controller?.models.history.selection = nil
+            // The list may have been read while the episodes were still being written. Read it
+            // again once they are all there.
             controller?.models.history.reload()
         }
         return (store, images)

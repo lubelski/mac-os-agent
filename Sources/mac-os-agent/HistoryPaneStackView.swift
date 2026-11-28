@@ -3,8 +3,7 @@ import MacOSAgentCore
 import SwiftUI
 
 /// Settings, History, as a pane stack: the episodes, one episode, and one command's input and
-/// output, each sliding over the one before. Behind the pane stack experiment. See
-/// `PaneStackView` and `HistoryPanes`.
+/// output, each sliding over the one before. See `PaneStackView` and `HistoryPanes`.
 ///
 /// The search field is part of the episodes pane, pinned above the list where a pane's title
 /// would be. While another pane covers the list, the strip shows the start of the field and of
@@ -60,7 +59,7 @@ struct HistoryPaneStackView: View {
 }
 
 /// The base pane: the search field, the episodes newest first or a search's results, and the
-/// count, as History lists them without the stack.
+/// count.
 private struct EpisodesPane: View {
     @Bindable var model: HistorySettingsModel
 
@@ -143,8 +142,7 @@ private struct EpisodeStackRow: View {
     }
 }
 
-/// The second pane: everything that happened in one episode, in order, as History shows it
-/// without the stack. A command is a row that opens its input and output. A search's matching
+/// The second pane: everything that happened in one episode, in order. A command is a row that opens its input and output. A search's matching
 /// line is marked, and the pane opens scrolled to it.
 private struct EpisodePane: View {
     let episode: Episode
@@ -165,7 +163,7 @@ private struct EpisodePane: View {
                             .foregroundStyle(.tertiary)
                     }
                     ForEach(lines) { line in
-                        LineView(line: line, opensCommands: true)
+                        LineView(line: line)
                             .padding(.vertical, line.id == matchedLineID ? 4 : 0)
                             .background {
                                 if line.id == matchedLineID {

@@ -19,7 +19,7 @@ cd "$(dirname "$0")/.."
 
 BIN="${BIN:-build/mac-os-agent.app/Contents/MacOS/mac-os-agent}"
 OUT="${1:-docs/screenshots}"
-SECTIONS="${SECTIONS:-general general:recording general:conflict general:brave instructions skills skills:half-written actions actions:empty-downloads tools tools:weather__add_alert mcp-servers mcp-servers:weather mcp-servers:clock mcp-servers:notes history history:receipts debugging debugging:sign-in}"
+SECTIONS="${SECTIONS:-general general:recording general:conflict general:brave instructions skills skills:half-written actions actions:empty-downloads tools tools:weather__add_alert mcp-servers mcp-servers:weather mcp-servers:clock mcp-servers:notes history history:search-receipts debugging debugging:sign-in}"
 mkdir -p "$OUT"
 
 WORK="$(mktemp -d)"

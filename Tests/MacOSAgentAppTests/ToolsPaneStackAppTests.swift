@@ -31,10 +31,8 @@ enum ToolsSettingsStandIns {
         func requestAccess(_ kind: PrivacyAccessKind) async -> PrivacyAccessStatus { status(kind) }
     }
 
-    static func harness(paneStack: Bool) throws -> SettingsWindowHarness {
-        try SettingsWindowHarness(
-            section: .tools, additionalTools: mcpTools, privacyAccess: Access(),
-            experiments: paneStack ? [.settingsPaneStack] : [])
+    static func harness() throws -> SettingsWindowHarness {
+        try SettingsWindowHarness(section: .tools, additionalTools: mcpTools, privacyAccess: Access())
     }
 }
 
@@ -48,19 +46,13 @@ enum ToolsSettingsStandIns {
             characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53))
     }
 
-    @Test func escapeClosesOnePaneAndWithOnlyTheGroupsMeansWhatItDidBefore() throws {
-        // Without the experiment, the Tools section does not take Escape.
-        let before = try ToolsSettingsStandIns.harness(paneStack: false)
-        before.layOut()
-        let escapeBefore = before.window.performKeyEquivalent(with: try escape())
-        before.tearDown()
-        #expect(!escapeBefore)
-
-        let harness = try ToolsSettingsStandIns.harness(paneStack: true)
+    @Test func escapeClosesOnePaneAndWithOnlyTheGroupsIsNotTaken() throws {
+        let harness = try ToolsSettingsStandIns.harness()
         defer { harness.tearDown() }
         let stack = harness.controller.models.tools.stack
         harness.layOut()
-        #expect(harness.window.performKeyEquivalent(with: try escape()) == escapeBefore)
+        // With only the groups showing, the Tools section does not take Escape.
+        #expect(!harness.window.performKeyEquivalent(with: try escape()))
         #expect(stack.path.isAtBase)
 
         harness.controller.models.tools.showInStack("weather__add_alert")
@@ -72,11 +64,11 @@ enum ToolsSettingsStandIns {
         #expect(harness.window.performKeyEquivalent(with: try escape()))
         harness.layOut()
         #expect(stack.path.isAtBase)
-        #expect(harness.window.performKeyEquivalent(with: try escape()) == escapeBefore)
+        #expect(!harness.window.performKeyEquivalent(with: try escape()))
     }
 
     @Test func leavingToolsAndComingBackKeepsTheStack() throws {
-        let harness = try ToolsSettingsStandIns.harness(paneStack: true)
+        let harness = try ToolsSettingsStandIns.harness()
         defer { harness.tearDown() }
         let tools = harness.controller.models.tools
         tools.showInStack("find_files")
@@ -91,7 +83,7 @@ enum ToolsSettingsStandIns {
     }
 
     @Test func aPathToSomethingGoneFallsBackWhenToolsShows() throws {
-        let harness = try ToolsSettingsStandIns.harness(paneStack: true)
+        let harness = try ToolsSettingsStandIns.harness()
         defer { harness.tearDown() }
         let tools = harness.controller.models.tools
         tools.stack.path = PaneStackPath(["mcp:gone", "gone__tool"])
@@ -100,7 +92,7 @@ enum ToolsSettingsStandIns {
     }
 
     @Test func theGoAheadSwitchStillWorks() throws {
-        let harness = try ToolsSettingsStandIns.harness(paneStack: true)
+        let harness = try ToolsSettingsStandIns.harness()
         defer { harness.tearDown() }
         let tools = harness.controller.models.tools
         let group = try #require(tools.groups.fromMCPServers.first)
@@ -110,13 +102,21 @@ enum ToolsSettingsStandIns {
     }
 
     @Test func aPreviewItemOpensItsToolOrGroupAndIgnoresTheRest() throws {
-        let harness = try ToolsSettingsStandIns.harness(paneStack: true)
+        let harness = try ToolsSettingsStandIns.harness()
         defer { harness.tearDown() }
         let tools = harness.controller.models.tools
         tools.showInStack(ToolSource.calendar.id)
         #expect(tools.stack.path.entries == ["calendar"])
         tools.showInStack("no_such_thing")
         #expect(tools.stack.path.entries == ["calendar"])
+    }
+
+    @Test func aPreviewItemsWordsMayStartWithTheFormerStackWord() {
+        // `stack` asked for the stack while it was an experiment. Older commands still work.
+        #expect(SettingsPreview.paneStackWords("stack.find_files.end") == ["find_files", "end"])
+        #expect(SettingsPreview.paneStackWords("find_files.end") == ["find_files", "end"])
+        #expect(SettingsPreview.paneStackWords("stack") == [])
+        #expect(SettingsPreview.paneStackWords("weather__add_alert") == ["weather__add_alert"])
     }
 
     @Test func aChangeCountsOnlyForThePathItLedTo() {
@@ -167,7 +167,7 @@ struct PaneStackRenders {
     @Test func rendersAnMCPToolWithItsGoAheadSwitch() throws {
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
         for dark in [true, false] {
-            let harness = try ToolsSettingsStandIns.harness(paneStack: true)
+            let harness = try ToolsSettingsStandIns.harness()
             defer { harness.tearDown() }
             harness.controller.models.tools.showInStack("weather__add_alert")
             harness.window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)

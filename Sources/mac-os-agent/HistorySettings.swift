@@ -3,29 +3,21 @@ import MacOSAgentCore
 import Observation
 import SwiftUI
 
-/// The kept thread as a list of episodes, newest first, with a search over all of it and a
-/// read-only view of the selected episode. Incognito episodes are never in the kept thread,
-/// so they never appear here. Nothing here edits or deletes.
-///
-/// With the pane stack experiment on, the same list, episode, and lines show as a stack of
-/// panes instead, and a command opens its input and output. See `HistoryPaneStackView`.
+/// The kept thread as a stack of panes: the episodes, newest first, with a search over all of
+/// it, then an episode, read-only, then a command's input and output. Incognito episodes are
+/// never in the kept thread, so they never appear here. Nothing here edits or deletes. See
+/// `HistoryPaneStackView`.
 @MainActor
 @Observable
 final class HistorySettingsModel {
     private(set) var items: [EpisodeListItem] = []
-    private(set) var lines: [EpisodeLine] = []
     private(set) var isSearching = false
     var query = "" {
         didSet { if query != oldValue { refresh() } }
     }
-    var selection: EpisodeListItem.ID? {
-        didSet { if selection != oldValue { readSelected() } }
-    }
-    /// Where the pane stack is, with the experiment on: `[episode]` or `[episode, command]`.
-    /// Kept here so the stack and its scroll places last while the window is open.
+    /// Where the pane stack is: `[episode]` or `[episode, command]`. Kept here so the stack and
+    /// its scroll places last while the window is open.
     let stack = PaneStackState()
-    /// Set by a preview that asks for the pane stack, which shows it whatever the preference says.
-    var paneStackOverride: Bool?
     @ObservationIgnored let history: ThreadStore?
     /// Where the thread's images are kept, for the thumbnails beside a message's line.
     @ObservationIgnored let images: any ImageStorage
@@ -41,9 +33,7 @@ final class HistorySettingsModel {
         self.summaries = summaries
     }
 
-    var selectedItem: EpisodeListItem? { items.first { $0.id == selection } }
-
-    /// The thread as last read and the list the base shows, for the pane stack.
+    /// The thread as last read and the list the base shows.
     var panes: HistoryPanes { HistoryPanes(contents: contents, items: items, summaries: summaries) }
 
     /// Opens an episode, by its number, or a command, by its call id, in the pane stack, as
@@ -80,7 +70,7 @@ final class HistorySettingsModel {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, let history else {
             isSearching = false
-            show(EpisodeListItem.all(in: contents))
+            items = EpisodeListItem.all(in: contents)
             return
         }
         isSearching = true
@@ -90,158 +80,26 @@ final class HistorySettingsModel {
             guard !Task.isCancelled else { return }
             let found = EpisodeListItem.matching(await history.search(query, limit: 200), summaries: summaries)
             guard !Task.isCancelled else { return }
-            show(found)
+            items = found
         }
     }
 
-    private func show(_ items: [EpisodeListItem]) {
-        self.items = items
-        if selection == nil || !items.contains(where: { $0.id == selection }) {
-            selection = items.first?.id
-        } else {
-            readSelected()
-        }
-    }
-
-    private func readSelected() {
-        lines = selectedItem.map { EpisodeLine.lines(of: $0.episode, in: contents, summaries: summaries) } ?? []
-    }
 }
 
-/// Settings, History: the pane stack with its experiment on, and the list beside the selected
-/// episode without it.
+/// Settings, History: the episodes, an episode, and a command, as a pane stack. See
+/// `HistoryPaneStackView`.
 struct HistorySettingsView: View {
     @Bindable var model: HistorySettingsModel
-    @AppStorage(Experiment.settingsPaneStack.key) private var paneStack = false
 
     var body: some View {
-        if model.paneStackOverride ?? paneStack {
-            HistoryPaneStackView(model: model)
-        } else {
-            HistoryListAndDetailView(model: model)
-        }
+        HistoryPaneStackView(model: model)
     }
 }
 
-/// The list of episodes beside the selected one, the layout without the pane stack experiment.
-struct HistoryListAndDetailView: View {
-    @Bindable var model: HistorySettingsModel
-
-    var body: some View {
-        content.environment(\.imageData) { [images = model.images] in images.data(for: $0) }
-    }
-
-    private var content: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                FilterField(prompt: "Search All History", text: $model.query)
-                    .padding(10)
-                Group {
-                    if model.history == nil {
-                        ContentUnavailableView(
-                            "History Is Not Available", systemImage: "clock.arrow.circlepath",
-                            description: Text("The thread file could not be opened."))
-                    } else if model.items.isEmpty && model.isSearching {
-                        ContentUnavailableView.search(text: model.query)
-                    } else if model.items.isEmpty {
-                        ContentUnavailableView(
-                            "No Episodes Yet", systemImage: "clock.arrow.circlepath",
-                            description: Text("Conversations with the agent show up here, one episode at a time."))
-                    } else {
-                        List(model.items, selection: $model.selection) { item in
-                            EpisodeRow(item: item).tag(item.id)
-                        }
-                        .listStyle(.inset)
-                        .scrollContentBackground(.hidden)
-                    }
-                }
-                .frame(maxHeight: .infinity)
-                Divider()
-                HStack {
-                    Spacer()
-                    Text(model.countText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-            }
-            .frame(width: 280)
-            Divider()
-            Group {
-                if let item = model.selectedItem {
-                    EpisodeDetailView(episode: item.episode, lines: model.lines)
-                } else {
-                    ContentUnavailableView(
-                        "No Episode Selected", systemImage: "clock.arrow.circlepath",
-                        description: Text("Incognito episodes are never kept, so they are never listed."))
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .onAppear { model.reload() }
-    }
-}
-
-/// The date, length, and first line of an episode, or the line that matched a search.
-private struct EpisodeRow: View {
-    let item: EpisodeListItem
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(item.episode.startDate.formatted(date: .abbreviated, time: .shortened))
-                .lineLimit(1)
-            Text(item.match ?? item.episode.preview)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-            Text(item.episode.summary)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.vertical, 2)
-    }
-}
-
-/// One episode, read-only, with selectable text: everything that happened in it, in order.
-/// The owner's messages, the commands that ran, the replies, the quick actions the owner ran
-/// with their steps, and the apps they opened. Why it started is a caption under its title.
-private struct EpisodeDetailView: View {
-    let episode: Episode
-    let lines: [EpisodeLine]
-
-    var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Episode \(episode.number)")
-                        .font(.title3)
-                    Text("\(episode.startDate.formatted(date: .complete, time: .shortened)) to \(episode.lastActivity.formatted(date: .omitted, time: .shortened)). \(episode.summary)")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    if let caption = episode.startCaption {
-                        Text(caption)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .padding(.bottom, 6)
-                ForEach(lines) { line in
-                    LineView(line: line)
-                }
-            }
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
-        }
-        .id(episode.id)
-    }
-}
-
+/// One line of an episode. A command, a hosted one such as a web search, and each step of a
+/// quick action is a row that opens the command's input and output.
 struct LineView: View {
     let line: EpisodeLine
-    /// True in the pane stack, where a command is a row that opens its input and output.
-    var opensCommands = false
 
     var body: some View {
         switch line.kind {
@@ -277,7 +135,7 @@ struct LineView: View {
 
     @ViewBuilder
     private func command(_ line: EpisodeLine, _ outcome: TranscriptRow.ToolOutcome) -> some View {
-        if opensCommands, let callID = line.callID {
+        if let callID = line.callID {
             PaneStackLink(id: callID) {
                 HStack(spacing: 8) {
                     CommandLineView(line: line, outcome: outcome)
