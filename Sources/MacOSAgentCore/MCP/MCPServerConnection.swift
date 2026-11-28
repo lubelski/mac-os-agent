@@ -15,6 +15,13 @@ public protocol MCPServerConnection: Sendable {
     func callTool(name: String, arguments: JSONValue) async throws -> MCPCallResult
     /// Ends the connection and the server's process. Safe to call more than once.
     func stop() async
+    /// What the server said about itself when it connected, or nil before it has or when the
+    /// connection does not know.
+    var serverInfo: MCPServerInfo? { get }
+}
+
+extension MCPServerConnection {
+    public var serverInfo: MCPServerInfo? { nil }
 }
 
 /// Makes the connection for one server entry. The app's is `MCPSDKConnection.init`.

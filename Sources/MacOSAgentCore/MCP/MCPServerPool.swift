@@ -33,6 +33,11 @@ public struct MCPServerStatus: Sendable, Equatable, Identifiable {
     public var toolsAtLaunch: [MCPToolInfo]?
     /// The list it gave this run, once it has connected.
     public var liveTools: [MCPToolInfo]?
+    /// What it said about itself this run, or when it last connected.
+    public var serverInfo: MCPServerInfo?
+
+    /// The description Settings shows under its name, and where it came from.
+    public var summary: MCPServerSummary? { MCPServerSummary.resolve(entry: entry, info: serverInfo) }
 
     /// What changes at the next launch, or nil when nothing does.
     public var nextLaunchNote: String? {
@@ -104,6 +109,7 @@ public actor MCPServerPool {
         /// Counts attempts, so one that finishes after the server was turned off is ignored.
         var generation = 0
         var liveTools: [MCPToolInfo]?
+        var liveInfo: MCPServerInfo?
         /// The last failure reported to the problems list, so a retry that fails the same way
         /// is not reported again.
         var lastReported: String?
@@ -241,7 +247,8 @@ public actor MCPServerPool {
             return MCPServerStatus(
                 entry: entry, state: server?.state ?? .off, isEnabled: settings.isEnabled(entry.name),
                 tools: live ?? cache.servers[entry.name]?.tools ?? [],
-                toolsAtLaunch: launchLists[entry.name], liveTools: live)
+                toolsAtLaunch: launchLists[entry.name], liveTools: live,
+                serverInfo: server?.liveInfo ?? cache.servers[entry.name]?.server)
         }
     }
 
@@ -296,18 +303,29 @@ public actor MCPServerPool {
         servers[name]?.connection = connection
         servers[name]?.attempt = nil
         servers[name]?.liveTools = tools
+        let info = connection.serverInfo
+        servers[name]?.liveInfo = info
         servers[name]?.lastReported = nil
+        // What the server says about itself is kept too, but a change to it alone does not
+        // rewrite the cache's date, so the tools' date still says when they changed.
         if cache.servers[name]?.tools != tools {
-            cache.servers[name] = MCPToolCache.Entry(tools: tools)
-            if let cacheFile {
-                do {
-                    try cache.write(to: cacheFile)
-                } catch {
-                    problems?.record("MCP servers", "Could not save the tool list of \(name): \(error.localizedDescription)")
-                }
-            }
+            cache.servers[name] = MCPToolCache.Entry(tools: tools, server: info)
+            writeCache(name)
+        } else if let info, cache.servers[name]?.server != info {
+            cache.servers[name]?.server = info
+            writeCache(name)
         }
         notify()
+    }
+
+    private func writeCache(_ name: String) {
+        if let cacheFile {
+            do {
+                try cache.write(to: cacheFile)
+            } catch {
+                problems?.record("MCP servers", "Could not save the tool list of \(name): \(error.localizedDescription)")
+            }
+        }
     }
 
     private func didFail(_ name: String, generation: Int, error: Error) {

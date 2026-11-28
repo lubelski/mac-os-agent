@@ -9,10 +9,14 @@ public struct MCPToolCache: Sendable, Equatable, Codable {
     public struct Entry: Sendable, Equatable, Codable {
         public var tools: [MCPToolInfo]
         public var updated: Date
+        /// What the server said about itself when it last connected. Missing in files from
+        /// before it was kept, and for a server that said nothing.
+        public var server: MCPServerInfo?
 
-        public init(tools: [MCPToolInfo], updated: Date = Date()) {
+        public init(tools: [MCPToolInfo], updated: Date = Date(), server: MCPServerInfo? = nil) {
             self.tools = tools
             self.updated = updated
+            self.server = server
         }
     }
 

@@ -109,3 +109,79 @@ import Testing
         #expect(model.detailTab == .tools)
     }
 }
+
+/// Display names and a tool's pane in MCP Servers. The names are Settings' own: the rows keep
+/// the literal names the model sees beside them.
+@MainActor
+@Suite struct MCPServerDisplayNameTests {
+    private func folder() throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appending(path: "mac-os-agent-mcp-names-app-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    private func pool(settings file: URL) -> MCPServerPool {
+        MCPServerPool(
+            config: MCPServerConfig(servers: [MCPServerEntry(name: "weather", command: "/usr/bin/true")]),
+            settings: MCPSettingsStore(file: file),
+            cache: MCPToolCache(servers: ["weather": .init(tools: [
+                MCPToolInfo(name: "get_forecast", description: "The forecast.", inputSchema: ["type": "object"], readOnly: true),
+                MCPToolInfo(name: "add alert", description: "Adds an alert.", inputSchema: ["type": "object"]),
+            ])]),
+            cacheFile: nil, factory: { _ in UnusedConnection() })
+    }
+
+    private struct UnusedConnection: MCPServerConnection {
+        func connect() async throws { throw MCPConnectionError.notConnected }
+        func listTools() async throws -> [MCPToolInfo] { [] }
+        func callTool(name: String, arguments: JSONValue) async throws -> MCPCallResult { throw MCPConnectionError.notConnected }
+        func stop() async {}
+    }
+
+    @Test func namesDefaultAndOverridesShowAtOnce() throws {
+        let url = try folder()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let model = MCPServersSettingsModel(pool: pool(settings: url.appending(path: "mcp-settings.json")), file: URL(filePath: "/dev/null"))
+        #expect(model.displayName(of: "weather") == "Weather")
+        model.setDisplayName("Forecasts", of: "weather")
+        #expect(model.displayName(of: "weather") == "Forecasts")
+        #expect(model.displayNameOverride(of: "weather") == "Forecasts")
+        model.setDisplayName("", of: "weather")
+        #expect(model.displayNameOverride(of: "weather") == nil)
+        #expect(model.errorMessage == nil)
+    }
+
+    @Test func aToolKeepsTheNameTheModelCallsBesideItsDisplayName() async throws {
+        let url = try folder()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let pool = pool(settings: url.appending(path: "mcp-settings.json"))
+        await pool.setActive(true)
+        let model = MCPServersSettingsModel(pool: pool, file: URL(filePath: "/dev/null"))
+        let status = try #require(await pool.statuses().first)
+        let tools = model.toolSummaries(status)
+        #expect(tools.map(\.name).first == "weather__get_forecast")
+        // A name the model cannot take is changed for it, and the row shows the changed one.
+        #expect(tools.map(\.name).last?.hasPrefix("weather__add_alert_") == true)
+        let forecast = try #require(tools.first?.mcp)
+        #expect(model.displayName(of: forecast) == "Get Forecast")
+        model.setDisplayName("Five Days", of: forecast)
+        #expect(model.displayName(of: forecast) == "Five Days")
+        #expect(model.toolSummaries(status).first?.name == "weather__get_forecast")
+    }
+
+    @Test func aToolsPaneClosesWithAnotherServerOrTab() {
+        let model = MCPServersSettingsModel(pool: .empty, file: URL(filePath: "/dev/null"))
+        model.showPreviewItem("weather.tool-get_forecast")
+        #expect(model.selection == "weather")
+        #expect(model.detailTab == .tools)
+        #expect(model.paneStackOverride == true)
+        #expect(model.toolStack.path == PaneStackPath(["weather__get_forecast"]))
+        model.selection = "weather"
+        #expect(model.toolStack.path.depth == 1, "choosing the same server keeps it")
+        model.detailTab = .details
+        #expect(model.toolStack.path.isAtBase)
+        model.showPreviewItem("weather.tool-get_forecast")
+        model.selection = "files"
+        #expect(model.toolStack.path.isAtBase)
+    }
+}

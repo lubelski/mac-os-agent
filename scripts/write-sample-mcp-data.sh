@@ -10,7 +10,10 @@
 # always allowed. tracker's create_attachment has a long description with shell and
 # PowerShell lines, taken from a public tool description, the way a real server's can be.
 # example has 40 invented tools, for a long list. drafts is turned off and has never
-# connected, so it has no tools at all.
+# connected, so it has no tools at all. example has a description in the file, weather's comes
+# from the server and clock's from the server's instructions (both stand-ins). files has a
+# display name the owner set, and example's list_projects one for a tool.
+# team-knowledge-base-search-api has a long name and a long description, and no cached list.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -26,13 +29,16 @@ cat > "$DATA/mcp-servers.json" <<'JSON'
     "calendar-sync": { "command": "/usr/local/bin/calendar-sync-mcp" },
     "clock": { "command": "npx", "args": ["-y", "@example/clock-mcp"] },
     "tracker": { "command": "npx", "args": ["-y", "@example/tracker-mcp"] },
-    "example": { "command": "npx", "args": ["-y", "@example/workspace-mcp"], "env": { "EXAMPLE_TOKEN": "placeholder", "EXAMPLE_WORKSPACE": "placeholder" } },
+    "example": { "command": "npx", "args": ["-y", "@example/workspace-mcp"], "env": { "EXAMPLE_TOKEN": "placeholder", "EXAMPLE_WORKSPACE": "placeholder" },
+      "description": "Projects, tasks, and notes in the example workspace." },
+    "team-knowledge-base-search-api": { "command": "npx", "args": ["-y", "@example/knowledge-base-mcp"],
+      "description": "Searches the team's knowledge base of handbooks, how-to pages, and meeting notes, and reads a page in full." },
     "drafts": { "command": "npx", "args": ["-y", "@example/drafts-mcp"] },
     "my server": { "command": "npx", "args": ["my-server"] }
   }
 }
 JSON
-printf '{"disabled":["calendar-sync","drafts"],"goAhead":{"files":{"write_file":"deny"}}}\n' > "$DATA/mcp-settings.json"
+printf '{"disabled":["calendar-sync","drafts"],"goAhead":{"files":{"write_file":"deny"}},"serverNames":{"files":"Shared Documents"},"toolNames":{"example":{"list_projects":"Browse Projects"}}}\n' > "$DATA/mcp-settings.json"
 
 jq -n --rawfile attachment Tests/MacOSAgentCoreTests/Fixtures/tool-description-create-attachment.txt '
 # example: each of five verbs on each of eight things, 40 tools. Listing and getting are read-only.

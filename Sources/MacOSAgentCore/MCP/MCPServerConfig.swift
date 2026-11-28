@@ -16,13 +16,21 @@ public struct MCPServerEntry: Sendable, Equatable, Identifiable {
     public var env: [String: String]
     /// Why the entry cannot be used. Nil for an entry the app can start.
     public var problem: String?
+    /// What the server is for, in the owner's words, from an optional `description` in the
+    /// entry. Settings shows it under the server's name. Other apps ignore the key, so an entry
+    /// with one can still be pasted into them.
+    public var description: String?
 
-    public init(name: String, command: String, args: [String] = [], env: [String: String] = [:], problem: String? = nil) {
+    public init(
+        name: String, command: String, args: [String] = [], env: [String: String] = [:], problem: String? = nil,
+        description: String? = nil
+    ) {
         self.name = name
         self.command = command
         self.args = args
         self.env = env
         self.problem = problem
+        self.description = description
     }
 
     /// The command and its arguments as one line, for Settings.
@@ -151,7 +159,9 @@ public struct MCPServerConfig: Sendable, Equatable {
             }
             env = object.compactMapValues(\.stringValue)
         }
-        return MCPServerEntry(name: name, command: command, args: args, env: env)
+        // A description that is not a string is left out rather than making the entry unusable.
+        let description = value["description"]?.stringValue
+        return MCPServerEntry(name: name, command: command, args: args, env: env, description: description)
     }
 
     /// What a new `mcp-servers.json` could hold, for the empty state in Settings.
