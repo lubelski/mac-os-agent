@@ -440,7 +440,10 @@ final class SummonPanel: ActiveAppearancePanel {
         isPresented = true
         if session.panelWithBars { session.suggestionListFollowsDraft() }
         updateFooterGrowth()
-        PreviewRender.render(self)
+        // The part of the match card below the panel is a window of its own, drawn with it.
+        PreviewRender.render(self) { [weak self] in
+            self?.matchCardWindowForRender().map { [$0] } ?? []
+        }
     }
 
     private func present(makeKey: Bool) {
@@ -1012,12 +1015,14 @@ final class SummonPanel: ActiveAppearancePanel {
 
     // MARK: - The match card
 
-    /// Keeps the room below the panel that the match card may open into current. None in slide
-    /// over, while hidden, and while sliding, so the card opens upward then.
+    /// Keeps the room below the panel that the match card opens into current. The card is
+    /// shortened to fit it. None in slide over, while hidden, and while sliding, so the card
+    /// opens upward then, as it does with room for fewer than two rows.
     private func updateMatchCardRoom() {
         var room: CGFloat = 0
-        if isPresented, slide == nil, !session.suggestionList.previewOpensUpward, let visible = currentScreen()?.visible {
-            room = MatchCard.roomBelow(panel: panelFrame, visible: visible, slideOver: placement.preset.slideOverEdge != nil)
+        if isPresented, slide == nil, let visible = currentScreen()?.visible {
+            room = session.suggestionList.previewRoomBelow
+                ?? MatchCard.roomBelow(panel: panelFrame, visible: visible, slideOver: placement.preset.slideOverEdge != nil)
         }
         if session.suggestionList.roomBelow != room { session.suggestionList.roomBelow = room }
     }
@@ -1051,6 +1056,19 @@ final class SummonPanel: ActiveAppearancePanel {
         }
         if card.parent == nil { addChildWindow(card, ordered: .above) }
         if !card.isVisible { card.orderFront(nil) }
+    }
+
+    /// For a render: the part of the match card below the panel, sized and placed under the
+    /// pill as `updateMatchCard` places it, but never ordered in. Nil when the card does not
+    /// open downward. See `PreviewRender`.
+    private func matchCardWindowForRender() -> NSWindow? {
+        updateMatchCardRoom()
+        guard let target = matchCardFrame else { return nil }
+        let card = matchCardWindow ?? MatchCardWindow(session: session, preferences: contentPreferences)
+        matchCardWindow = card
+        card.appearance = effectiveAppearance
+        card.setFrame(target, display: false)
+        return card
     }
 
     private func hideMatchCard() {

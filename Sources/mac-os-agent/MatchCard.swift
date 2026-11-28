@@ -10,12 +10,14 @@ import SwiftUI
 // 32 point icon, a name, a line saying what it is, and Command numbers that run a row without
 // moving to it. The last row is the Ask row, which sends the text as a message.
 //
-// - With room below the panel, the card opens downward, past the panel's bottom edge. The pill
-//   in the panel is the card's top, and the rest is `MatchCardWindow`, a child window under it,
-//   so the panel never moves or resizes and its frame never includes the card. The card covers
-//   the status line, so it carries the keys on its own last row.
-// - With no room below, the same card opens upward over the end of the conversation, inside
-//   the panel, with the field as its last line. Nothing in the conversation moves.
+// - The card opens downward, past the panel's bottom edge. The pill in the panel is the card's
+//   top, and the rest is `MatchCardWindow`, a child window under it, so the panel never moves or
+//   resizes and its frame never includes the card. The card covers the status line, so it
+//   carries the keys on its own last row. With too little room below for every row, the list
+//   is shortened to the rows that fit, at least two, and scrolls. See `MatchListFit`.
+// - With room below for fewer than two rows, as in slide over, the same card opens upward over
+//   the end of the conversation, inside the panel, with the field as its last line. Nothing in
+//   the conversation moves.
 //
 // The state is the suggestions experiment's list (`SuggestionListState`), opened by itself.
 // The engine's ranking and its rule for what counts as a match are unchanged.
@@ -50,13 +52,18 @@ enum MatchCard {
         max(0, heightBelowPill(rows: rows) - InputFooter.height)
     }
 
-    /// Whether the card opens downward: when all its rows fit in the room below the panel.
-    static func opensDownward(rows: Int, roomBelow: CGFloat) -> Bool {
-        rows > 0 && reachBelowPanel(rows: rows) <= roomBelow
+    /// How far a card that opens downward reaches below the panel's bottom edge besides its
+    /// rows: the hairline and the keys, less the status line they cover.
+    static let reachBeyondRows: CGFloat = 1 + keysHeight - InputFooter.height
+
+    /// Which way a card of `rows` rows opens, and how many show, in the room below the panel.
+    static func fit(rows: Int, roomBelow: CGFloat) -> MatchListFit? {
+        MatchListFit.fit(rowCount: rows, rowHeight: rowHeight, reachBeyondRows: reachBeyondRows, roomBelow: roomBelow)
     }
 
     /// How many rows a card that opens upward shows in the room above the pill: as many as
-    /// fit, at least one. The rest come into view as the highlight reaches them.
+    /// fit, at least one. The rest come into view as the highlight reaches them. It opens upward
+    /// only with room below for fewer than two rows.
     static func rowsAbove(_ count: Int, roomAbove: CGFloat) -> Int {
         guard count > 0 else { return 0 }
         let fits = ((roomAbove - 1) / rowHeight).rounded(.down)
@@ -120,7 +127,8 @@ enum MatchCard {
 enum MatchCardSide: Equatable {
     /// Downward: the pill is the card's top, and the rows are in the child window below it.
     case below
-    /// Upward: the rows are over the end of the conversation, and the pill is the card's bottom.
+    /// Upward, with room below for fewer than two rows: the rows are over the end of the
+    /// conversation, and the pill is the card's bottom.
     case above
 }
 
@@ -130,20 +138,26 @@ extension AgentSession {
         panelWithBars ? suggestionRows : []
     }
 
-    /// Which way the card opens now, or nil when there is no card.
-    var matchCardSide: MatchCardSide? {
-        let count = min(matchCardRows.count, MatchCard.visibleLimit)
-        guard count > 0 else { return nil }
-        return MatchCard.opensDownward(rows: count, roomBelow: suggestionList.roomBelow) ? .below : .above
+    /// Which way the card opens now and how many rows show, or nil when there is no card.
+    var matchCardFit: MatchListFit? {
+        MatchCard.fit(rows: min(matchCardRows.count, MatchCard.visibleLimit), roomBelow: suggestionList.roomBelow)
     }
 
-    /// How many rows the card shows at once.
+    /// Which way the card opens now, or nil when there is no card.
+    var matchCardSide: MatchCardSide? {
+        switch matchCardFit {
+        case .below: .below
+        case .above: .above
+        case nil: nil
+        }
+    }
+
+    /// How many rows the card shows at once. The rest come into view as the highlight reaches them.
     var matchCardVisibleRows: Int {
-        let count = min(matchCardRows.count, MatchCard.visibleLimit)
-        switch matchCardSide {
-        case .below: return count
-        case .above: return MatchCard.rowsAbove(count, roomAbove: suggestionList.roomAbove)
-        case nil: return 0
+        switch matchCardFit {
+        case .below(let rows): rows
+        case .above: MatchCard.rowsAbove(min(matchCardRows.count, MatchCard.visibleLimit), roomAbove: suggestionList.roomAbove)
+        case nil: 0
         }
     }
 
@@ -354,8 +368,9 @@ struct MatchCardIcon: View {
     }
 }
 
-/// The part of a card that opens upward: its rows over the end of the conversation, with the
-/// card's top corners and the hairline that joins them to the field. Drawn by the panel.
+/// The part of a card that opens upward, with room below for fewer than two rows: its rows over
+/// the end of the conversation, with the card's top corners and the hairline that joins them to
+/// the field. Drawn by the panel.
 struct MatchCardAbove: View {
     let session: AgentSession
 
