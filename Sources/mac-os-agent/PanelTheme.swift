@@ -70,8 +70,14 @@ struct PanelPalette {
 
     /// The hairlines between episodes. Increase Contrast makes them stronger, as it does edges.
     var divider: AnyShapeStyle { style(contrasted(appearance.divider)) }
-    /// The line above the text field, which sits closer to the text and is fainter.
-    var inputDivider: AnyShapeStyle { style(scaled(appearance.divider, by: 0.36)) }
+    /// The hairlines that set the bars apart from the conversation, under the top bar and above
+    /// the text field, which sit closer to the text and are fainter than the episode hairlines.
+    /// They are strong enough to read as an edge where a message scrolls under a bar, which at
+    /// a third of the divider, the strength before, they did not.
+    var inputDivider: AnyShapeStyle { style(scaled(appearance.divider, by: Self.barDividerStrength)) }
+    /// How strong the bars' hairlines are, as a share of the theme's divider: for Glass the
+    /// divider's 14 percent becomes 11.
+    static let barDividerStrength = 0.75
 
     /// A box's fill. Increase Contrast makes it a third stronger.
     private func fill(_ box: ThemeBox) -> AnyShapeStyle {
