@@ -18,43 +18,60 @@ struct HistoryPaneStackView: View {
     @Bindable var model: HistorySettingsModel
 
     var body: some View {
-        let panes = model.panes
+        let panes = HistoryStackPanes(model: model, panes: model.panes)
         PaneStackView(state: model.stack) { strip in
-            switch strip.depth {
-            // Beside a command, the episodes are only a sliver to click back to: an episode's
-            // row has no icon to narrow to, as a group of tools does.
-            case 0: strip.isNearest ? Self.episodesStripWidth : PaneStackLayout.collapsedWidth
-            default: Self.episodeStripWidth
-            }
+            panes.stripWidth(strip)
         } title: { level in
-            panes.pane(at: level.depth, of: level.path)?.title ?? ""
+            panes.title(level)
         } rows: { path in
-            panes.rows(of: path)
+            panes.rows(path)
         } pane: { level in
-            switch panes.pane(at: level.depth, of: level.path) {
-            case .episodes:
-                EpisodesPane(model: model)
-            case .episode(let episode):
-                EpisodePane(episode: episode, lines: panes.lines(of: episode), matchedLineID: panes.matchedLineID(in: episode))
-            case .command(let line, let call, let episode):
-                CommandPane(line: line, call: call, episode: episode)
-            case nil:
-                Color.clear
-            }
+            panes.pane(level)
         }
         .environment(\.imageData) { [images = model.images] in images.data(for: $0) }
         .onAppear { model.reload() }
-        .onChange(of: model.stack.path, initial: true) { _, path in fallBack(path) }
-        .onChange(of: model.panes) { _, _ in fallBack(model.stack.path) }
+        .onChange(of: model.stack.path, initial: true) { _, _ in model.fallBack() }
+        .onChange(of: model.panes) { _, _ in model.fallBack() }
+    }
+}
+
+/// History's levels as a stack asks for them, with its first level at depth 0, so the same
+/// panes make History's own stack and continue Settings' one stack. See `SettingsOneStackView`.
+@MainActor
+struct HistoryStackPanes {
+    let model: HistorySettingsModel
+    /// The thread as last read, taken once for a whole drawing of the stack.
+    let panes: HistoryPanes
+
+    func stripWidth(_ strip: PaneStrip) -> CGFloat {
+        switch strip.depth {
+        // Beside a command, the episodes are only a sliver to click back to: an episode's
+        // row has no icon to narrow to, as a group of tools does.
+        case 0: strip.isNearest ? HistoryPaneStackView.episodesStripWidth : PaneStackLayout.collapsedWidth
+        default: HistoryPaneStackView.episodeStripWidth
+        }
     }
 
-    /// A path that names an episode or command that is not here, such as one a preview asked for
-    /// before the thread was read, falls back to the part that is. An empty thread has nothing
-    /// to fall back from yet, so a path waits for the first read.
-    private func fallBack(_ path: PaneStackPath) {
-        guard !model.panes.contents.entries.isEmpty else { return }
-        let valid = model.panes.validPrefix(of: path)
-        if valid != path { model.stack.path = valid }
+    func title(_ level: PaneLevel) -> String {
+        panes.pane(at: level.depth, of: level.path)?.title ?? ""
+    }
+
+    func rows(_ path: PaneStackPath) -> [String] {
+        panes.rows(of: path)
+    }
+
+    @ViewBuilder
+    func pane(_ level: PaneLevel) -> some View {
+        switch panes.pane(at: level.depth, of: level.path) {
+        case .episodes:
+            EpisodesPane(model: model)
+        case .episode(let episode):
+            EpisodePane(episode: episode, lines: panes.lines(of: episode), matchedLineID: panes.matchedLineID(in: episode))
+        case .command(let line, let call, let episode):
+            CommandPane(line: line, call: call, episode: episode)
+        case nil:
+            Color.clear
+        }
     }
 }
 

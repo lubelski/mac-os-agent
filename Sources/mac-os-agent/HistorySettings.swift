@@ -46,6 +46,15 @@ final class HistorySettingsModel {
 
     @ObservationIgnored private var stackPreviewItem: String?
 
+    /// A path that names an episode or command that is not here, such as one a preview asked
+    /// for before the thread was read, falls back to the part that is. An empty thread has
+    /// nothing to fall back from yet, so a path waits for the first read.
+    func fallBack() {
+        guard !contents.entries.isEmpty else { return }
+        let valid = panes.validPrefix(of: stack.path)
+        if valid != stack.path { stack.path = valid }
+    }
+
     private func openStackPreviewItem() {
         if let item = stackPreviewItem, let path = panes.path(showing: item) { stack.path = path }
     }

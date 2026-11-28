@@ -7,7 +7,7 @@ import SwiftUI
 /// The sections of the Settings window, in sidebar order.
 ///
 /// Debugging is always last. A new section goes above it, with its view in
-/// `SettingsRootView.detail`.
+/// `SettingsSectionContent`.
 enum SettingsSection: String, CaseIterable, Identifiable {
     case general
     case appearance
@@ -82,6 +82,13 @@ final class SettingsNavigation {
     /// Whether the MCP Servers section is in the sidebar: the MCP servers experiment is on.
     private(set) var mcpServersOn: Bool
 
+    /// The whole window as one pane stack, with the experiment "Settings as One Stack of Panes"
+    /// on: the section list, the section, and the section's own levels. Kept here so it lasts
+    /// while the window is open. See `SettingsPaneStack` and `SettingsOneStackView`.
+    let stack = PaneStackState()
+    /// Set for a preview that asks for one stack, which shows it whatever the preference says.
+    @ObservationIgnored let oneStackOverride: Bool?
+
     /// Called after the section changes, so the window can title itself with it.
     @ObservationIgnored var didChange: ((SettingsSection) -> Void)?
 
@@ -89,14 +96,16 @@ final class SettingsNavigation {
     /// Set for a preview that asks for MCP, which shows the section whatever the preference says.
     @ObservationIgnored private let mcpServersOverride: Bool?
 
-    init(defaults: UserDefaults, mcpServersOverride: Bool? = nil) {
+    init(defaults: UserDefaults, mcpServersOverride: Bool? = nil, oneStackOverride: Bool? = nil) {
         self.defaults = defaults
         self.mcpServersOverride = mcpServersOverride
+        self.oneStackOverride = oneStackOverride
         let mcpServersOn = mcpServersOverride ?? Experiment.mcpServers.isOn(defaults)
         self.mcpServersOn = mcpServersOn
         let stored = defaults.string(forKey: Self.key).flatMap(SettingsSection.init(rawValue:))
         // A remembered section that is hidden now falls back as an unknown one does.
         section = stored.flatMap { SettingsSection.visible(mcpServersOn: mcpServersOn).contains($0) ? $0 : nil } ?? .general
+        stack.path = SettingsPaneStack.path(section: section.rawValue)
     }
 
     var sections: [SettingsSection] { SettingsSection.visible(mcpServersOn: mcpServersOn) }
@@ -137,8 +146,21 @@ struct SettingsRootView: View {
     let models: SettingsModels
     @Bindable var navigation: SettingsNavigation
     @AppStorage(Experiment.mcpServers.key) private var mcpServersExperiment = false
+    @AppStorage(Experiment.settingsAsOneStackOfPanes.key) private var oneStackExperiment = false
 
     var body: some View {
+        Group {
+            if navigation.oneStackOverride ?? oneStackExperiment {
+                SettingsOneStackView(models: models, navigation: navigation)
+            } else {
+                sidebarAndSection
+            }
+        }
+        .onChange(of: mcpServersExperiment) { _, on in navigation.mcpServersExperimentChanged(on) }
+    }
+
+    /// The fixed sidebar beside the selected section, with the one stack experiment off.
+    private var sidebarAndSection: some View {
         // A plain row rather than a split view, so the sidebar keeps its width: it cannot be
         // dragged or collapsed, and there is no sidebar button.
         HStack(spacing: 0) {
@@ -172,14 +194,20 @@ struct SettingsRootView: View {
             Divider()
             // A minimum of zero keeps a section's ideal size, such as a long line in the
             // instructions editor, from pushing the window or the sidebar around.
-            detail
+            SettingsSectionContent(section: navigation.section, models: models)
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         }
-        .onChange(of: mcpServersExperiment) { _, on in navigation.mcpServersExperimentChanged(on) }
     }
+}
 
-    @ViewBuilder private var detail: some View {
-        switch navigation.section {
+/// A section's view, beside the fixed sidebar, or as the pane over the section list with one
+/// stack.
+struct SettingsSectionContent: View {
+    let section: SettingsSection
+    let models: SettingsModels
+
+    var body: some View {
+        switch section {
         case .general:
             GeneralSettingsView(
                 session: models.session, shortcut: models.shortcut, webSearch: models.webSearch, updater: models.updater)
@@ -234,14 +262,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         summonTrigger: SummonTriggerController, defaults: UserDefaults = .standard, remembersFrame: Bool = true,
         privacyAccess: any PrivacyAccessGate = EventKitStore.shared,
         quickActions: QuickActionLibrary = QuickActionLibrary(),
-        mcp: MCPServerPool = .empty, mcpServersOverride: Bool? = nil,
+        mcp: MCPServerPool = .empty, mcpServersOverride: Bool? = nil, oneStackOverride: Bool? = nil,
         webSearch: WebSearchContext = WebSearchContext(launched: .off, key: nil),
         updater: AppUpdater = .unavailable()
     ) {
         models = SettingsModels(
             session: session,
             shortcut: ShortcutRecorderModel(controller: summonTrigger),
-            navigation: SettingsNavigation(defaults: defaults, mcpServersOverride: mcpServersOverride),
+            navigation: SettingsNavigation(
+                defaults: defaults, mcpServersOverride: mcpServersOverride, oneStackOverride: oneStackOverride),
             instructions: InstructionsSettingsModel(prompt: prompt),
             memory: MemorySettingsModel(prompt: prompt),
             skills: SkillsSettingsModel(library: prompt.skills),
@@ -459,6 +488,9 @@ enum SettingsPreview {
             modelAccess: modelAccess,
             summonTrigger: summonTrigger, defaults: defaults, remembersFrame: false,
             privacyAccess: StandInPrivacyAccess(), mcp: mcp, mcpServersOverride: showsMCP ? true : nil,
+            // `--preview-settings-one-stack on` shows Settings as one stack of panes without
+            // reading or writing the experiment's preference.
+            oneStackOverride: showsOneStack() ? true : nil,
             webSearch: webSearch)
         self.controller = controller
         if section == .general, let item {
@@ -509,6 +541,17 @@ enum SettingsPreview {
         let value = arguments[index + 1]
         let width = value == "minimum" ? SettingsWindowController.minimumSize.width : Double(value).map { CGFloat($0) }
         return width.map { max($0, SettingsWindowController.minimumSize.width) }
+    }
+
+    /// `--preview-settings-one-stack on` shows Settings as one stack of panes, as with the
+    /// experiment "Settings as One Stack of Panes" on, without reading or writing its preference.
+    /// Without it, a preview follows the preview's own preferences, where it is off.
+    static let oneStackArgument = "--preview-settings-one-stack"
+
+    private static func showsOneStack() -> Bool {
+        let arguments = CommandLine.arguments
+        guard let index = arguments.firstIndex(of: oneStackArgument), index + 1 < arguments.count else { return false }
+        return arguments[index + 1] == "on"
     }
 
     /// A first word that older preview commands put before a pane stack's words, from when the

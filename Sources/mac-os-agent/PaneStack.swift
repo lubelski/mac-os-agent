@@ -101,6 +101,16 @@ struct PaneStackView<Pane: View>: View {
     var rows: (PaneStackPath) -> [String] = { _ in [] }
     /// Every duration and distance the stack moves by. See `PaneStackMotion`.
     var motion: PaneStackMotion = .standard
+    /// Where Escape takes the stack from a path, or nil when Escape is not the stack's and does
+    /// what it did before. By default it closes the top pane, and with only the base showing it
+    /// is not the stack's.
+    var escape: (PaneStackPath) -> PaneStackPath? = { path in
+        var path = path
+        return path.goBack() ? path : nil
+    }
+    /// The path a change asked for by a pane leads to, such as Settings as one stack keeping a
+    /// section chosen. By default, the path asked for.
+    var resolve: (_ requested: PaneStackPath, _ current: PaneStackPath) -> PaneStackPath = { requested, _ in requested }
     @ViewBuilder let pane: (PaneLevel) -> Pane
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -131,8 +141,10 @@ struct PaneStackView<Pane: View>: View {
         .background {
             // Escape closes one pane. With only the base showing there is no button, so Escape
             // means what it meant before.
-            if !state.path.isAtBase {
-                Button("Back") { change { _ = $0.goBack() } }
+            // The pane it closes is worked out when the key is pressed, from the path then, so
+            // a press before the stack draws again still closes the top pane.
+            if escape(state.path) != nil {
+                Button("Back") { change { if let back = escape($0) { $0 = back } } }
                     .keyboardShortcut(.cancelAction)
                     .opacity(0)
                     .frame(width: 0, height: 0)
@@ -189,6 +201,7 @@ struct PaneStackView<Pane: View>: View {
         let old = state.path
         var new = old
         mutate(&new)
+        new = resolve(new, old)
         let change = PaneStackChange(from: old, to: new, rows: rows)
         guard change != .none else { return }
         state.record(change, leadingTo: new)
