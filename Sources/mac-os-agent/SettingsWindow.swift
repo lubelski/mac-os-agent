@@ -217,7 +217,9 @@ struct SettingsRootView: View {
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     static let defaultSize = NSSize(width: 900, height: 620)
-    static let minimumSize = NSSize(width: 760, height: 480)
+    /// As narrow as the summon panel can be, sidebar included, so the two windows share one
+    /// minimum width. The width is the panel's, read from `SummonPanel.minimumSize`.
+    static let minimumSize = NSSize(width: SummonPanel.minimumSize.width, height: 480)
     static let frameName = "SettingsWindow"
 
     let models: SettingsModels
@@ -284,8 +286,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         models.navigation.didChange = { [weak self] in self?.showTitle(of: $0) }
         if remembersFrame {
             hasBeenShown = window.setFrameUsingName(Self.frameName)
+            Self.raiseToMinimum(window)
             window.setFrameAutosaveName(Self.frameName)
         }
+    }
+
+    /// A remembered frame smaller than the minimum, such as one saved before the minimum was
+    /// raised, opens at the minimum instead. Restoring a frame does not apply the minimum by
+    /// itself. The top left corner stays where it was.
+    static func raiseToMinimum(_ window: NSWindow) {
+        let content = window.contentRect(forFrameRect: window.frame)
+        let size = NSSize(width: max(content.width, minimumSize.width), height: max(content.height, minimumSize.height))
+        guard size != content.size else { return }
+        let top = window.frame.maxY
+        window.setContentSize(size)
+        window.setFrameTopLeftPoint(NSPoint(x: window.frame.minX, y: top))
     }
 
     @available(*, unavailable)
@@ -469,6 +484,9 @@ enum SettingsPreview {
             if section == .experiments { ExperimentsSettingsView.previewScrollTarget = item }
         }
         controller.models.debugging.reload()
+        if let width = previewWidth(), let window = controller.window {
+            window.setContentSize(NSSize(width: width, height: window.contentRect(forFrameRect: window.frame).height))
+        }
         if PreviewRender.isRendering, let window = controller.window {
             // Drawn offscreen, never ordered in. See `PreviewRender`.
             controller.models.navigation.section = section
@@ -479,6 +497,19 @@ enum SettingsPreview {
         controller.show(section, takeFocus: false)
         // Quits on its own, so a failed capture script cannot leave it on screen.
         Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { _ in exit(0) }
+    }
+
+    /// `--preview-settings-width <points>` shows the window that wide, and
+    /// `--preview-settings-width minimum` at its minimum width, at the default height. A width
+    /// under the minimum is raised to it, as the window would be.
+    static let widthArgument = "--preview-settings-width"
+
+    private static func previewWidth() -> CGFloat? {
+        let arguments = CommandLine.arguments
+        guard let index = arguments.firstIndex(of: widthArgument), index + 1 < arguments.count else { return nil }
+        let value = arguments[index + 1]
+        let width = value == "minimum" ? SettingsWindowController.minimumSize.width : Double(value).map { CGFloat($0) }
+        return width.map { max($0, SettingsWindowController.minimumSize.width) }
     }
 
     /// The first word of a Tools `--preview-item` that shows the pane stack, as if its
