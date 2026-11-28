@@ -196,10 +196,14 @@ final class AgentSession {
     @ObservationIgnored private var namesChangedSinceDrawn = false
     @ObservationIgnored private var namesObserver: (any NSObjectProtocol)?
 
+    /// Where the owner's MCP display names are kept, so a call to a tool no longer listed still
+    /// reads by the name saved for it. Set by the app. Nil reads it from the listed MCP tools.
+    @ObservationIgnored var mcpSettings: MCPSettingsStore?
+
     /// What the rows say about each call: the tools' own summaries, with MCP calls by display
     /// names. The thread keeps the literal names, so the rows are drawn from them each time.
-    static func rowSummaries(_ tools: [any AgentTool]) -> ToolCallSummaries {
-        ToolCallSummaries(tools, showsDisplayNames: true)
+    static func rowSummaries(_ tools: [any AgentTool], savedNames: MCPSettingsStore? = nil) -> ToolCallSummaries {
+        ToolCallSummaries(tools, showsDisplayNames: true, savedNames: savedNames)
     }
 
     /// The main panel's session, on the kept thread.
@@ -306,7 +310,7 @@ final class AgentSession {
     func start() async {
         if let loop, kind == .kept {
             transcript = Transcript(
-                entries: await loop.thread.entries, summaries: Self.rowSummaries(loop.tools), showsLines: panelWithBars)
+                entries: await loop.thread.entries, summaries: Self.rowSummaries(loop.tools, savedNames: mcpSettings), showsLines: panelWithBars)
             reloadTaskLinks()
         }
         if let authenticator {
@@ -350,7 +354,7 @@ final class AgentSession {
             let entries = await loop.thread.entries
             guard !isRunning, transcript.showsLines != panelWithBars || namesChangedSinceDrawn else { return }
             namesChangedSinceDrawn = false
-            redraw(entries, summaries: Self.rowSummaries(loop.tools), showsLines: panelWithBars)
+            redraw(entries, summaries: Self.rowSummaries(loop.tools, savedNames: mcpSettings), showsLines: panelWithBars)
         }
     }
 

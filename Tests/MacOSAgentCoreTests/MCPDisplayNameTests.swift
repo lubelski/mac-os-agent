@@ -455,8 +455,6 @@ private let addAlert = MCPToolInfo(
         let folder = try Folder()
         defer { folder.remove() }
         let pool = weatherPool(folder)
-        // An override set before the server went is not used: the row falls back to the default.
-        try pool.settings.setServerDisplayName("Old Notes", server: "notes")
         let summaries = ToolCallSummaries([ShellCommandTool()] + pool.makeTools(), showsDisplayNames: true)
         #expect(summaries.summary(of: call("notes__search_notes", #"{"query":"trip"}"#)) == "Search Notes on Notes: query trip")
         #expect(summaries.summary(of: call("calendar-sync__sync_now", "not json")) == "Sync Now on Calendar Sync")
@@ -464,6 +462,40 @@ private let addAlert = MCPToolInfo(
         #expect(summaries.summary(of: call(ShellCommandTool.name, #"{"command":"ls","destructive":false}"#)) == "Bash ls")
         #expect(summaries.summary(of: call("gone_tool")) == "gone_tool")
         #expect(ToolCallSummaries.builtIn.summary(of: call("notes__search_notes")) == "notes__search_notes")
+    }
+
+    @Test func aToolNoLongerListedReadsByTheNamesStillSavedForIt() throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let pool = weatherPool(folder)
+        // Names set while `notes` was listed, still in the file after it left.
+        try pool.settings.setServerDisplayName("Old Notes", server: "notes")
+        try pool.settings.setToolDisplayName("Find a Note", server: "notes", tool: "search_notes")
+        let longTool = "search_every_note_in_every_folder_on_this_mac_by_its_text_or_title"
+        try pool.settings.setToolDisplayName("Search Everything", server: "notes", tool: longTool)
+        // A tool listed under a server that is still there, and named for it, but gone itself.
+        try pool.settings.setToolDisplayName("Old Alert", server: "weather", tool: "remove_alert")
+        let summaries = ToolCallSummaries([ShellCommandTool()] + pool.makeTools(), showsDisplayNames: true)
+        #expect(summaries.summary(of: call("notes__search_notes", #"{"query":"trip"}"#)) == "Find a Note on Old Notes: query trip")
+        #expect(summaries.displayLead(of: call("notes__search_notes")) == "Find a Note")
+        // A tool without a saved name of its own reads by its literal name, on the server's saved one.
+        #expect(summaries.summary(of: call("notes__add_note", "{}")) == "Add Note on Old Notes")
+        #expect(summaries.summary(of: call("weather__remove_alert", "{}")) == "Old Alert on Weather")
+        // A name that was shortened and given a hash is matched to the tool it was made from.
+        let madeName = try #require(MCPToolNaming.names(server: "notes", tools: [longTool])[longTool])
+        #expect(madeName != "notes__" + longTool)
+        #expect(summaries.summary(of: call(madeName, "{}")) == "Search Everything on Old Notes")
+        // Once a name is removed, the literal name made readable comes back.
+        try pool.settings.setToolDisplayName(nil, server: "notes", tool: "search_notes")
+        try pool.settings.setServerDisplayName(nil, server: "notes")
+        #expect(summaries.summary(of: call("notes__search_notes", "{}")) == "Search Notes on Notes")
+        // With no MCP tool listed, the store passed in is read.
+        try pool.settings.setServerDisplayName("Old Notes", server: "notes")
+        #expect(ToolCallSummaries([], showsDisplayNames: true).summary(of: call("notes__add_note", "{}")) == "Add Note on Notes")
+        #expect(ToolCallSummaries([], showsDisplayNames: true, savedNames: pool.settings).summary(of: call("notes__add_note", "{}")) == "Add Note on Old Notes")
+        #expect(ToolCallSummaries.builtIn.showingDisplayNames(savedNames: pool.settings).summary(of: call("notes__add_note", "{}")) == "Add Note on Old Notes")
+        // Without display names, the call reads as it always has.
+        #expect(ToolCallSummaries([], savedNames: pool.settings).summary(of: call("notes__add_note")) == "notes__add_note")
     }
 
     @Test func aRowLeadsWithTheWholeDisplayName() throws {

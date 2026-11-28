@@ -45,26 +45,42 @@ public struct ToolRegistry: Sendable {
 /// With `showsDisplayNames`, a call to an MCP tool reads by the names people know its server
 /// and the tool by, resolved each time a row is built from the literal names the thread keeps,
 /// so a rename reaches rows drawn before it. A call to an MCP tool that is no longer listed reads
-/// by its literal names made readable. None of this text is sent to the model.
+/// by the names the owner saved for it while they are still in `mcp-settings.json`, and else by
+/// its literal names made readable. None of this text is sent to the model.
 public struct ToolCallSummaries: Sendable {
     private let tools: [String: any AgentTool]
     /// Whether MCP calls read by display names. For rows a person reads: the panel and History.
     public let showsDisplayNames: Bool
+    /// Where the names the owner saved are read for a call to a tool that is no longer listed.
+    private let savedNames: MCPSettingsStore?
 
-    public init(_ tools: [any AgentTool], showsDisplayNames: Bool = false) {
+    /// - Parameter savedNames: The store of the owner's display names. Nil reads the store of the
+    ///   first MCP tool in `tools`, and with none, unlisted calls read by their literal names.
+    public init(_ tools: [any AgentTool], showsDisplayNames: Bool = false, savedNames: MCPSettingsStore? = nil) {
         self.tools = Dictionary(
             (tools + Self.conditional).map { ($0.definition.name, $0) }, uniquingKeysWith: { first, _ in first })
         self.showsDisplayNames = showsDisplayNames
+        self.savedNames = savedNames ?? Self.store(in: tools)
     }
 
-    private init(tools: [String: any AgentTool], showsDisplayNames: Bool) {
+    private init(tools: [String: any AgentTool], showsDisplayNames: Bool, savedNames: MCPSettingsStore?) {
         self.tools = tools
         self.showsDisplayNames = showsDisplayNames
+        self.savedNames = savedNames
+    }
+
+    private static func store(in tools: [any AgentTool]) -> MCPSettingsStore? {
+        for tool in tools {
+            if let mcp = tool as? MCPTool { return mcp.pool.settings }
+        }
+        return nil
     }
 
     /// The same summaries, with MCP calls read by display names.
-    public func showingDisplayNames() -> ToolCallSummaries {
-        ToolCallSummaries(tools: tools, showsDisplayNames: true)
+    /// - Parameter savedNames: The store of the owner's display names, for calls to tools no
+    ///   longer listed. Nil keeps the one these summaries have.
+    public func showingDisplayNames(savedNames: MCPSettingsStore? = nil) -> ToolCallSummaries {
+        ToolCallSummaries(tools: tools, showsDisplayNames: true, savedNames: savedNames ?? self.savedNames)
     }
 
     /// The app's built-in tools. Only their summaries are used, which read nothing but the
@@ -101,8 +117,9 @@ public struct ToolCallSummaries: Sendable {
     }
 
     /// A call to an MCP tool by display names, with `showsDisplayNames` on: by the tool's own
-    /// names when it is listed, and by the literal ones made readable when it is not. Nil for
-    /// any other call, and for every call with `showsDisplayNames` off.
+    /// names when it is listed, and when it is not, by the names the owner saved for it, else the
+    /// literal ones made readable. Nil for any other call, and for every call with
+    /// `showsDisplayNames` off.
     public func displaySummary(of call: ThreadItem.ToolCall) -> String? {
         displaySummary(name: call.name, arguments: call.arguments)
     }
@@ -112,8 +129,7 @@ public struct ToolCallSummaries: Sendable {
     public func displayLead(of call: ThreadItem.ToolCall) -> String? {
         guard showsDisplayNames else { return nil }
         if let tool = tools[call.name] { return (tool as? MCPTool)?.displayNames.tool }
-        guard Self.formerNames[call.name] == nil, let parts = MCPTool.parts(ofCallName: call.name) else { return nil }
-        return HumanizedName.from(parts.tool)
+        return unlistedNames(ofCallName: call.name)?.tool
     }
 
     func displaySummary(name: String, arguments: String) -> String? {
@@ -122,8 +138,18 @@ public struct ToolCallSummaries: Sendable {
         if let tool = tools[name] {
             return (tool as? MCPTool)?.displaySummary(arguments: parsed)
         }
-        guard Self.formerNames[name] == nil, let parts = MCPTool.parts(ofCallName: name) else { return nil }
-        return MCPTool.summary(tool: HumanizedName.from(parts.tool), server: HumanizedName.from(parts.server), arguments: parsed)
+        guard let names = unlistedNames(ofCallName: name) else { return nil }
+        return MCPTool.summary(tool: names.tool, server: names.server, arguments: parsed)
+    }
+
+    /// The names for a call to an MCP tool that is not listed: the owner's while they are saved,
+    /// else the literal ones made readable. Nil for a built-in tool's former name, and for a
+    /// name with no server in it.
+    func unlistedNames(ofCallName name: String) -> ConfirmationRequest.DisplayNames? {
+        guard Self.formerNames[name] == nil else { return nil }
+        if let savedNames { return savedNames.displayNames(ofUnlistedCallName: name) }
+        guard let parts = MCPTool.parts(ofCallName: name) else { return nil }
+        return ConfirmationRequest.DisplayNames(server: HumanizedName.from(parts.server), tool: HumanizedName.from(parts.tool))
     }
 }
 

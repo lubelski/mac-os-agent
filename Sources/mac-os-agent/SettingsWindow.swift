@@ -248,7 +248,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             quickActions: QuickActionsSettingsModel(library: quickActions, tools: tools.definitions, summaries: tools.summaries),
             tools: ToolsSettingsModel(registry: tools, access: privacyAccess, mcpSettings: mcp.settings),
             mcpServers: MCPServersSettingsModel(pool: mcp),
-            history: HistorySettingsModel(history: history, images: historyImages, summaries: tools.summaries.showingDisplayNames()),
+            history: HistorySettingsModel(history: history, images: historyImages, summaries: tools.summaries.showingDisplayNames(savedNames: mcp.settings)),
             debugging: DebuggingSettingsModel(
                 prompt: prompt, usageLog: usageLog, tools: tools, problems: problems,
                 signInStatus: signInStatus, secretStorage: secretStorage, modelAccess: modelAccess,
