@@ -38,8 +38,9 @@ A match opens the pill into a card that holds the field and an Alfred-style list
 - The list is there as soon as there is a match, with no key to open it.
 - The rows are Alfred's: an icon, a name, a second line, and Command numbers.
 - The card always opens downward, past the panel's bottom edge. The panel does not resize.
-- With too little room below for every row, the list is shortened to the rows that fit, at least two, and scrolls.
-- With room for fewer than two rows, as in slide over, the card opens upward over the end of the conversation, and covers the links. See Open.
+- With too little room below for every row, the list is shortened to the whole rows that fit and 0.4 of the next, at least 2.4 rows (the owner's suggestion, 2026-11-27). The cut-off row shows that more are below.
+- A shortened list scrolls with the trackpad. The arrows scroll it only as far as keeps the highlighted row whole, with part of the next row past it, so it ends with a part row at the top once scrolled to the last row.
+- With room for less than 2.4 rows, as in slide over, the card opens upward over the end of the conversation, and covers the links. See Open.
 - The selected row is a band from one edge of the card to the other, with no radius of its own. The card's corners clip it.
 - The rows are indented so their icons sit under the mark.
 
@@ -98,8 +99,7 @@ A match opens the pill into a card that holds the field and an Alfred-style list
 - Whether the logo also replaces the app icon, or is only the mark in the field.
 - The last row of the list reads "Ask the agent: …", since the agent has no name of its own. Whether it says something else beside a title of "MacOS Agent".
 - Whether the card shows a row under the pointer as the pointer moves over it. As built a click acts on a row and hovering changes nothing.
-- What the card does with room below for fewer than two rows: in slide over, which is the screen's full height, and with the panel at the very bottom of the screen. As built it opens upward over the conversation, since opening downward would put it off the screen or under the Dock. Moving the panel up to make room, or opening downward over the panel's own bottom, are the other ways.
-- Whether a shortened list shows that more rows are below or above it, and scrolls with the trackpad. As built its rows move only with the arrows, as the upward card's do, and nothing marks the hidden ones.
+- What the card does with room below for less than 2.4 rows: in slide over, which is the screen's full height, and with the panel at the very bottom of the screen. As built it opens upward over the conversation, since opening downward would put it off the screen or under the Dock. Moving the panel up to make room, or opening downward over the panel's own bottom, are the other ways.
 
 ## What it changes when built
 

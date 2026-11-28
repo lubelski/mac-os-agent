@@ -44,11 +44,11 @@ final class SuggestionListState {
     var growth: CGFloat = 0
     /// With the panel with bars on: how far the match card may reach below the panel's bottom
     /// edge, on the panel's screen, less a margin. The card is shortened to fit it, and opens
-    /// upward when it holds fewer than two rows. Zero in slide over, while hidden or sliding,
+    /// upward when it holds less than two rows and a part. Zero in slide over, while hidden or sliding,
     /// and when the panel is at the bottom of the screen. Set by the window only.
     var roomBelow: CGFloat = 0
     /// With the panel with bars on: the room above the pill, up to the title bar, that the card
-    /// may cover when it opens upward, with room below for fewer than two rows. Set by the view.
+    /// may cover when it opens upward, with room below for less than two rows and a part. Set by the view.
     var roomAbove: CGFloat = .greatestFiniteMagnitude
     /// With the panel with bars on: the pill's frame in the panel's content, top-left origin.
     /// Set by the view, read by the window to put the card's lower part under it.

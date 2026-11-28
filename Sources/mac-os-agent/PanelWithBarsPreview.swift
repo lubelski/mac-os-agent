@@ -30,10 +30,14 @@ import MacOSAgentCore
 /// - `bars-links-more`: five, so two go into the overflow menu at the row's end.
 /// - `bars-card-down`: "chr", with the match card open downward past the panel's bottom edge,
 ///   in its own window, with room for every row. A render draws both windows.
-/// - `bars-card-short`: "c", with seven rows and room below for two, the fewest, so the card
-///   is shortened and scrolls, with the highlight moved to the fifth row.
+/// - `bars-card-short-top`: "c", with seven rows and room below for two and a part, the fewest,
+///   so the card is shortened and scrolls, at its top: two whole rows and part of the third.
+/// - `bars-card-short`: the same with the highlight moved to the fifth row, so the list is
+///   scrolled partway, the fifth row the last whole one and part of the sixth below it.
+/// - `bars-card-short-end`: the same scrolled to its end, on the Ask row, with the part row at
+///   the top.
 /// - `bars-card-up`: the same card opening upward over the end of the conversation, as it does
-///   with room below for fewer than two rows, as in slide over, with three task links that it
+///   with room below for less than two rows and a part, as in slide over, with three task links that it
 ///   covers.
 /// - `bars-card-slash`: the slash commands in the card, opening downward.
 @MainActor
@@ -41,16 +45,18 @@ enum PanelWithBarsPreview {
     static let names = [
         "bars-rest", "bars-typing", "bars-long", "bars-match", "bars-slash", "bars-running", "bars-working-hover",
         "bars-queued", "bars-lines", "bars-lines-off", "bars-layout", "bars-layout-copy", "bars-scrolled", "bars-links",
-        "bars-links-more", "bars-card-down", "bars-card-short", "bars-card-up", "bars-card-slash",
+        "bars-links-more", "bars-card-down", "bars-card-short-top", "bars-card-short", "bars-card-short-end", "bars-card-up",
+        "bars-card-slash",
     ]
 
-    /// The room below the panel for `bars-card-short`: two rows and the card's hairline.
-    static let shortCardRoom = MatchCard.rowHeight * 2 + MatchCard.reachBeyondRows
+    /// The room below the panel for `bars-card-short`: two rows, the part row, and the card's
+    /// hairline.
+    static let shortCardRoom = MatchCard.reachBelowPanel(rows: 2, partRowHeight: MatchCard.partRowHeight)
 
     /// The states whose card opens below the panel, in a window of its own, so a capture of the
     /// panel's window alone would leave it out.
     static func opensBelow(_ name: String) -> Bool {
-        ["bars-card-down", "bars-card-short", "bars-card-slash"].contains(name)
+        ["bars-card-down", "bars-card-short-top", "bars-card-short", "bars-card-short-end", "bars-card-slash"].contains(name)
     }
 
     static func session(named name: String) -> AgentSession? {
@@ -104,10 +110,15 @@ enum PanelWithBarsPreview {
         case "bars-card-down":
             session.suggestionList.previewRoomBelow = 1000
             session.draft = "chr"
-        case "bars-card-short":
+        case "bars-card-short-top", "bars-card-short", "bars-card-short-end":
             session.suggestionList.previewRoomBelow = shortCardRoom
             session.draft = "c"
-            for _ in 0..<4 { _ = session.chooseInFooter(by: 1) }
+            let steps = switch name {
+            case "bars-card-short": 4
+            case "bars-card-short-end": session.matchCardRows.count - 1
+            default: 0
+            }
+            for _ in 0..<steps { _ = session.chooseInFooter(by: 1) }
         case "bars-card-up":
             session.taskLinks = Array(links.prefix(3))
             session.suggestionList.previewRoomBelow = 0
