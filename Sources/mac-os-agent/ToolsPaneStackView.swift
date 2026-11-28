@@ -15,52 +15,72 @@ struct ToolsPaneStackView: View {
     @Bindable var model: ToolsSettingsModel
 
     var body: some View {
+        let panes = ToolsStackPanes(model: model)
         PaneStackView(state: model.stack) { strip in
-            switch strip.depth {
-            case 0: strip.isNearest ? Self.groupsStripWidth : Self.narrowGroupsStripWidth
-            default: Self.toolsStripWidth
-            }
+            panes.stripWidth(strip)
         } title: { level in
-            // As a strip's Back To button says it: by display names for an MCP server and tool.
-            switch model.groups.pane(at: level.depth, of: level.path) {
-            case .group(let group): model.title(of: group)
-            case .tool(let tool, _): model.displayName(of: tool) ?? tool.name
-            case let pane?: pane.title
-            case nil: ""
-            }
+            panes.title(level)
         } rows: { path in
-            model.groups.rows(of: path)
+            panes.rows(path)
         } pane: { level in
-            switch model.groups.pane(at: level.depth, of: level.path) {
-            case .groups:
-                ToolGroupsPane(model: model, showsCaptions: level.topDepth < 2)
-            case .group(let group):
-                ToolListPane(group: group, model: model)
-            case .tool(let tool, let group):
-                // Outer before inner: the group above the tool's name in it. The name the model
-                // calls, with the server's prefix, is in Parameters, and under an MCP tool's
-                // display name.
-                StackPane(
-                    scope: model.title(of: group),
-                    title: model.displayName(of: tool).map { Text($0).font(.title3.weight(.semibold)) }
-                        ?? Text(tool.nameInGroup).font(.title3.monospaced().weight(.semibold)),
-                    subtitle: tool.mcp == nil ? nil : tool.name, subtitleIsCode: true
-                ) {
-                    ToolDetailSections(tool: tool, model: model)
-                        .padding(20)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                // Another tool starts with its own state, such as the Copy button's.
-                .id(tool.id)
-            case nil:
-                Color.clear
-            }
+            panes.pane(level)
         }
-        .onChange(of: model.stack.path, initial: true) { _, path in
-            // A path that names a group or tool that is not here, such as one a preview asked
-            // for, falls back to the part that is.
-            let valid = model.groups.validPrefix(of: path)
-            if valid != path { model.stack.path = valid }
+        .onChange(of: model.stack.path, initial: true) { _, _ in model.fallBack() }
+    }
+}
+
+/// Tools' levels as a stack asks for them, with its first level at depth 0, so the same panes
+/// make Tools' own stack and continue Settings' one stack. See `SettingsOneStackView`.
+@MainActor
+struct ToolsStackPanes {
+    let model: ToolsSettingsModel
+
+    func stripWidth(_ strip: PaneStrip) -> CGFloat {
+        switch strip.depth {
+        case 0: strip.isNearest ? ToolsPaneStackView.groupsStripWidth : ToolsPaneStackView.narrowGroupsStripWidth
+        default: ToolsPaneStackView.toolsStripWidth
+        }
+    }
+
+    func title(_ level: PaneLevel) -> String {
+        // As a strip's Back To button says it: by display names for an MCP server and tool.
+        switch model.groups.pane(at: level.depth, of: level.path) {
+        case .group(let group): model.title(of: group)
+        case .tool(let tool, _): model.displayName(of: tool) ?? tool.name
+        case let pane?: pane.title
+        case nil: ""
+        }
+    }
+
+    func rows(_ path: PaneStackPath) -> [String] {
+        model.groups.rows(of: path)
+    }
+
+    @ViewBuilder
+    func pane(_ level: PaneLevel) -> some View {
+        switch model.groups.pane(at: level.depth, of: level.path) {
+        case .groups:
+            ToolGroupsPane(model: model, showsCaptions: level.topDepth < 2)
+        case .group(let group):
+            ToolListPane(group: group, model: model)
+        case .tool(let tool, let group):
+            // Outer before inner: the group above the tool's name in it. The name the model
+            // calls, with the server's prefix, is in Parameters, and under an MCP tool's
+            // display name.
+            StackPane(
+                scope: model.title(of: group),
+                title: model.displayName(of: tool).map { Text($0).font(.title3.weight(.semibold)) }
+                    ?? Text(tool.nameInGroup).font(.title3.monospaced().weight(.semibold)),
+                subtitle: tool.mcp == nil ? nil : tool.name, subtitleIsCode: true
+            ) {
+                ToolDetailSections(tool: tool, model: model)
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            // Another tool starts with its own state, such as the Copy button's.
+            .id(tool.id)
+        case nil:
+            Color.clear
         }
     }
 }

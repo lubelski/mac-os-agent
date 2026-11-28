@@ -123,6 +123,13 @@ final class ToolsSettingsModel {
         if let path = groups.path(showing: item) { stack.path = path }
     }
 
+    /// A path that names a group or tool that is not here, such as one a preview asked for,
+    /// falls back to the part that is.
+    func fallBack() {
+        let valid = groups.validPrefix(of: stack.path)
+        if valid != stack.path { stack.path = valid }
+    }
+
     /// Whether any tool in the group can ask for a go-ahead now.
     func asksForGoAhead(_ group: ToolGroup) -> Bool {
         group.asksForGoAhead { goAhead(of: $0) }

@@ -19,6 +19,8 @@
 #   --settings-width <points>
 #                           Settings that wide, or `minimum` for its minimum width, at the
 #                           default height
+#   --settings-one-stack on Settings as one stack of panes, as with the experiment on,
+#                           without reading or writing its preference
 #   --glass on              keep glass on. Off by default: offscreen, glass and the vibrant
 #                           colors drawn on it come out missing, most of all in light mode, while
 #                           the theme's opaque fallback draws every box, line, and mark
@@ -43,6 +45,7 @@ THEME=()
 LAYOUT=()
 GLASS=(--preview-glass off)
 SETTINGS_WIDTH=()
+ONE_STACK=()
 PR=""
 TITLE="Renders"
 STATES=()
@@ -54,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --message-layout) LAYOUT=(--preview-message-layout "$2"); shift 2 ;;
     --glass) [[ "$2" == "on" ]] && GLASS=(); shift 2 ;;
     --settings-width) SETTINGS_WIDTH=(--preview-settings-width "$2"); shift 2 ;;
+    --settings-one-stack) [[ "$2" == "on" ]] && ONE_STACK=(--preview-settings-one-stack on); shift 2 ;;
     --pr) PR="$2"; shift 2 ;;
     --title) TITLE="$2"; shift 2 ;;
     --list)
@@ -102,7 +106,7 @@ for state in "${STATES[@]}"; do
         args=(--preview-panel "$name" ${THEME[@]+"${THEME[@]}"} ${LAYOUT[@]+"${LAYOUT[@]}"} ${GLASS[@]+"${GLASS[@]}"}) ;;
       settings)
         file="$OUT/settings-$name${item:+-$item}-$appearance.png"
-        args=(--preview-settings "$name" ${SETTINGS_WIDTH[@]+"${SETTINGS_WIDTH[@]}"})
+        args=(--preview-settings "$name" ${SETTINGS_WIDTH[@]+"${SETTINGS_WIDTH[@]}"} ${ONE_STACK[@]+"${ONE_STACK[@]}"})
         [[ -n "$item" ]] && args+=(--preview-item "$item") ;;
       *) echo "unknown state $state: use panel:<name> or settings:<section>[:<item>]" >&2; exit 2 ;;
     esac

@@ -76,6 +76,11 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
     /// click only gives it focus, except on the top bar's drag area. Takes effect now. See
     /// `SummonPanel.sendEvent`.
     case firstClickActsOnPanel
+    /// Settings is one pane stack for the whole window: the section list is its base pane, the
+    /// chosen section slides over it, and a section's own panes continue the same stack. Off,
+    /// the section list is a fixed sidebar beside the section. Takes effect now. See
+    /// `SettingsPaneStack`.
+    case settingsAsOneStackOfPanes
 
     public var id: String { rawValue }
 
@@ -90,6 +95,7 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
         case .localModelsThroughOllama: "Local models through Ollama"
         case .settingsTools: "Settings the agent can change"
         case .firstClickActsOnPanel: "First click acts on the panel"
+        case .settingsAsOneStackOfPanes: "Settings as One Stack of Panes"
         }
     }
 
@@ -97,7 +103,8 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
     /// tool list or the instructions is read at launch, since both stay fixed for a run.
     public var whenAChangeTakesEffect: String {
         switch self {
-        case .queueMessagesWhileRunning, .suggestionsInFieldAndFooter, .localModelsThroughOllama, .firstClickActsOnPanel:
+        case .queueMessagesWhileRunning, .suggestionsInFieldAndFooter, .localModelsThroughOllama, .firstClickActsOnPanel,
+             .settingsAsOneStackOfPanes:
             "Now."
         case .mcpServers:
             "The servers start or stop now. Their tools join or leave the tool list at the next launch."
@@ -112,7 +119,8 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
     /// the switch was then.
     public var isReadAtLaunch: Bool {
         switch self {
-        case .queueMessagesWhileRunning, .suggestionsInFieldAndFooter, .localModelsThroughOllama, .firstClickActsOnPanel: false
+        case .queueMessagesWhileRunning, .suggestionsInFieldAndFooter, .localModelsThroughOllama, .firstClickActsOnPanel,
+             .settingsAsOneStackOfPanes: false
         case .mcpServers, .panelWithBarsAndInputPill, .scripts, .settingsTools: true
         }
     }
@@ -130,6 +138,7 @@ public enum Experiment: String, CaseIterable, Sendable, Identifiable {
         case .localModelsThroughOllama: "ExperimentLocalModelsThroughOllama"
         case .settingsTools: "ExperimentSettingsTools"
         case .firstClickActsOnPanel: "ExperimentFirstClickActsOnPanel"
+        case .settingsAsOneStackOfPanes: "ExperimentSettingsAsOneStackOfPanes"
         }
     }
 

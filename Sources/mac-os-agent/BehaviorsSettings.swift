@@ -50,6 +50,7 @@ struct ExperimentsSettingsView: View {
     @AppStorage(Experiment.scripts.key) private var scripts = false
     @AppStorage(Experiment.settingsTools.key) private var settingsTools = false
     @AppStorage(Experiment.firstClickActsOnPanel.key) private var firstClickActsOnPanel = false
+    @AppStorage(Experiment.settingsAsOneStackOfPanes.key) private var settingsAsOneStack = false
 
     /// An experiment's key (`Experiment.rawValue`) to scroll to when the section appears, for
     /// `--preview-settings experiments --preview-item <key>`. Used by previews only.
@@ -97,6 +98,11 @@ struct ExperimentsSettingsView: View {
                     Text("While another app has focus, one click on the panel or the incognito window gives it focus and does what you clicked: a link in a reply opens, a button or a tool row acts, and the top bar's close button and menu work. Off, the first click only gives the panel focus, except on the top bar, which drags.")
                 }
                 .id(Experiment.firstClickActsOnPanel.rawValue)
+                Toggle(isOn: $settingsAsOneStack) {
+                    Text(Experiment.settingsAsOneStackOfPanes.title)
+                    Text("The section list becomes the bottom pane of one stack for the whole window, and the section slides over it. As the window narrows the section covers more of the list, and any part that shows can be clicked. Sections with a list beside a detail are cramped at narrow widths until they move onto the stack.")
+                }
+                .id(Experiment.settingsAsOneStackOfPanes.rawValue)
             } header: {
                 Text("Features being tried. They may change or go.")
                     .font(.body)
