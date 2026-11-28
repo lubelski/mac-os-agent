@@ -11,6 +11,9 @@ import System
 public final class MCPSDKConnection: MCPServerConnection {
     public let entry: MCPServerEntry
     private let state = Mutex<(process: MCPServerProcess?, client: Client?, transport: StdioTransport?)>((nil, nil, nil))
+    private let info = Mutex<MCPServerInfo?>(nil)
+
+    public var serverInfo: MCPServerInfo? { info.withLock { $0 } }
 
     public init(entry: MCPServerEntry) {
         self.entry = entry
@@ -28,7 +31,13 @@ public final class MCPSDKConnection: MCPServerConnection {
         let client = Client(name: "mac-os-agent", version: Self.clientVersion)
         state.withLock { $0 = (process, client, transport) }
         do {
-            _ = try await whileRunning(process) { try await client.connect(transport: transport) }
+            let result = try await whileRunning(process) { try await client.connect(transport: transport) }
+            let server = result.serverInfo
+            info.withLock {
+                $0 = MCPServerInfo(
+                    name: server.name, title: server.title, version: server.version,
+                    description: server.description, instructions: result.instructions)
+            }
         } catch {
             await stop()
             throw error

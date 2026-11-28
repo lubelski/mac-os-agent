@@ -196,7 +196,7 @@ struct SettingsRootView: View {
         case .tools:
             ToolsSettingsView(model: models.tools)
         case .mcpServers:
-            MCPServersSettingsView(model: models.mcpServers)
+            MCPServersSettingsView(model: models.mcpServers, tools: models.tools)
         case .history:
             HistorySettingsView(model: models.history)
         case .behaviors:
@@ -663,6 +663,23 @@ enum SettingsPreview {
         }
 
         func stop() async {}
+
+        /// What a server says about itself: `weather` gives a description, and `clock` only
+        /// instructions, so Settings shows each source of a description.
+        var serverInfo: MCPServerInfo? {
+            switch name {
+            case "weather":
+                MCPServerInfo(
+                    name: "weather-mcp", title: "Weather", version: "1.4.0",
+                    description: "Forecasts and severe weather alerts from a stand-in weather service.")
+            case "clock":
+                MCPServerInfo(
+                    name: "clock-mcp", version: "0.3.1",
+                    instructions: "Use these tools to read the time in any zone and to start timers. Timers last until the server stops.")
+            default:
+                nil
+            }
+        }
     }
 
     /// What the stand-in history's commands printed, by command. Placeholder folders only.

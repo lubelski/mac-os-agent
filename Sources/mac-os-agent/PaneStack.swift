@@ -263,11 +263,13 @@ struct StackPane<Content: View>: View {
     var scope: String?
     let title: Text
     var subtitle: String?
+    /// Sets the subtitle in a monospaced font, for a literal name such as a tool's.
+    var subtitleIsCode = false
     @ViewBuilder let content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PaneTitle(scope: scope, title: title, subtitle: subtitle)
+            PaneTitle(scope: scope, title: title, subtitle: subtitle, subtitleIsCode: subtitleIsCode)
             Divider().opacity(0.6)
             PaneScrollView { content }
         }
@@ -332,6 +334,7 @@ struct PaneTitle: View {
     var scope: String?
     let title: Text
     var subtitle: String?
+    var subtitleIsCode = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -344,9 +347,10 @@ struct PaneTitle: View {
             title.lineLimit(1).truncationMode(.middle)
             if let subtitle {
                 Text(subtitle)
-                    .font(.caption)
+                    .font(subtitleIsCode ? .caption.monospaced() : .caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .truncationMode(subtitleIsCode ? .middle : .tail)
             }
         }
         .padding(.horizontal, 20)
