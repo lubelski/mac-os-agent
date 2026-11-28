@@ -12,11 +12,11 @@ Read `README.md` first for what the product is, then `VISION.md` for what a chan
 - Keep font weight constant across hover and selection states.
 - The text field holds one icon at its left and the text. No other controls go in it.
 - Capitalize text the app shows in one of two styles, as macOS does. The owner asked for one convention for the repo and suggested "Add to List" (2026-11-27). The rules are taken from Apple's interface guidelines.
-  - **Title style** for anything that names a thing or an action: window and section titles, tab names, buttons, menu items, switch labels, and the display names made from tool and server names. "Show in Finder", "Add to List", "Use Default".
+  - **Title style** for anything that names a thing or an action: window and section titles, tab names, buttons, menu items, and the display names made from tool and server names. "Show in Finder", "Add to List", "Use Default".
     - Capitalize every word except articles (a, an, the), coordinating conjunctions (and, but, for, nor, or, so, yet), and prepositions of four letters or fewer (at, by, for, from, in, into, of, off, on, onto, out, over, to, up, with).
     - Always capitalize the first word and the last word: "Log In", "Sign Up".
     - Capitalize a short word that is part of the verb, wherever it falls: "Set Up Account", "Sign Out User", "Turn Off Alerts". The same word as a plain preposition stays lower case: "Search in Files".
-  - **Sentence style** for anything that says something: descriptions, messages, placeholders, help text, and errors. "No description", "Values are not shown."
+  - **Sentence style** for anything that says something: descriptions, messages, placeholders, help text, errors, and the label beside a switch or a checkbox. "No description", "Values are not shown.", "First click acts on the panel".
   - Text someone else wrote keeps its own capitals: a tool's literal name, a server's own description, a display name the owner typed.
 
 ## Working here
