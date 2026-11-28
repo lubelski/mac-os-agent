@@ -62,8 +62,8 @@ enum PanelShape {
 /// The hairline that sets the panel's bars apart from the history: under the top bar and
 /// above the text field, and between the inspector's input and output. All use this one
 /// definition, so they keep the same color, thickness, and width. The color is the theme's
-/// divider at a fainter strength than the episode hairlines, which for Glass matches the
-/// system separator at half strength that it was before themes.
+/// divider at a fainter strength than the episode hairlines, `PanelPalette.barDividerStrength`,
+/// strong enough to read as an edge where a message scrolls under a bar.
 struct PanelDivider: View {
     @Environment(\.panelPalette) private var palette
 

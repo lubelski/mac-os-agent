@@ -476,7 +476,14 @@ enum SettingsPreview {
             } else {
                 controller.models.tools.selection = item
             }
-            if section == .mcpServers { controller.models.mcpServers.selection = item }
+            if section == .mcpServers {
+                // `example.tools.narrow` selects example, shows its Tools tab, and shrinks the
+                // window to its minimum size.
+                controller.models.mcpServers.showPreviewItem(item)
+                if item.split(separator: ".").dropFirst().contains("narrow") {
+                    controller.window?.setContentSize(SettingsWindowController.minimumSize)
+                }
+            }
             controller.models.debugging.scrollTarget = item == "gateway" ? "sign-in" : item
             // `--preview-item messages` in Appearance scrolls to the message layout.
             if section == .appearance { ThemeModel.shared.previewScrollTarget = item }
