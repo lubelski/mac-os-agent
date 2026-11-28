@@ -65,7 +65,7 @@ private let addAlert = MCPToolInfo(
         ("log_in", "Log In"),
         ("sign_up", "Sign Up"),
         ("check_out", "Check Out"),
-        ("opt_out_of", "Opt out Of"),
+        ("opt_out_of", "Opt Out Of"),
         ("what_to_search_for", "What to Search For"),
         // The first word is too.
         ("the_list", "The List"),
@@ -87,13 +87,10 @@ private let addAlert = MCPToolInfo(
         ("files_in_folder", "Files in Folder"),
         ("move_into_folder", "Move into Folder"),
         ("list_of_issues", "List of Issues"),
-        ("turn_off_alarm", "Turn off Alarm"),
         ("get_on_board", "Get on Board"),
         ("move_onto_stack", "Move onto Stack"),
-        ("sign_out_user", "Sign out User"),
-        ("hand_over_task", "Hand over Task"),
+        ("pass_over_task", "Pass over Task"),
         ("add_to_list", "Add to List"),
-        ("set_up_account", "Set up Account"),
         ("reply_with_quote", "Reply with Quote"),
         // Words outside the list are capitalized, including "as" and longer prepositions.
         ("save_as_draft", "Save As Draft"),
@@ -106,6 +103,73 @@ private let addAlert = MCPToolInfo(
     ])
     func followsTitleStyle(_ name: String, _ expected: String) {
         #expect(HumanizedName.from(name) == expected)
+    }
+
+    /// A short word that is part of the verb is capitalized wherever it falls, as the convention
+    /// has it: "Set Up Account". The name cannot be parsed for that, so a short table of verbs
+    /// and their particles decides, used only when the particle directly follows the verb. The
+    /// same word as a plain preposition stays lower case.
+    @Test(arguments: [
+        // The convention's own examples.
+        ("set_up_account", "Set Up Account"),
+        ("sign_out_user", "Sign Out User"),
+        ("turn_off_alerts", "Turn Off Alerts"),
+        ("search_in_files", "Search in Files"),
+        // Each pair, inside a name.
+        ("back_up_files", "Back Up Files"),
+        ("check_out_branch", "Check Out Branch"),
+        ("clean_up_downloads", "Clean Up Downloads"),
+        ("hand_off_task", "Hand Off Task"),
+        ("hand_over_keys", "Hand Over Keys"),
+        ("lock_out_user", "Lock Out User"),
+        ("log_in_user", "Log In User"),
+        ("log_out_everywhere", "Log Out Everywhere"),
+        ("look_up_contact", "Look Up Contact"),
+        ("opt_in_beta", "Opt In Beta"),
+        ("opt_out_tracking", "Opt Out Tracking"),
+        ("pick_up_order", "Pick Up Order"),
+        ("power_on_device", "Power On Device"),
+        ("power_off_device", "Power Off Device"),
+        ("scale_up_cluster", "Scale Up Cluster"),
+        ("sign_in_user", "Sign In User"),
+        ("sign_up_user", "Sign Up User"),
+        ("start_up_server", "Start Up Server"),
+        ("switch_on_light", "Switch On Light"),
+        ("switch_off_light", "Switch Off Light"),
+        ("turn_on_light", "Turn On Light"),
+        ("zoom_in_map", "Zoom In Map"),
+        ("zoom_out_map", "Zoom Out Map"),
+        // A preposition after the particle stays lower case.
+        ("log_in_to_account", "Log In to Account"),
+        ("sign_in_with_passkey", "Sign In with Passkey"),
+        ("zoom_in_on_map", "Zoom In on Map"),
+        // The verb can come later in the name, and in camel case or capitals.
+        ("user_sign_out_all", "User Sign Out All"),
+        ("setUpAccount", "Set Up Account"),
+        ("SIGN_OUT_USER", "Sign Out User"),
+        // Not a pair: the same words as plain prepositions.
+        ("check_in_status", "Check in Status"),
+        ("check_in_cache", "Check in Cache"),
+        ("add_to_list", "Add to List"),
+        ("copy_to_clipboard", "Copy to Clipboard"),
+        ("files_in_folder", "Files in Folder"),
+        ("get_on_board", "Get on Board"),
+        ("set_on_fire", "Set on Fire"),
+        ("log_of_sign_in", "Log of Sign In"),
+        // The particle must directly follow the verb.
+        ("set_the_up_flag", "Set the up Flag"),
+        // A last word is capitalized as before.
+        ("move_up", "Move Up"),
+        ("sign_in", "Sign In"),
+    ])
+    func capitalizesAParticleThatIsPartOfTheVerb(_ name: String, _ expected: String) {
+        #expect(HumanizedName.from(name) == expected)
+    }
+
+    @Test func everyParticleInTheTableIsAMinorWord() {
+        for (verb, particles) in HumanizedName.phrasalVerbs {
+            #expect(particles.isSubset(of: HumanizedName.minorWords), "\(verb)")
+        }
     }
 
     @Test func theMinorWordsAreExactlyTheConventionsList() {

@@ -12,8 +12,12 @@ import Foundation
 /// The words then take the repo's title style, Apple's: every word starts with a capital, except
 /// the articles, the coordinating conjunctions, and the prepositions of four letters or fewer
 /// (`minorWords`), which are lower case unless they are the first or the last word. So
-/// `add_to_list` is "Add to List", `log_in` is "Log In", and `set_up_account` "Set up Account".
-/// Two more exceptions come first:
+/// `add_to_list` is "Add to List" and `log_in` is "Log In". A minor word that is part of the verb
+/// before it is capitalized wherever it falls, so `set_up_account` is "Set Up Account". The name
+/// cannot be parsed for that, so it takes a short table of verbs and their particles
+/// (`phrasalVerbs`), used only when the particle directly follows the verb: `log_in_to_account` is
+/// "Log In to Account", while `search_in_files` keeps "Search in Files". Two more exceptions
+/// come first:
 ///
 /// - a word that is already all capitals and at least two letters long stays as it is (`HTTP`),
 /// - a few very common short forms are written in capitals (`acronyms`).
@@ -32,12 +36,37 @@ public enum HumanizedName {
         "at", "by", "for", "from", "in", "into", "of", "off", "on", "onto", "out", "over", "to", "up", "with",
     ]
 
+    /// Verbs and the particle that is part of them, capitalized when it directly follows the verb.
+    /// Only particles that are minor words are listed, since the others are capitalized anyway.
+    /// Kept to common pairs whose verb rarely comes before the same word as a plain preposition:
+    /// "check in" is left out because `check_in_cache` asks whether something is in the cache.
+    public static let phrasalVerbs: [String: Set<String>] = [
+        "back": ["up"],
+        "check": ["out"],
+        "clean": ["up"],
+        "lock": ["out"],
+        "log": ["in", "out"],
+        "look": ["up"],
+        "opt": ["in", "out"],
+        "pick": ["up"],
+        "hand": ["off", "over"],
+        "power": ["on", "off"],
+        "scale": ["up"],
+        "set": ["up"],
+        "sign": ["in", "out", "up"],
+        "start": ["up"],
+        "switch": ["on", "off"],
+        "turn": ["on", "off"],
+        "zoom": ["in", "out"],
+    ]
+
     public static func from(_ name: String) -> String {
         let source = name.contains(where: \.isLowercase) ? name : name.lowercased()
         let words = split(source)
         guard !words.isEmpty else { return name }
         return words.enumerated().map { index, word in
-            style(word, isFirstOrLast: index == 0 || index == words.count - 1)
+            let isParticle = index > 0 && phrasalVerbs[words[index - 1].lowercased()]?.contains(word.lowercased()) == true
+            return style(word, capitalizesMinorWord: index == 0 || index == words.count - 1 || isParticle)
         }.joined(separator: " ")
     }
 
@@ -69,12 +98,13 @@ public enum HumanizedName {
         return words
     }
 
-    static func style(_ word: String, isFirstOrLast: Bool) -> String {
+    /// - Parameter capitalizesMinorWord: True for the first and last word, and a particle that is part of the verb before it.
+    static func style(_ word: String, capitalizesMinorWord: Bool) -> String {
         let letters = word.filter(\.isLetter)
         if letters.count >= 2, letters.allSatisfy(\.isUppercase) { return word }
         let lower = word.lowercased()
         if acronyms.contains(lower) { return word.uppercased() }
-        if !isFirstOrLast, minorWords.contains(lower) { return lower }
+        if !capitalizesMinorWord, minorWords.contains(lower) { return lower }
         guard let first = word.first else { return word }
         return first.uppercased() + word.dropFirst()
     }
