@@ -31,16 +31,20 @@ final class HistorySettingsModel {
     @ObservationIgnored let images: any ImageStorage
     @ObservationIgnored private var contents = ThreadContents()
     @ObservationIgnored private var searchTask: Task<Void, Never>?
+    /// What a command's line says. MCP calls read by display names, resolved each time the lines
+    /// are read, so a rename shows the next time History reads the thread.
+    @ObservationIgnored let summaries: ToolCallSummaries
 
-    init(history: ThreadStore?, images: any ImageStorage = ImageFolder()) {
+    init(history: ThreadStore?, images: any ImageStorage = ImageFolder(), summaries: ToolCallSummaries = ToolCallSummaries.builtIn.showingDisplayNames()) {
         self.history = history
         self.images = images
+        self.summaries = summaries
     }
 
     var selectedItem: EpisodeListItem? { items.first { $0.id == selection } }
 
     /// The thread as last read and the list the base shows, for the pane stack.
-    var panes: HistoryPanes { HistoryPanes(contents: contents, items: items) }
+    var panes: HistoryPanes { HistoryPanes(contents: contents, items: items, summaries: summaries) }
 
     /// Opens an episode, by its number, or a command, by its call id, in the pane stack, as
     /// `--preview-item` asks. An item that is not here changes nothing. The thread is read
@@ -84,7 +88,7 @@ final class HistorySettingsModel {
             // Waits for a pause in typing before it searches.
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
-            let found = EpisodeListItem.matching(await history.search(query, limit: 200))
+            let found = EpisodeListItem.matching(await history.search(query, limit: 200), summaries: summaries)
             guard !Task.isCancelled else { return }
             show(found)
         }
@@ -100,7 +104,7 @@ final class HistorySettingsModel {
     }
 
     private func readSelected() {
-        lines = selectedItem.map { EpisodeLine.lines(of: $0.episode, in: contents) } ?? []
+        lines = selectedItem.map { EpisodeLine.lines(of: $0.episode, in: contents, summaries: summaries) } ?? []
     }
 }
 

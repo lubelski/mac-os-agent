@@ -19,12 +19,11 @@ final class MCPServersSettingsModel {
         didSet { if detailTab != oldValue { toolStack.path = PaneStackPath() } }
     }
     var errorMessage: String?
-    /// With the pane stack experiment on, a tool chosen in the Tools tab slides in over the
-    /// server's detail: `[]` or `[tool]`, by the tool's name as the model calls it. Closed when
-    /// another server is chosen or the tab changes.
+    /// A tool chosen in the Tools tab slides in over the server's detail: `[]` or `[tool]`, by
+    /// the tool's name as the model calls it. Closed when another server is chosen or the tab
+    /// changes. It does not wait on the pane stack experiment, so a tool can always be renamed
+    /// (owner, 2026-11-27).
     let toolStack = PaneStackState()
-    /// Set by a preview that asks for the pane stack, which shows it whatever the preference says.
-    var paneStackOverride: Bool?
     /// Changes when a display name does, so the views read the store again.
     private(set) var namesRevision = 0
     @ObservationIgnored let pool: MCPServerPool
@@ -120,17 +119,15 @@ final class MCPServersSettingsModel {
 
     /// Selects what `--preview-item` names: a server, then dot-separated words, of which a tab's
     /// name picks that tab, as in `example.tools`. A server name has no dots, so the dot is free
-    /// to split on. `stack` shows the pane stack as if its experiment were on, and `tool-<name>`
-    /// opens that tool's pane over the Tools tab, by its name on its server, as in
-    /// `example.tool-list_projects`. Other words, such as `narrow`, are for the window.
+    /// to split on. `tool-<name>` opens that tool's pane over the Tools tab, by its name on its
+    /// server, as in `example.tool-list_projects`. Other words, such as `narrow`, are for the
+    /// window. `stack`, which once showed the pane stack, is still read and changes nothing.
     func showPreviewItem(_ item: String) {
         let words = item.split(separator: ".").map(String.init)
         let server = words.first ?? item
         selection = server
         if let tab = words.dropFirst().lazy.compactMap(MCPServerDetailTab.init(rawValue:)).first { detailTab = tab }
-        if words.contains("stack") { paneStackOverride = true }
         if let tool = words.first(where: { $0.hasPrefix("tool-") })?.dropFirst("tool-".count) {
-            paneStackOverride = true
             detailTab = .tools
             toolStack.path = PaneStackPath([server + MCPToolNaming.separator + tool])
         }
@@ -168,7 +165,6 @@ struct MCPServersSettingsView: View {
     @Bindable var model: MCPServersSettingsModel
     /// For a tool's details in its pane, which are the ones Settings > Tools shows.
     let tools: ToolsSettingsModel
-    @AppStorage(Experiment.settingsPaneStack.key) private var paneStack = false
 
     var body: some View {
         if model.statuses.isEmpty {
@@ -204,11 +200,7 @@ struct MCPServersSettingsView: View {
                 Divider()
                 Group {
                     if let status = model.selectedStatus {
-                        if model.paneStackOverride ?? paneStack {
-                            MCPServerPaneStack(status: status, model: model, tools: tools)
-                        } else {
-                            MCPServerDetailView(status: status, model: model, opensTools: false)
-                        }
+                        MCPServerPaneStack(status: status, model: model, tools: tools)
                     } else {
                         ContentUnavailableView("No Server Selected", systemImage: "server.rack")
                     }
@@ -400,8 +392,6 @@ enum MCPServerDetailTab: String, CaseIterable {
 struct MCPServerDetailView: View {
     let status: MCPServerStatus
     @Bindable var model: MCPServersSettingsModel
-    /// True when a tool's row opens its pane, with the pane stack experiment on.
-    let opensTools: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -413,7 +403,7 @@ struct MCPServerDetailView: View {
             Group {
                 switch model.detailTab {
                 case .details: MCPServerDetailsTab(status: status, model: model)
-                case .tools: MCPServerToolsTab(status: status, model: model, opensTools: opensTools)
+                case .tools: MCPServerToolsTab(status: status, model: model)
                 }
             }
             // Each server starts its tabs at the top.
@@ -424,8 +414,9 @@ struct MCPServerDetailView: View {
 }
 
 /// A server's detail with its tools' panes: a tool chosen in the Tools tab slides in over the
-/// detail, leaving the start of the tools' names showing. Behind the pane stack experiment, as
-/// Tools and History are. See `PaneStackView`.
+/// detail, leaving the start of the tools' names showing. Always on, unlike Tools and History,
+/// whose stacks wait on the pane stack experiment, since a tool's display name is set in its
+/// pane. See `PaneStackView`.
 struct MCPServerPaneStack: View {
     /// How much of the server's detail shows beside a tool's pane: the start of the tools' names.
     static let stripWidth: CGFloat = 190
@@ -448,7 +439,7 @@ struct MCPServerPaneStack: View {
             path.isAtBase ? summaries.map(\.id) : []
         } pane: { level in
             if level.depth == 0 {
-                MCPServerDetailView(status: status, model: model, opensTools: true)
+                MCPServerDetailView(status: status, model: model)
             } else if let id = level.item, let tool = summaries.first(where: { $0.id == id }), let mcp = tool.mcp {
                 MCPToolPane(tool: tool, mcp: mcp, server: status.entry.name, model: model, tools: tools)
                     // Another tool starts with its own state, such as its name field's.
@@ -706,12 +697,11 @@ struct MCPServerDetailsTab: View {
 }
 
 /// What the server gives the agent: each tool in three lines, its display name, the name the
-/// model calls it by, and the start of its description, with whether it is read-only. With the
-/// pane stack experiment on, a row opens the tool's pane.
+/// model calls it by, and the start of its description, with whether it is read-only. A row opens
+/// the tool's pane.
 struct MCPServerToolsTab: View {
     let status: MCPServerStatus
     let model: MCPServersSettingsModel
-    let opensTools: Bool
 
     var body: some View {
         if status.tools.isEmpty {
@@ -724,20 +714,17 @@ struct MCPServerToolsTab: View {
             let tools = model.toolSummaries(status)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    Text(opensTools ? "Choose a tool for its details, its display name, and its go-ahead." : "Each tool's go-ahead is in Tools.")
+                    Text("Choose a tool for its details, its display name, and its go-ahead.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, MCPToolRow.inset)
                         .padding(.bottom, 6)
                     ForEach(tools) { tool in
                         if let mcp = tool.mcp {
-                            let row = MCPToolRow(tool: tool, displayName: model.displayName(of: mcp), readOnly: mcp.readOnly, opens: opensTools)
-                            if opensTools {
-                                PaneStackLink(id: tool.id) { row }
-                                    .accessibilityHint(Text("Shows the tool's details"))
-                            } else {
-                                row
+                            PaneStackLink(id: tool.id) {
+                                MCPToolRow(tool: tool, displayName: model.displayName(of: mcp), readOnly: mcp.readOnly)
                             }
+                            .accessibilityHint(Text("Shows the tool's details"))
                         }
                         if tool.id != tools.last?.id { PaneRowDivider(leading: MCPToolRow.inset) }
                     }
@@ -767,7 +754,6 @@ struct MCPToolRow: View {
     let tool: ToolSummary
     let displayName: String
     let readOnly: Bool
-    let opens: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -796,7 +782,7 @@ struct MCPToolRow: View {
                 }
             }
             Spacer(minLength: 8)
-            if opens { PaneChevron() }
+            PaneChevron()
         }
         .padding(.leading, Self.inset)
         .padding(.trailing, 16)

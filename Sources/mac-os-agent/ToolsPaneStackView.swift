@@ -21,7 +21,13 @@ struct ToolsPaneStackView: View {
             default: Self.toolsStripWidth
             }
         } title: { level in
-            model.groups.pane(at: level.depth, of: level.path)?.title ?? ""
+            // As a strip's Back To button says it: by display names for an MCP server and tool.
+            switch model.groups.pane(at: level.depth, of: level.path) {
+            case .group(let group): model.title(of: group)
+            case .tool(let tool, _): model.displayName(of: tool) ?? tool.name
+            case let pane?: pane.title
+            case nil: ""
+            }
         } rows: { path in
             model.groups.rows(of: path)
         } pane: { level in
@@ -32,8 +38,14 @@ struct ToolsPaneStackView: View {
                 ToolListPane(group: group, model: model)
             case .tool(let tool, let group):
                 // Outer before inner: the group above the tool's name in it. The name the model
-                // calls, with the server's prefix, is in Parameters.
-                StackPane(scope: group.source.title, title: Text(tool.nameInGroup).font(.title3.monospaced().weight(.semibold))) {
+                // calls, with the server's prefix, is in Parameters, and under an MCP tool's
+                // display name.
+                StackPane(
+                    scope: model.title(of: group),
+                    title: model.displayName(of: tool).map { Text($0).font(.title3.weight(.semibold)) }
+                        ?? Text(tool.nameInGroup).font(.title3.monospaced().weight(.semibold)),
+                    subtitle: tool.mcp == nil ? nil : tool.name, subtitleIsCode: true
+                ) {
                     ToolDetailSections(tool: tool, model: model)
                         .padding(20)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -82,7 +94,7 @@ struct ToolGroupsPane: View {
                 .accessibilityAddTraits(.isHeader)
             ForEach(groups) { group in
                 PaneStackLink(id: group.id) {
-                    ToolGroupRow(group: group, asks: model.asksForGoAhead(group))
+                    ToolGroupRow(group: group, title: model.title(of: group), asks: model.asksForGoAhead(group))
                 }
                 .accessibilityHint(Text("Shows the group's tools"))
                 if group.id != groups.last?.id {
@@ -102,17 +114,28 @@ struct ToolGroupRow: View {
     static var textStart: CGFloat { inset + tileSize + spacing }
 
     let group: ToolGroup
+    /// The group's title: an MCP server's display name, or a built-in group's title.
+    let title: String
     let asks: Bool
 
     var body: some View {
         HStack(spacing: Self.spacing) {
             ToolGroupIcon(source: group.source, size: Self.tileSize)
             VStack(alignment: .leading, spacing: 2) {
-                Text(group.source.title).fontWeight(.semibold).lineLimit(1)
-                Text(group.source.summary)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                Text(title).fontWeight(.semibold).lineLimit(1)
+                if group.source.isMCPServer {
+                    // The server's name in the file, quieter and monospaced, as MCP Servers has it.
+                    Text(group.source.title)
+                        .font(.callout.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text(group.source.summary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 8)
             if asks { GoAheadMarker() }
@@ -126,7 +149,7 @@ struct ToolGroupRow: View {
         .padding(.trailing, 16)
         .padding(.vertical, 10)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(asks ? "\(group.source.title), \(group.countLabel), can ask for a go-ahead" : "\(group.source.title), \(group.countLabel)"))
+        .accessibilityLabel(Text(asks ? "\(title), \(group.countLabel), can ask for a go-ahead" : "\(title), \(group.countLabel)"))
     }
 }
 
@@ -170,12 +193,18 @@ struct ToolListPane: View {
     let model: ToolsSettingsModel
 
     var body: some View {
-        StackPane(title: Text(group.source.title).font(.headline), subtitle: group.countLabel) {
+        // An MCP server's display name, with its name in the file under it in place of the count,
+        // which its row in the groups already shows.
+        StackPane(
+            title: Text(model.title(of: group)).font(.headline),
+            subtitle: group.source.isMCPServer ? group.source.title : group.countLabel,
+            subtitleIsCode: group.source.isMCPServer
+        ) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(group.tools) { tool in
                     let goAhead = model.goAhead(of: tool)
                     PaneStackLink(id: tool.id) {
-                        ToolStackRow(tool: tool, goAhead: goAhead)
+                        ToolStackRow(tool: tool, displayName: model.displayName(of: tool), goAhead: goAhead)
                     }
                     .accessibilityHint(Text("Shows the tool's details"))
                     if tool.id != group.tools.last?.id {
@@ -192,13 +221,27 @@ struct ToolStackRow: View {
     static let inset: CGFloat = 20
 
     let tool: ToolSummary
+    /// An MCP tool's display name. Nil for a built-in tool.
+    var displayName: String?
     let goAhead: ToolGoAhead
+
+    private var name: String { displayName ?? tool.nameInGroup }
 
     var body: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
-                // The group is the pane's title, so an MCP tool shows its name on its server.
-                Text(tool.nameInGroup).font(.body.monospaced()).lineLimit(1)
+                if let displayName {
+                    // The display name leads, and the tool's name on its server is under it, as in
+                    // MCP Servers. The group is the pane's title, so the server's prefix is left out.
+                    Text(displayName).fontWeight(.medium).lineLimit(1)
+                    Text(tool.nameInGroup)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text(tool.nameInGroup).font(.body.monospaced()).lineLimit(1)
+                }
                 Text(tool.shortDescription)
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -212,7 +255,7 @@ struct ToolStackRow: View {
         .padding(.trailing, 16)
         .padding(.vertical, 10)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(goAhead != .never ? "\(tool.nameInGroup), can ask for a go-ahead" : tool.nameInGroup))
+        .accessibilityLabel(Text(goAhead != .never ? "\(name), can ask for a go-ahead" : name))
     }
 }
 

@@ -41,12 +41,30 @@ public struct ToolRegistry: Sendable {
 /// being opened, taken from the tool's own `summary(arguments:)`. A row rebuilt from the
 /// saved thread reads the same as it did while the call ran. A call to a tool that no longer
 /// exists, or whose arguments cannot be read, shows the tool's name.
+///
+/// With `showsDisplayNames`, a call to an MCP tool reads by the names people know its server
+/// and the tool by, resolved each time a row is built from the literal names the thread keeps,
+/// so a rename reaches rows drawn before it. A call to an MCP tool that is no longer listed reads
+/// by its literal names made readable. None of this text is sent to the model.
 public struct ToolCallSummaries: Sendable {
     private let tools: [String: any AgentTool]
+    /// Whether MCP calls read by display names. For rows a person reads: the panel and History.
+    public let showsDisplayNames: Bool
 
-    public init(_ tools: [any AgentTool]) {
+    public init(_ tools: [any AgentTool], showsDisplayNames: Bool = false) {
         self.tools = Dictionary(
             (tools + Self.conditional).map { ($0.definition.name, $0) }, uniquingKeysWith: { first, _ in first })
+        self.showsDisplayNames = showsDisplayNames
+    }
+
+    private init(tools: [String: any AgentTool], showsDisplayNames: Bool) {
+        self.tools = tools
+        self.showsDisplayNames = showsDisplayNames
+    }
+
+    /// The same summaries, with MCP calls read by display names.
+    public func showingDisplayNames() -> ToolCallSummaries {
+        ToolCallSummaries(tools: tools, showsDisplayNames: true)
     }
 
     /// The app's built-in tools. Only their summaries are used, which read nothing but the
@@ -75,10 +93,28 @@ public struct ToolCallSummaries: Sendable {
 
     /// The summary of a call to the tool named `name` with these arguments, as the model wrote them.
     public func summary(name: String, arguments: String) -> String {
+        if let text = displaySummary(name: name, arguments: arguments) { return text }
         guard let tool = tools[name] ?? Self.formerNames[name].flatMap({ tools[$0] }), let parsed = JSONValue.parse(arguments), case .object = parsed else { return name }
         // The same text the live row shows, so a shell command keeps its lines for Copy Command.
         let text = tool.summary(arguments: parsed)
         return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? name : text
+    }
+
+    /// A call to an MCP tool by display names, with `showsDisplayNames` on: by the tool's own
+    /// names when it is listed, and by the literal ones made readable when it is not. Nil for
+    /// any other call, and for every call with `showsDisplayNames` off.
+    public func displaySummary(of call: ThreadItem.ToolCall) -> String? {
+        displaySummary(name: call.name, arguments: call.arguments)
+    }
+
+    func displaySummary(name: String, arguments: String) -> String? {
+        guard showsDisplayNames else { return nil }
+        let parsed = JSONValue.parse(arguments) ?? .object([:])
+        if let tool = tools[name] {
+            return (tool as? MCPTool)?.displaySummary(arguments: parsed)
+        }
+        guard Self.formerNames[name] == nil, let parts = MCPTool.parts(ofCallName: name) else { return nil }
+        return MCPTool.summary(tool: HumanizedName.from(parts.tool), server: HumanizedName.from(parts.server), arguments: parsed)
     }
 }
 

@@ -58,6 +58,64 @@ private let addAlert = MCPToolInfo(
         #expect(HumanizedName.from(name) == expected)
     }
 
+    /// Apple's title style, the repo's convention: articles, coordinating conjunctions, and
+    /// prepositions of four letters or fewer are lower case, except as the first or last word.
+    @Test(arguments: [
+        // The last word is always capitalized.
+        ("log_in", "Log In"),
+        ("sign_up", "Sign Up"),
+        ("check_out", "Check Out"),
+        ("opt_out_of", "Opt out Of"),
+        ("what_to_search_for", "What to Search For"),
+        // The first word is too.
+        ("the_list", "The List"),
+        ("for_each_item", "For Each Item"),
+        // Each minor word, inside a name.
+        ("pick_a_file", "Pick a File"),
+        ("pick_an_item", "Pick an Item"),
+        ("read_the_news", "Read the News"),
+        ("salt_and_pepper", "Salt and Pepper"),
+        ("now_but_later", "Now but Later"),
+        ("wait_for_reply", "Wait for Reply"),
+        ("neither_nor_both", "Neither nor Both"),
+        ("this_or_that", "This or That"),
+        ("now_so_later", "Now so Later"),
+        ("not_yet_done", "Not yet Done"),
+        ("meet_at_noon", "Meet at Noon"),
+        ("sort_by_date", "Sort by Date"),
+        ("copy_from_clipboard", "Copy from Clipboard"),
+        ("files_in_folder", "Files in Folder"),
+        ("move_into_folder", "Move into Folder"),
+        ("list_of_issues", "List of Issues"),
+        ("turn_off_alarm", "Turn off Alarm"),
+        ("get_on_board", "Get on Board"),
+        ("move_onto_stack", "Move onto Stack"),
+        ("sign_out_user", "Sign out User"),
+        ("hand_over_task", "Hand over Task"),
+        ("add_to_list", "Add to List"),
+        ("set_up_account", "Set up Account"),
+        ("reply_with_quote", "Reply with Quote"),
+        // Words outside the list are capitalized, including "as" and longer prepositions.
+        ("save_as_draft", "Save As Draft"),
+        ("search_within_results", "Search Within Results"),
+        ("sort_about_dates", "Sort About Dates"),
+        ("send_email_after_meeting", "Send Email After Meeting"),
+        // Short forms and capitals keep their place in the rule.
+        ("get_id_of_url", "Get ID of URL"),
+        ("addToList", "Add to List"),
+    ])
+    func followsTitleStyle(_ name: String, _ expected: String) {
+        #expect(HumanizedName.from(name) == expected)
+    }
+
+    @Test func theMinorWordsAreExactlyTheConventionsList() {
+        #expect(HumanizedName.minorWords == [
+            "a", "an", "the",
+            "and", "but", "for", "nor", "or", "so", "yet",
+            "at", "by", "from", "in", "into", "of", "off", "on", "onto", "out", "over", "to", "up", "with",
+        ])
+    }
+
     @Test func aNameOfOnlySeparatorsIsKeptAsItIs() {
         #expect(HumanizedName.from("__") == "__")
         #expect(HumanizedName.from("") == "")
@@ -255,10 +313,17 @@ private let addAlert = MCPToolInfo(
             config: MCPServerConfig(servers: [MCPServerEntry(name: "weather", command: "/usr/bin/true", description: "Forecasts.")]),
             settings: settings, cache: MCPToolCache(servers: ["weather": .init(tools: [forecast, addAlert])]), cacheFile: nil,
             factory: { _ in DescribedConnection(tools: [], serverInfo: nil) })
+        // A call to the tool already in the thread, which every later request replays.
+        let replayed = [
+            ThreadEntry(date: Date(timeIntervalSince1970: 0), item: .userMessage(text: "weather in lisbon")),
+            ThreadEntry(date: Date(timeIntervalSince1970: 1), item: .toolCall(.init(
+                callID: "call_1", name: "weather__get_forecast", arguments: #"{"city":"Lisbon"}"#, provider: "openai", model: "gpt-test"))),
+            ThreadEntry(date: Date(timeIntervalSince1970: 2), item: .toolResult(.init(callID: "call_1", output: "Rain."))),
+        ]
         func body() throws -> Data {
             let registry = ToolRegistry(builtIn: [ShellCommandTool()], additional: pool.makeTools())
             let body = OpenAIResponses.body(
-                for: ModelRequest(instructions: "", entries: [], tools: registry.definitions),
+                for: ModelRequest(instructions: "", entries: replayed, tools: registry.definitions),
                 model: "gpt-test", reasoningEffort: "low", promptCacheKey: "k")
             let encoder = JSONEncoder()
             encoder.outputFormatting = .sortedKeys
@@ -274,5 +339,148 @@ private let addAlert = MCPToolInfo(
         #expect(text.contains("weather__get_forecast"))
         #expect(!text.contains("Five Days"))
         #expect(!text.contains("Forecasts"))
+    }
+}
+
+/// A call's row reads by display names, resolved from the literal names the thread keeps each
+/// time the row is built, so a rename reaches rows drawn before it, in the panel and in History.
+@Suite struct MCPCallRowsReadByDisplayNamesTests {
+    private func weatherPool(_ folder: Folder) -> MCPServerPool {
+        MCPServerPool(
+            config: MCPServerConfig(servers: [MCPServerEntry(name: "weather", command: "/usr/bin/true")]),
+            settings: MCPSettingsStore(file: folder.settings), cache: MCPToolCache(servers: ["weather": .init(tools: [forecast, addAlert])]),
+            cacheFile: nil, factory: { _ in DescribedConnection(tools: [forecast, addAlert], serverInfo: nil) })
+    }
+
+    private func call(_ name: String, _ arguments: String = #"{"city":"Lisbon"}"#, id: String = "call_1") -> ThreadItem.ToolCall {
+        ThreadItem.ToolCall(callID: id, name: name, arguments: arguments, provider: "openai", model: "gpt-test")
+    }
+
+    private func thread(_ calls: [ThreadItem.ToolCall]) -> [ThreadEntry] {
+        var entries = [ThreadEntry(date: Date(timeIntervalSince1970: 0), item: .userMessage(text: "weather in lisbon"))]
+        for (index, call) in calls.enumerated() {
+            entries.append(ThreadEntry(date: Date(timeIntervalSince1970: Double(2 * index + 1)), item: .toolCall(call)))
+            entries.append(ThreadEntry(date: Date(timeIntervalSince1970: Double(2 * index + 2)), item: .toolResult(.init(callID: call.callID, output: "Rain."))))
+        }
+        return entries
+    }
+
+    private func commands(_ transcript: Transcript) -> [String] {
+        transcript.rows.compactMap { row in
+            if case .tool(let command, _, _) = row.kind { command } else { nil }
+        }
+    }
+
+    @Test func aListedToolReadsByTheOwnersNamesOrTheDefaults() throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let pool = weatherPool(folder)
+        let summaries = ToolCallSummaries(pool.makeTools(), showsDisplayNames: true)
+        #expect(summaries.summary(of: call("weather__get_forecast")) == "Get Forecast on Weather: city Lisbon")
+        try pool.settings.setServerDisplayName("Forecasts", server: "weather")
+        try pool.settings.setToolDisplayName("Five Days", server: "weather", tool: "get_forecast")
+        #expect(summaries.summary(of: call("weather__get_forecast")) == "Five Days on Forecasts: city Lisbon")
+        #expect(summaries.summary(of: call("weather__add_alert", "{}")) == "Add Alert on Forecasts")
+        // Without display names, as before, and as anything but a person's rows reads it.
+        let literal = ToolCallSummaries(pool.makeTools())
+        #expect(literal.summary(of: call("weather__get_forecast")) == "get_forecast on weather: city Lisbon")
+        #expect(literal.displaySummary(of: call("weather__get_forecast")) == nil)
+    }
+
+    @Test func aToolNoLongerListedReadsByItsLiteralNamesMadeReadable() throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let pool = weatherPool(folder)
+        // An override set before the server went is not used: the row falls back to the default.
+        try pool.settings.setServerDisplayName("Old Notes", server: "notes")
+        let summaries = ToolCallSummaries([ShellCommandTool()] + pool.makeTools(), showsDisplayNames: true)
+        #expect(summaries.summary(of: call("notes__search_notes", #"{"query":"trip"}"#)) == "Search Notes on Notes: query trip")
+        #expect(summaries.summary(of: call("calendar-sync__sync_now", "not json")) == "Sync Now on Calendar Sync")
+        // A built-in tool, and an unknown one with no server in its name, read as they did.
+        #expect(summaries.summary(of: call(ShellCommandTool.name, #"{"command":"ls","destructive":false}"#)) == "Bash ls")
+        #expect(summaries.summary(of: call("gone_tool")) == "gone_tool")
+        #expect(ToolCallSummaries.builtIn.summary(of: call("notes__search_notes")) == "notes__search_notes")
+    }
+
+    @Test func aRenameReachesRowsDrawnBeforeIt() throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let pool = weatherPool(folder)
+        let entries = thread([call("weather__get_forecast")])
+        let summaries = ToolCallSummaries(pool.makeTools(), showsDisplayNames: true)
+        #expect(commands(Transcript(entries: entries, summaries: summaries)) == ["Get Forecast on Weather: city Lisbon"])
+        try pool.settings.setToolDisplayName("Five Days", server: "weather", tool: "get_forecast")
+        // The thread is the same. Drawing it again reads the new name.
+        #expect(commands(Transcript(entries: entries, summaries: summaries)) == ["Five Days on Weather: city Lisbon"])
+        // The thread still holds the literal name.
+        guard case .toolCall(let stored) = entries[1].item else { Issue.record("not a call"); return }
+        #expect(stored.name == "weather__get_forecast")
+    }
+
+    @Test func aRunningCallKeepsItsDisplayNames() throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let pool = weatherPool(folder)
+        try pool.settings.setToolDisplayName("Five Days", server: "weather", tool: "get_forecast")
+        let tools = pool.makeTools()
+        var transcript = Transcript(summaries: ToolCallSummaries(tools, showsDisplayNames: true))
+        let made = call("weather__get_forecast")
+        transcript.apply(ThreadEntry(item: .toolCall(made)))
+        // The loop reports the literal summary, which the row does not take.
+        let literal = try #require(tools.first { $0.definition.name == made.name }).summary(arguments: ["city": "Lisbon"])
+        transcript.toolRunning(made.callID, command: literal)
+        #expect(commands(transcript) == ["Five Days on Weather: city Lisbon"])
+        // Without display names the row takes it, as before.
+        var plain = Transcript(summaries: ToolCallSummaries(tools))
+        plain.apply(ThreadEntry(item: .toolCall(made)))
+        plain.toolRunning(made.callID, command: literal)
+        #expect(commands(plain) == ["get_forecast on weather: city Lisbon"])
+    }
+
+    @Test func historyReadsByDisplayNamesAndIsSearchedByLiteralOnes() throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let pool = weatherPool(folder)
+        try pool.settings.setToolDisplayName("Five Days", server: "weather", tool: "get_forecast")
+        let entries = thread([call("weather__get_forecast")])
+        let contents = ThreadContents(entries: entries)
+        let episode = try #require(contents.episodes.first)
+        let summaries = ToolCallSummaries(pool.makeTools(), showsDisplayNames: true)
+        #expect(EpisodeLine.lines(of: episode, in: contents, summaries: summaries).map(\.text).contains("Five Days on Weather: city Lisbon"))
+        let panes = HistoryPanes(contents: contents, items: EpisodeListItem.all(in: contents), summaries: summaries)
+        #expect(panes.call("call_1", in: episode)?.summary == "Five Days on Weather: city Lisbon")
+        // Search reads the literal call, so the tool's name on its server finds it, and a display
+        // name finds it only where its words are in the literal one.
+        #expect(HistorySearchText.scan(entries, for: "get_forecast", limit: 5, excluding: nil) == [1])
+        #expect(HistorySearchText.scan(entries, for: "weather__get_forecast", limit: 5, excluding: nil) == [1])
+        #expect(HistorySearchText.scan(entries, for: "five days", limit: 5, excluding: nil).isEmpty)
+        // What search_history and read_episode give the model is literal.
+        let line = HistoryText(timeZone: .gmt).line(entries[1], limit: 280)
+        #expect(line.contains("weather__get_forecast"))
+        #expect(!line.contains("Five Days"))
+    }
+
+    @Test func theGoAheadCardNamesTheToolForAPersonAndKeepsTheLiteralCall() async throws {
+        let folder = try Folder()
+        defer { folder.remove() }
+        let pool = weatherPool(folder)
+        try pool.settings.setServerDisplayName("Forecasts", server: "weather")
+        try pool.settings.setToolDisplayName("Warn Me", server: "weather", tool: "add_alert")
+        let alert = try #require(pool.makeTools().first { $0.definition.name == "weather__add_alert" })
+        let asked = Mutex<[ConfirmationRequest]>([])
+        _ = await alert.run(arguments: ["city": "Lisbon"], context: ToolRunContext(callID: "call_1") { request in
+            asked.withLock { $0.append(request) }
+            return false
+        })
+        let request = try #require(asked.withLock { $0.first })
+        #expect(request.body == .toolCall(server: "weather", tool: "add_alert", arguments: JSONValue.object(["city": "Lisbon"]).prettyEncodedString()))
+        #expect(request.displayNames == ConfirmationRequest.DisplayNames(server: "Forecasts", tool: "Warn Me"))
+        #expect(request.toolCallDisplayNames(server: "weather", tool: "add_alert").tool == "Warn Me")
+        #expect(request.waitingText == "waiting for your go-ahead to call Warn Me")
+        // A request with no names, such as one a test makes, reads by the literal names made readable.
+        let plain = ConfirmationRequest(
+            callID: "call_2", kind: .mcpToolCall, body: .toolCall(server: "calendar-sync", tool: "sync_now", arguments: "{}"), reason: "asks")
+        #expect(plain.toolCallDisplayNames(server: "calendar-sync", tool: "sync_now") == .init(server: "Calendar Sync", tool: "Sync Now"))
+        #expect(plain.waitingText == "waiting for your go-ahead to call Sync Now")
     }
 }

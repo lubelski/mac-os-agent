@@ -406,7 +406,7 @@ private func context(approve: Bool, asked: Asked? = nil) -> ToolRunContext {
         #expect(request.body == .toolCall(server: "weather", tool: "add_alert", arguments: JSONValue.object(["city": "Lisbon"]).prettyEncodedString()))
         #expect(request.question == "Call this tool?")
         #expect(request.approveTitle == "Allow Once")
-        #expect(request.waitingText == "waiting for your go-ahead to call add_alert")
+        #expect(request.waitingText == "waiting for your go-ahead to call Add Alert")
 
         #expect(await alert.run(arguments: [:], context: context(approve: false)) == MCPTool.declinedOutput)
         #expect(connection.calls == ["get_forecast", "add_alert"])

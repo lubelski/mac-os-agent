@@ -169,12 +169,40 @@ import Testing
         #expect(model.toolSummaries(status).first?.name == "weather__get_forecast")
     }
 
+    @Test func settingsToolsShowsAnMCPToolsDisplayNamesAndABuiltInToolsOwnName() throws {
+        let url = try folder()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let pool = pool(settings: url.appending(path: "mcp-settings.json"))
+        let registry = ToolRegistry(builtIn: [ShellCommandTool()], additional: pool.makeTools())
+        let model = ToolsSettingsModel(registry: registry, access: NoAccess(), mcpSettings: pool.settings)
+        let weather = try #require(model.groups.first { $0.source.isMCPServer })
+        let forecast = try #require(weather.tools.first { $0.name == "weather__get_forecast" })
+        let shell = try #require(model.groups.first?.tools.first)
+        #expect(model.title(of: weather) == "Weather")
+        #expect(model.displayName(of: forecast) == "Get Forecast")
+        #expect(model.displayName(of: shell) == nil)
+        #expect(model.title(of: model.groups[0]) == model.groups[0].source.title)
+        // A rename in MCP Servers shows here at once.
+        let before = model.namesRevision
+        try pool.settings.setServerDisplayName("Forecasts", server: "weather")
+        try pool.settings.setToolDisplayName("Five Days", server: "weather", tool: "get_forecast")
+        #expect(model.namesRevision == before + 2)
+        #expect(model.title(of: weather) == "Forecasts")
+        #expect(model.displayName(of: forecast) == "Five Days")
+        // The name the model calls is unchanged, so the row can show it under the display name.
+        #expect(forecast.name == "weather__get_forecast")
+    }
+
+    private struct NoAccess: PrivacyAccessGate {
+        func status(_ kind: PrivacyAccessKind) -> PrivacyAccessStatus { .notDetermined }
+        func requestAccess(_ kind: PrivacyAccessKind) async -> PrivacyAccessStatus { .notDetermined }
+    }
+
     @Test func aToolsPaneClosesWithAnotherServerOrTab() {
         let model = MCPServersSettingsModel(pool: .empty, file: URL(filePath: "/dev/null"))
         model.showPreviewItem("weather.tool-get_forecast")
         #expect(model.selection == "weather")
         #expect(model.detailTab == .tools)
-        #expect(model.paneStackOverride == true)
         #expect(model.toolStack.path == PaneStackPath(["weather__get_forecast"]))
         model.selection = "weather"
         #expect(model.toolStack.path.depth == 1, "choosing the same server keeps it")

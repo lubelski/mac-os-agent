@@ -13,7 +13,7 @@ enum PanelPreview {
         "fresh-start", "scrollback", "command-hint", "tool-states", "first-message", "streaming",
         "fresh-start-slot", "markdown", "markdown-streaming", "markdown-code-streaming", "controls", "links",
     ] + goAheadStates + incognitoStates + inspectorStates + InstantActionPreview.names + FooterPreview.names
-        + PanelWithBarsPreview.names + ImagePreview.names
+        + PanelWithBarsPreview.names + ImagePreview.names + MCPToolsPreview.names
 
     /// The states shown in the incognito window rather than the main panel. `incognito-beside`
     /// shows the main panel too, with the incognito window beside it.
@@ -85,6 +85,7 @@ enum PanelPreview {
         if let session = FooterPreview.session(named: name) { return session }
         if let session = PanelWithBarsPreview.session(named: name) { return session }
         if let session = ImagePreview.session(named: name) { return session }
+        if let session = MCPToolsPreview.session(named: name) { return session }
         switch name {
         case "empty":
             return AgentSession(previewEntries: [])
@@ -378,10 +379,13 @@ enum PanelPreview {
             thread.user("add a task to call the landlord on friday", minutesAgo: 1)
             let arguments: JSONValue = ["title": "Call the landlord", "due": "2026-11-27", "list": "Home"]
             thread.call(callID, name: "tasks__create_task", arguments: arguments, output: nil, details: nil)
-            request = ConfirmationRequest(
+            var mcpRequest = ConfirmationRequest(
                 callID: callID, kind: .mcpToolCall,
                 body: .toolCall(server: "tasks", tool: "create_task", arguments: arguments.prettyEncodedString()),
                 reason: "comes from an MCP server and is set to ask before each call")
+            // As the tool gives them: tasks is called Home Tasks. See `MCPToolsPreview`.
+            mcpRequest.displayNames = MCPToolsPreview.displayNames(of: "tasks__create_task")
+            request = mcpRequest
         case "confirmation-settings-server":
             // The settings tools experiment: adding a remote server through the mcp-remote bridge.
             thread.user("set up the figma mcp for moa, its endpoint is https://mcp.figma.com/mcp", minutesAgo: 1)
@@ -417,7 +421,8 @@ enum PanelPreview {
                 callID: callID, kind: .deleteTheme, body: .item(name: "Night Swim", detail: "themes/night-swim.json"),
                 reason: "removes its file from the themes folder")
         }
-        return AgentSession(previewEntries: thread.entries, pendingConfirmation: request, isRunning: true)
+        return AgentSession(
+            previewEntries: thread.entries, pendingConfirmation: request, isRunning: true, summaries: MCPToolsPreview.summaries)
     }
 
     /// Builds stand-in thread entries with send times relative to now.
